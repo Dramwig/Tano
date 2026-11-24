@@ -799,7 +799,7 @@ it('enforces workspace-only records and creation even when the shared filter is 
   workspaceOnly.value = true;
   await nextTick();
   expect(root.textContent).not.toContain('私人的任务');
-  expect(control<HTMLButtonElement>('计划范围').disabled).toBe(true);
+  expect(root.querySelector('.plan-view-trigger')).toBeNull();
   await quickAdd('项目任务');
   expect(control<HTMLButtonElement>('保存到').textContent).toContain('工作区');
   control<HTMLButtonElement>('保存到').click();

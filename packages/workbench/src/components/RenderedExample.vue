@@ -14,16 +14,22 @@ const props = defineProps<{
   markdown: string; properties?: boolean; source?: 'math' | 'mermaid'; livePreview?: boolean;
   reveal?: boolean; folded?: boolean; editable?: boolean; preferences?: Partial<EditorPreferences>; capabilities?: WorkspaceCapabilities;
 }>();
+const emit = defineEmits<{ editorReady: []; mermaidReady: [] }>();
 const editor = ref<InstanceType<typeof MarkdownEditor>>();
 const host = ref<HTMLElement>();
 const id = useId();
-const ready = ref(false);
+const ready = ref<boolean>();
 let observer: MutationObserver | undefined;
 let sizing: ResizeObserver | undefined;
+let mermaidReady = false;
 function popupSize() {
   const popup = host.value?.querySelector<HTMLElement>('.tano-live-math-preview, .tano-live-mermaid-preview');
   const height = popup && !popup.hidden ? popup.offsetHeight + 6 : 0;
   host.value?.style.setProperty('--preview-popup-height', `${height}px`);
+  if (!mermaidReady && props.source === 'mermaid' && height && popup?.querySelector('svg')) {
+    mermaidReady = true;
+    emit('mermaidReady');
+  }
 }
 onMounted(() => {
   observer = new MutationObserver(popupSize); observer.observe(host.value!, { childList: true, subtree: true });
@@ -34,22 +40,26 @@ const targets = computed(previewTargets);
 const preferences = computed(() => ({ ...defaultEditorPreferences, ...props.preferences,
   previewMathWhileEditing: props.livePreview !== false, previewMermaidWhileEditing: props.livePreview !== false }));
 async function prepare() {
-  ready.value = true;
   await nextTick();
   if (props.source || props.reveal) editor.value?.revealPreviewSource();
   editor.value?.withContext(ctx => prepareEditorPreview(ctx, { folded: props.folded }));
   if (props.properties) host.value?.querySelector('details')?.setAttribute('open', '');
+  if (!ready.value) {
+    ready.value = true;
+    emit('editorReady');
+  }
 }
 watch(() => [props.markdown, props.source, props.folded, props.reveal], () => { if (ready.value) void prepare(); }, { flush: 'post' });
 
 </script>
 
 <template>
-  <div ref="host" class="rendered-example" :data-ready="ready" data-renderer="editor" :data-source="source" :data-live-preview="livePreview !== false" :data-fold-demo="folded !== undefined || undefined"
+  <div ref="host" class="rendered-example" :data-ready="ready ?? 'pending'" data-renderer="editor" :data-source="source" :data-live-preview="livePreview !== false" :data-fold-demo="folded !== undefined || undefined"
     inert aria-hidden="true" @click.stop @pointerdown.stop>
     <MarkdownEditor ref="editor" :model-value="markdown" :document-id="`example-${id}`" :readonly="!editable && !source && !reveal"
       :translate="t" :reference-targets="targets" :resolve-image="previewResource" :reveal-markdown="!!source || !!reveal"
-      :show-document-properties="!!properties" :preferences="preferences" :capabilities="capabilities ?? defaultCapabilities" :custom-callout-icon="CalloutIconPicker" @ready="prepare" />
+      :show-document-properties="!!properties" :preferences="preferences" :capabilities="capabilities ?? defaultCapabilities" :custom-callout-icon="CalloutIconPicker"
+      @ready="prepare" @error="ready = false" />
   </div>
 </template>
 

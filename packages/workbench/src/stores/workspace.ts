@@ -141,7 +141,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return { path: entry?.path ?? '', name: entry?.name ?? '文件夹不可用', missing: entry?.kind !== 'directory' };
   }
   const pluginDetailManifest = (id: string) => id.startsWith('plugin:') ? installedPlugins.value.find(item => `plugin:${item.manifest.id}` === id)?.manifest ?? bundledPluginCatalog.find(item => `plugin:${item.manifest.id}` === id)?.manifest : undefined;
-  const isNavigationPage = (id: string) => (isDirectoryTab(id) && !directoryForTab(id)?.missing) || !!pluginDetailManifest(id) || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
+  const wordPreviewTab = pluginViewKey('word-preview', 'document');
+  const presentationPreviewTab = pluginViewKey('presentation-preview', 'slides');
+  const attachmentForTab = (id: string) => id.startsWith('attachment:') ? fileRegistry.value?.get(id.slice('attachment:'.length)) : undefined;
+  const isNavigationPage = (id: string) => (isDirectoryTab(id) && !directoryForTab(id)?.missing) || !!pluginDetailManifest(id) || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id) ||
+    id.startsWith('attachment:') || id === wordPreviewTab || id === presentationPreviewTab;
   const isBuiltinTab = (id: string) => isDirectoryTab(id) || id.startsWith('blank:') || id.startsWith('attachment:') || !!pluginDetailManifest(id) || id === GRAPH_TAB_ID || id === PLUGINS_TAB_ID || id === CALENDAR_TAB_ID || isTableTab(id) || hasWorkspaceViewTab(id);
   const isUtilityTab = (id: string) => isBuiltinTab(id) || views.value.has(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab');
   function registerViews(definitions: readonly WorkbenchViewTab[]) {
@@ -189,7 +193,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await serial(async () => {
       if (!scope || workspace.value?.id !== scope) throw new Error(t('工作区已切换'));
       writable();
-      if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
+      if (!capabilities.value.features.objectReferences) throw new Error('「工作区对象与引用」已关闭');
       const view = parseWorkspaceView(JSON.stringify({ version: 1, layer: 'view', workspaceId: scope, id,
         name: '对象数据库', kind: 'objects', sources: [], objectDatabase: defaultObjectViewQuery() }));
       await adapter.create(workspaceViewPath(id), JSON.stringify(view, null, 2) + '\n');
@@ -632,7 +636,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return serial(async () => {
       if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换，关系未写入其他工作区');
       writable();
-      if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
+      if (!capabilities.value.features.objectReferences) throw new Error('「工作区对象与引用」已关闭');
       if (relationError.value) throw new Error(relationError.value);
       const added = 'add' in change ? [change.add] : 'replace' in change ? change.replace.next : [];
       for (const row of added) {
@@ -674,7 +678,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return serial(async () => {
       if (!workspaceId || workspace.value?.id !== workspaceId) throw new Error(t('工作区已切换'));
       writable();
-      if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
+      if (!capabilities.value.features.objectReferences) throw new Error('「工作区对象与引用」已关闭');
       validateObjectProperties(draft.type, draft.properties);
       workspace.value = await adapter.refresh();
       await refreshObjects();
@@ -695,7 +699,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return serial(async () => {
       if (workspace.value?.id !== expectedWorkspace) throw new Error('工作区已切换，草稿未写入其他工作区');
       writable();
-      if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
+      if (!capabilities.value.features.objectReferences) throw new Error('「工作区对象与引用」已关闭');
       const saved = await saveObject(adapter, record, draft);
       workspace.value = await adapter.refresh(); await refreshObjects();
       activity('对象已更新', `${saved.object.name} · ${saved.object.type}`, 'save');
@@ -707,7 +711,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return serial(async () => {
       if (workspace.value?.id !== expectedWorkspace) throw new Error(t('工作区已切换'));
       writable();
-      if (!capabilities.value.features.objectReferences) throw new Error('Level 2 已关闭');
+      if (!capabilities.value.features.objectReferences) throw new Error('「工作区对象与引用」已关闭');
       if (record.object.properties.syncReadOnly === true) throw new Error('此对象为只读');
       if (!adapter.removeObjectFile) throw new Error('此存储适配器不支持安全删除对象');
       const file = fileRegistry.value?.at(record.path);
@@ -1102,7 +1106,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const document = documentIndex.byId.value.get(targetId);
       const pendingPath = restoringDocuments.value[targetId];
       const attachmentPreview = id.startsWith('attachment:');
-      const attachment = attachmentPreview ? fileRegistry.value?.get(id.slice('attachment:'.length)) : undefined;
+      const attachment = attachmentForTab(id);
       const table = dataTables.records.value.find(record => tableTabId(record.fileId) === targetId);
       const tableFile = isTableTab(targetId) ? fileRegistry.value?.get(tableFileId(targetId)) : undefined;
       const tablePath = tableFile ? displayPath(tableFile) : table?.path;
@@ -1120,6 +1124,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeId: () => activeId.value,
     busy: () => busy.value,
     available: id => {
+      if (id.startsWith('attachment:')) return !!attachmentForTab(id);
+      if (id === wordPreviewTab || id === presentationPreviewTab)
+        return pluginViews.value.some(view => view.key === id);
       const file = fileRegistry.value?.get(id);
       return isNavigationPage(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab') ||
         tabIds.value.includes(id) || !!(file && file.kind === 'file' && isMarkdown(file.path));
@@ -1129,7 +1136,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       focusPane(id); return true;
     },
     open: async (id, historyIndex) => {
-      if (isNavigationPage(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab'))
+      const attachment = attachmentForTab(id);
+      if (attachment) await openAttachment(attachment, { historyIndex });
+      else if (isNavigationPage(id) || pluginViews.value.some(view => view.key === id && view.location === 'tab'))
         await openPageTab(id, { historyIndex });
       else {
         const file = fileRegistry.value?.get(id);
@@ -1762,7 +1771,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return true;
   }
   async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
-    if (officePluginHandles(file) && await openOfficePlugin(file)) return;
+    if (file.kind === 'file' && officePluginId(file)) return openAttachment(file, options);
     if (drawingPluginHandles(file) && await openDrawingPlugin(file)) return;
     const creationAtRequest = creationRevision;
     const request = ++fileOpenRevision;
@@ -1799,7 +1808,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function openFileInNewTab(file: FileEntry) {
     try {
-      if (officePluginHandles(file) && await openOfficePlugin(file)) return;
+      if (file.kind === 'file' && officePluginId(file)) return openAttachmentInNewTab(file);
       if (drawingPluginHandles(file) && await openDrawingPlugin(file)) return;
       await serial(async () => {
         if (file.kind === 'file' && isDataTableFilePath(file.path)) {
@@ -1851,25 +1860,36 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function officePluginId(file: FileEntry) {
     return /\.pptx?$/i.test(file.path) ? 'presentation-preview' : /\.docx?$/i.test(file.path) ? 'word-preview' : undefined;
   }
-  function officePluginHandles(file: FileEntry) {
-    return file.kind === 'file' && !!officePluginId(file) && !!workspace.value &&
-      pluginRuntime.value.some(plugin => plugin.id === officePluginId(file) && plugin.status === 'running');
-  }
-  async function openOfficePlugin(file: FileEntry) {
+  async function openAttachment(file: FileEntry, options?: { newTab?: boolean; historyIndex?: number }) {
+    const currentWorkspace = workspace.value;
+    if (!currentWorkspace || file.kind !== 'file' || isMarkdown(file.path) || isDataTableFilePath(file.path) ||
+        !currentWorkspace.files.some(entry => entry.id === file.id && entry.path === file.path)) return;
+    const workspaceId = currentWorkspace.id;
+    const request = ++fileOpenRevision;
+    const activation = activationRevision;
+    const current = () => request === fileOpenRevision && !busy.value && !disposed;
+    const target = `attachment:${file.id}`;
+    const pluginId = officePluginId(file);
+    const viewTab = pluginId === 'word-preview' ? wordPreviewTab : presentationPreviewTab;
+    const usePlugin = !!pluginId && pluginRuntime.value.some(plugin => plugin.id === pluginId && plugin.status === 'running') &&
+      pluginViews.value.some(view => view.key === viewTab);
+    const id = usePlugin ? viewTab : target;
+    // The bundled viewers share a tab per plugin, while history follows individual files.
+    const opened = await openPageTab(id, {
+      ...options, target, current: () => current() && activationRevision === activation,
+    });
+    if (!opened || !usePlugin || !current() || activeId.value !== id || workspace.value?.id !== workspaceId) return;
+    const previewActivation = activationRevision;
     try {
-      await pluginExecutor.invoke(officePluginId(file)!, 'command', 'open', { workspaceId: workspace.value!.id, fileId: file.id });
-      return true;
-    } catch (error) { report(error); return false; }
+      await pluginExecutor.invoke(pluginId, 'command', 'open', { workspaceId, fileId: file.id, viewAlreadyOpen: true });
+    } catch (error) {
+      if (!current() || activationRevision !== previewActivation || workspace.value?.id !== workspaceId) return;
+      report(error);
+      await openPageTab(target, { target, current: () => current() && activationRevision === previewActivation });
+    }
   }
-  async function openAttachmentInNewTab(file: FileEntry) {
-    if (!workspace.value || file.kind !== 'file' || isMarkdown(file.path) || isDataTableFilePath(file.path) ||
-        !workspace.value.files.some(entry => entry.id === file.id && entry.path === file.path)) return;
-    if (officePluginHandles(file) && await openOfficePlugin(file)) return;
-    const id = `attachment:${file.id}`;
-    if (!tabIds.value.includes(id)) tabIds.value.push(id);
-    activeId.value = id;
-    ensureTabNavigation(id);
-    touchNavigation();
+  function openAttachmentInNewTab(file: FileEntry) {
+    return openAttachment(file, { newTab: true });
   }
   async function openFilesInNewTabsAt(ids: readonly string[], index: number, workspaceId: string) {
     try {
@@ -1901,32 +1921,40 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeId.value = id;
     ensureTabNavigation(id, id);
     touchNavigation();
+    return id;
   }
-  async function openPageTab(id: string, options?: { newTab?: boolean; historyIndex?: number }) {
-    if (!workspace.value) return;
+  async function openPageTab(id: string, options?: { newTab?: boolean; historyIndex?: number; target?: string; current?: () => boolean }) {
+    if (!workspace.value) return false;
     if (options?.newTab) {
       activateTab(id);
-      ensureTabNavigation(id);
-      touchNavigation();
-      return;
+      ensureTabNavigation(id, options.target);
+      if (options.target) recordTabNavigation(id, id, undefined, options.target);
+      else touchNavigation();
+      return true;
     }
     const workspaceId = workspace.value.id, epoch = assistantEpoch.value;
     const replaceId = activeId.value;
     const wasOpen = tabIds.value.includes(id);
     try {
-      if (!wasOpen && !(await prepareTabReplacement(replaceId))) return;
-      await serial(async () => {
-        if (workspace.value?.id !== workspaceId || assistantEpoch.value !== epoch) return;
+      if (!wasOpen && !(await prepareTabReplacement(replaceId))) return false;
+      return await serial(async () => {
+        if (workspace.value?.id !== workspaceId || assistantEpoch.value !== epoch ||
+            (options?.current && (!options.current() || activeId.value !== replaceId))) return false;
         const targetId = activeId.value === replaceId ? replaceId : undefined;
         activateTab(id, targetId);
-        if (!wasOpen && targetId) recordTabNavigation(targetId, id, options?.historyIndex);
-        else {
+        if (!wasOpen && targetId) recordTabNavigation(targetId, id, options?.historyIndex, options?.target);
+        else if (options?.target) {
+          ensureTabNavigation(id, options.target);
+          recordTabNavigation(id, id, targetId === id ? options.historyIndex : undefined, options.target);
+        } else {
           ensureTabNavigation(id);
           touchNavigation();
         }
+        return true;
       });
     } catch (error) {
       report(error);
+      return false;
     }
   }
   async function openGraphTab(options?: { newTab?: boolean; historyIndex?: number }) {
@@ -3337,6 +3365,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openFile,
     prefetchFile,
     openFileInNewTab,
+    openAttachment,
     openAttachmentInNewTab,
     openDirectory,
     openFilesInNewTabsAt,

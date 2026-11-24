@@ -1,6 +1,9 @@
 import { isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
 
 const compareNames = new Intl.Collator('zh-CN', { numeric: true }).compare;
+/** Id prefix of the placeholder rows that preview where dragged entries will land. */
+export const DROP_PLACEHOLDER_PREFIX = 'drop-preview:';
+export const isDropPlaceholderId = (id: string) => id.startsWith(DROP_PLACEHOLDER_PREFIX);
 export interface FileTreeRow { file: FileEntry; depth: number; position: number; siblings: number }
 
 export function indexFileTree(entries: readonly FileEntry[]) {

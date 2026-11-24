@@ -8,7 +8,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 
 <template>
   <span class="theme-preview" :class="{ 'theme-preview-dual': previews.length === 2 }"
-    :data-preview-structure="preset.structure ?? 'continuous'" aria-hidden="true">
+    :data-preview-structure="preset.structure ?? 'continuous'" :data-preview-surface="preset.material" aria-hidden="true">
     <span v-for="preview in previews" :key="preview.mode" class="theme-preview-scene"
       :data-preview-mode="preview.mode" :style="preview.colors">
       <span class="theme-preview-window">
@@ -97,4 +97,68 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 [data-preview-structure='document'] .theme-preview-heading { width: 44%; align-self: center; height: 3px; margin-bottom: 2px; }
 [data-preview-structure='document'] .theme-preview-callout { display: none; }
 [data-preview-structure='document'] .theme-preview-paragraph-short { display: flex; }
+/* Frosted glass: the same two cards, milky and translucent over soft orbs of colour (see layout-themes.css). */
+.theme-preview[data-preview-surface] .theme-preview-scene {
+  --preview-syntax-blue: #2d5fb8;
+  --preview-syntax-purple: #6a45b8;
+  --preview-syntax-teal: #0b7480;
+  --preview-glass: 50%;
+  --preview-rim: #ffffffb8;
+  --preview-sheen: #ffffff99;
+  background:
+    radial-gradient(30% 42% at 16% 40%, color-mix(in srgb, var(--preview-syntax-blue) 40%, transparent), transparent 70%),
+    radial-gradient(34% 44% at 58% 72%, color-mix(in srgb, var(--preview-syntax-blue) 28%, transparent), transparent 70%),
+    radial-gradient(30% 40% at 82% 40%, color-mix(in srgb, var(--preview-syntax-purple) 22%, transparent), transparent 70%),
+    radial-gradient(36% 40% at 94% 4%, color-mix(in srgb, var(--preview-syntax-teal) 26%, transparent), transparent 70%),
+    linear-gradient(170deg, color-mix(in srgb, var(--preview-sidebar) 70%, #ffffff), color-mix(in srgb, var(--preview-sidebar) 40%, #ffffff));
+}
+.theme-preview[data-preview-surface] .theme-preview-scene[data-preview-mode='dark'] {
+  --preview-syntax-blue: #9cbcff;
+  --preview-syntax-purple: #cbb5ff;
+  --preview-glass: 60%;
+  --preview-rim: #ffffff24;
+  --preview-sheen: #ffffff1f;
+  background:
+    radial-gradient(30% 42% at 16% 40%, color-mix(in srgb, var(--preview-syntax-blue) 26%, transparent), transparent 70%),
+    radial-gradient(34% 44% at 58% 72%, color-mix(in srgb, var(--preview-syntax-blue) 18%, transparent), transparent 70%),
+    radial-gradient(30% 40% at 82% 40%, color-mix(in srgb, var(--preview-syntax-purple) 16%, transparent), transparent 70%),
+    linear-gradient(170deg, var(--preview-sidebar), color-mix(in srgb, var(--preview-sidebar) 86%, var(--preview-text) 14%));
+}
+.theme-preview[data-preview-surface] .theme-preview-window,
+.theme-preview[data-preview-surface] .theme-preview-toolbar,
+.theme-preview[data-preview-surface] .theme-preview-workspace { background: transparent; }
+.theme-preview[data-preview-surface] .theme-preview-window { border-color: transparent; box-shadow: none; }
+.theme-preview[data-preview-surface='frost'] .theme-preview-sidebar,
+.theme-preview[data-preview-surface='liquid'][data-preview-structure='islands'] .theme-preview-sidebar,
+.theme-preview[data-preview-surface] .theme-preview-main {
+  border-color: var(--preview-rim);
+  border-radius: 6px;
+  background: linear-gradient(160deg, var(--preview-sheen), transparent 55%), color-mix(in srgb, var(--preview-paper) var(--preview-glass), transparent);
+  box-shadow: inset 0 1px 0 var(--preview-rim), 0 6px 12px -8px #1c305a4d;
+  -webkit-backdrop-filter: blur(8px) saturate(170%) brightness(1.04); backdrop-filter: blur(8px) saturate(170%) brightness(1.04);
+}
+.theme-preview[data-preview-surface] .theme-preview-main { --preview-glass: 74%; }
+/* Liquid glass: clearer cards whose edges catch the light (see layout-themes.css). */
+.theme-preview[data-preview-surface='liquid'] .theme-preview-scene { --preview-glass: 10%; --preview-rim: #ffffff80; --preview-edge: #ffffff80; --preview-outline: #1c24301f; }
+.theme-preview[data-preview-surface='liquid'] .theme-preview-scene[data-preview-mode='dark'] { --preview-glass: 16%; --preview-rim: #ffffff42; --preview-edge: #ffffff1a; --preview-outline: #00000073; }
+.theme-preview[data-preview-surface='liquid']:not([data-preview-structure='islands']) .theme-preview-sidebar { background: transparent; }
+.theme-preview[data-preview-surface='liquid'][data-preview-structure='islands'] .theme-preview-sidebar,
+.theme-preview[data-preview-surface='liquid'] .theme-preview-main {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--preview-paper) var(--preview-glass), transparent);
+  box-shadow: 0 0 0 .5px var(--preview-outline), inset 1px 1px 0 var(--preview-rim), inset -1px -1px 0 var(--preview-edge),
+    0 6px 12px -8px #1c305a4d;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+.theme-preview[data-preview-surface='liquid'] .theme-preview-scene[data-preview-mode] {
+  background: url('../assets/clouds-day.webp') center / cover;
+}
+.theme-preview[data-preview-surface='liquid'] .theme-preview-scene[data-preview-mode='dark'] {
+  background-image: url('../assets/clouds-night.webp');
+}
+.theme-preview[data-preview-surface='liquid'] .theme-preview-main { --preview-glass: 16%; }
+.theme-preview[data-preview-surface='liquid'][data-preview-structure='continuous'] .theme-preview-main {
+  border-radius: 6px 0 0; box-shadow: inset 1px 1px 0 var(--preview-rim);
+}
+.theme-preview[data-preview-surface='liquid'] [data-preview-mode='dark'] .theme-preview-main { --preview-glass: 22%; }
 </style>

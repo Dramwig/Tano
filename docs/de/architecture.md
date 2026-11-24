@@ -1,6 +1,6 @@
 # Architektur
 
-[English](../architecture.md) | [中文](../zh/architecture.md) | [日本語](../ja/architecture.md) | Deutsch | [Dokumentationsübersicht](README.md)
+[English](../architecture.md) | [简体中文](../zh/architecture.md) | [繁體中文](../zh-tw/architecture.md) | [日本語](../ja/architecture.md) | [Español](../es/architecture.md) | Deutsch | [Dokumentationsübersicht](README.md)
 
 Die Vue-Arbeitsoberfläche verwendet über einen Dokumenten-Store einen `WorkspaceAdapter`. Der Desktop-Adapter ruft Tauri-IPC-Befehle auf, die `tano-native` implementiert. Die Browserdemo nutzt einen eigenen Adapter für den Browserspeicher. `configureWorkbench(pinia, runtime)` bindet eine Laufzeit an jede Instanz der Arbeitsoberfläche.
 

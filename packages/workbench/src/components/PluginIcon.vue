@@ -3,11 +3,19 @@ import { computed } from 'vue';
 import researchIcon from '../assets/plugins/research.svg';
 import readingIcon from '../assets/plugins/reading.svg';
 import extensionIcon from '../assets/plugins/extension.svg';
+import presentationIcon from '../assets/plugins/presentation-preview.svg';
+import wordIcon from '../assets/plugins/word-preview.svg';
+import excalidrawIcon from '../assets/plugins/excalidraw.svg';
 
 const props = defineProps<{ id: string; compact?: boolean; size?: number }>();
-const icon = computed(() =>
-  props.id === 'research' ? researchIcon : props.id === 'reading' ? readingIcon : extensionIcon,
-);
+const icons = new Map([
+  ['research', researchIcon],
+  ['reading', readingIcon],
+  ['presentation-preview', presentationIcon],
+  ['word-preview', wordIcon],
+  ['excalidraw', excalidrawIcon],
+]);
+const icon = computed(() => icons.get(props.id) ?? extensionIcon);
 </script>
 
 <template>

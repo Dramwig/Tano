@@ -1,6 +1,6 @@
 # Builds und Releases
 
-[English](../releases.md) | [中文](../zh/releases.md) | [日本語](../ja/releases.md) | Deutsch | [Dokumentationsübersicht](README.md)
+[English](../releases.md) | [简体中文](../zh/releases.md) | [繁體中文](../zh-tw/releases.md) | [日本語](../ja/releases.md) | [Español](../es/releases.md) | Deutsch | [Dokumentationsübersicht](README.md)
 
 Mit `npm run desktop:build` ein Desktop-Paket erstellen. Ein Build aus dem Quellcode benötigt weder Benutzerkonto noch Signaturschlüssel und hat standardmäßig keinen Update-Endpunkt. Unter Windows liegt der NSIS-Installer unter `apps/client/src-tauri/target/release/bundle/nsis/`.
 

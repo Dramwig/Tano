@@ -1,7 +1,8 @@
 //! Bounded compatibility negotiation before any model output is delivered.
 //! Never changes the model, host, credentials, tools, or storage policy.
 use super::{
-    authenticate, generation_endpoint, request_body, Connection, Protocol, StoredConnection,
+    authenticate, generation_endpoint, is_responses_only_attachment, request_body, Connection,
+    Protocol, StoredConnection,
 };
 use serde_json::Value;
 use tokio::sync::watch;
@@ -13,12 +14,20 @@ pub(super) struct Profile {
     omit_usage: bool,
 }
 
-fn continuation_protocol(request: &Value) -> Option<Protocol> {
+fn required_protocol(request: &Value) -> Option<Protocol> {
     let messages = request.get("messages")?.as_array()?;
-    if messages
-        .iter()
-        .any(|message| message.get("responseItems").is_some())
-    {
+    if messages.iter().any(|message| {
+        message.get("responseItems").is_some()
+            || message["attachments"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|attachment| {
+                    attachment["mime"]
+                        .as_str()
+                        .is_some_and(is_responses_only_attachment)
+                })
+    }) {
         Some(Protocol::Responses)
     } else if messages.iter().any(|message| {
         message.get("role").and_then(Value::as_str) == Some("tool")
@@ -37,8 +46,9 @@ impl Profile {
             legacy_max_tokens: false,
             omit_usage: false,
         });
-        // A tool round must keep the protocol that produced its call IDs and reasoning.
-        if let Some(protocol) = continuation_protocol(request) {
+        // General file inputs require Responses. A tool round keeps the protocol
+        // that produced its call IDs and reasoning.
+        if let Some(protocol) = required_protocol(request) {
             profile.protocol = protocol;
         }
         profile
@@ -79,7 +89,7 @@ impl Profile {
             return None;
         }
         let mut next = *self;
-        if error.protocol_mismatch(self.protocol) && continuation_protocol(request).is_none() {
+        if error.protocol_mismatch(self.protocol) && required_protocol(request).is_none() {
             next.protocol = match self.protocol {
                 Protocol::Responses => Protocol::ChatCompletions,
                 Protocol::ChatCompletions => Protocol::Responses,
@@ -272,6 +282,32 @@ mod tests {
         assert_eq!(pinned.protocol, Protocol::ChatCompletions);
         assert!(pinned
             .adapt(&error(400, "protocol_not_supported", ""), &chat_wire)
+            .is_none());
+    }
+
+    #[test]
+    fn general_file_input_uses_responses_even_with_a_cached_chat_profile() {
+        let stored = connection();
+        let wire = json!({"model": "chosen-model", "messages": [{
+            "role": "user", "content": "Read this file",
+            "attachments": [{"name": "example.bin", "mime": "application/octet-stream", "data": "AP8="}]
+        }]});
+        let chat = Profile {
+            protocol: Protocol::ChatCompletions,
+            legacy_max_tokens: false,
+            omit_usage: false,
+        };
+        assert!(chat.body(&stored.config, &wire).is_err());
+        let profile = Profile::for_request(&stored.config, &wire, Some(chat));
+        let body = profile.body(&stored.config, &wire).unwrap();
+        assert_eq!(
+            body["input"][0]["content"][1],
+            json!({
+                "type": "input_file", "filename": "example.bin", "file_data": "data:application/octet-stream;base64,AP8="
+            })
+        );
+        assert!(profile
+            .adapt(&error(400, "protocol_not_supported", ""), &wire)
             .is_none());
     }
 

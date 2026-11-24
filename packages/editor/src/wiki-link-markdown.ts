@@ -13,6 +13,7 @@ export interface WikiLinkNode {
   target: string;
   label: string;
   explicitLabel: boolean;
+  position?: Text['position'];
 }
 
 declare module 'mdast' {
@@ -64,18 +65,27 @@ function transformText(node: Text, source: string): Nodes[] {
   if (start === undefined || end === undefined || source.slice(start, end) !== node.value)
     return [node];
   const result: Nodes[] = [];
+  const point = (index: number) => {
+    const lines = node.value.slice(0, index).split('\n');
+    return { offset: start + index, line: node.position!.start.line + lines.length - 1,
+      column: lines.length === 1 ? node.position!.start.column + index : lines.at(-1)!.length + 1 };
+  };
+  const position = (from: number, to: number) => ({ start: point(from), end: point(to) });
+  const text = (from: number, to: number): Text => ({
+    type: 'text', value: node.value.slice(from, to), position: position(from, to),
+  });
   let cursor = 0;
   for (const match of node.value.matchAll(wikiPattern)) {
     const index = match.index;
     if (isEscaped(source, start + index) || source[start + index - 1] === '!') continue;
     const link = parseWikiLink(match[1]);
     if (!link) continue;
-    if (index > cursor) result.push({ type: 'text', value: node.value.slice(cursor, index) });
-    result.push({ type: 'tanoWikiLink', ...link });
+    if (index > cursor) result.push(text(cursor, index));
     cursor = index + match[0].length;
+    result.push({ type: 'tanoWikiLink', ...link, position: position(index, cursor) });
   }
   if (!cursor) return [node];
-  if (cursor < node.value.length) result.push({ type: 'text', value: node.value.slice(cursor) });
+  if (cursor < node.value.length) result.push(text(cursor, node.value.length));
   return result;
 }
 

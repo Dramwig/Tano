@@ -102,7 +102,7 @@ export function referenceViews(
             size: block ? 21 : 14, strokeWidth: 1.7,
           }), icon);
           badge.textContent = !enabled()
-            ? 'Level 2 已关闭'
+            ? '「工作区对象与引用」已关闭'
             : missing
               ? '引用不可用'
               : `${task ? `任务 · ${completed ? '已完成' : '未完成'}` : referenceTypeLabel(target.type)}${target.archived ? ' · 已归档' : ''}`;

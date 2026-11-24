@@ -11,6 +11,7 @@ export const settingExamples = {
   'editing-folding': { scene: 'folding', label: '标题与列表折叠', description: '点击折叠箭头，临时收起或展开下面的内容。' },
   'editing-ai-shortcut': { scene: 'ai', label: '空白块按空格启动 AI', description: '在空段落按空格，展开一次性 AI 编辑输入框。' },
   'editing-wrapping': { scene: 'wrapping', label: '输入符号包裹选区', description: '选中文字再输入符号，自动在两端补齐对应标记。' },
+  'editing-autocomplete-spacing': { scene: 'input-spacing', label: '输入时自动补空格', description: '空格会写入 Markdown 原文。' },
   'appearance-auto-spacing': { scene: 'spacing', label: '正文自动间距', description: '在中文和英文、数字之间增加视觉留白，Markdown 原文保持不变。' },
   'appearance-page-title': { scene: 'title', label: '页面内标题', description: '在正文上方显示当前文档的标题。' },
   'appearance-properties': { scene: 'properties', label: '文档属性', description: '在正文上方查看和编辑 Markdown 文档中的属性。' },
@@ -31,5 +32,6 @@ export function settingHint(key: string) {
   return isSettingExample(key) ? {
     'data-tooltip': t(settingExamples[key].label),
     'data-tooltip-setting': key,
+    'data-tooltip-placement': 'left',
   } : {};
 }

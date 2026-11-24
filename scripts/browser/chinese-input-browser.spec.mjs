@@ -21,6 +21,53 @@ async function create(page, name, content = '输入：\n') {
   }, { name, content });
 }
 
+for (const source of [false, true]) test(`writes input spacing to Markdown (${source ? 'source' : 'visual'})`, async ({ page }) => {
+  await open(page);
+  await settings(page);
+  const spacing = page.getByRole('switch', { name: '输入时自动补空格' });
+  await expect(spacing).toHaveAttribute('aria-checked', 'false');
+  await spacing.click();
+  await page.reload();
+  await settings(page);
+  await expect(spacing).toHaveAttribute('aria-checked', 'true');
+  await page.locator('.settings-close').click();
+  await create(page, `补空格-${source}.md`, '保留A1\n\n中文\n');
+  if (source) await page.getByRole('button', { name: '切换源码模式', exact: true }).click();
+  const editor = page.locator(source ? '.cm-content' : '.ProseMirror').first();
+  await editor.getByText('中文', { exact: true }).click();
+  await page.keyboard.press('End');
+  // Type between two Han characters. The next key must precede the trailing space.
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('Tano2026');
+  await expect(editor).toContainText('中 Tano2026 文');
+  await page.keyboard.press('Control+z');
+  await expect(editor).toContainText('中文');
+  await page.keyboard.press('End');
+  await page.keyboard.type('$x+1$');
+  await expect(editor).toContainText(source ? '中文 $x+1$' : '中文 ');
+  await page.keyboard.press('End');
+  await page.keyboard.insertText('公式');
+  await page.keyboard.press('End');
+  await page.keyboard.type('[[页面A]]');
+  await page.keyboard.press('End');
+  await page.keyboard.insertText('完成');
+  await page.keyboard.type('ABC');
+  await editor.evaluate(element => element.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })));
+  await page.keyboard.insertText('中文');
+  await expect(editor).toContainText('ABC中文');
+  await editor.evaluate(element => element.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '中文' })));
+  await expect(editor).toContainText('ABC 中文');
+  await editor.evaluate(element => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/plain', '原样V2');
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
+  });
+  await expect(editor).toContainText('中文原样V2');
+  await expect(editor).toContainText('保留A1');
+  if (!source) await page.getByRole('button', { name: '切换源码模式', exact: true }).click();
+  await expect(page.locator('.cm-content').first()).toContainText('中文 $x+1$ 公式 [[页面A]] 完成 ABC 中文原样V2');
+});
+
 test('Chinese input settings are separate, off by default, searchable and saved', async ({ page }, testInfo) => {
   await open(page);
   // A section has an accessible region role when it has an accessible name.

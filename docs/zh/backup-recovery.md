@@ -1,6 +1,6 @@
 # 备份与恢复
 
-[English](../backup-recovery.md) | 中文 | [日本語](../ja/backup-recovery.md) | [Deutsch](../de/backup-recovery.md) | [文档目录](README.md)
+[English](../backup-recovery.md) | 简体中文 | [繁體中文](../zh-tw/backup-recovery.md) | [日本語](../ja/backup-recovery.md) | [Español](../es/backup-recovery.md) | [Deutsch](../de/backup-recovery.md) | [文档目录](README.md)
 
 请将 Markdown 文件、附件和整个 `.tano/` 目录一起备份。工作区 UUID、文件身份、对象、关系和规则均为可移植的源数据，不是可随意删除的缓存。
 

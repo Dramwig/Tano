@@ -75,7 +75,11 @@ function iconStyle(id?: string): AvatarStyle {
   if (id?.startsWith('agent-pixel-')) return '像素';
   return id?.startsWith('agent-') ? '线条' : '品牌';
 }
-const visibleAvatarOptions = computed(() => connectionIconOptions.filter(option => iconStyle(option.id) === avatarStyle.value));
+function avatarOptions(style: AvatarStyle) {
+  return connectionIconOptions.filter(option => iconStyle(option.id) === style);
+}
+const visibleAvatarOptions = computed(() => avatarOptions(avatarStyle.value));
+const avatarSlotCount = Math.max(...avatarStyles.map(style => avatarOptions(style).length));
 const avatarPosition = ref({ left: '0px', top: '0px' });
 
 function closeAvatarPicker(restoreFocus = false) {
@@ -106,11 +110,6 @@ function positionAvatarPicker() {
     top: `${Math.max(8, Math.min(top + popup.offsetHeight <= window.innerHeight - 8 ? top : bounds.top - popup.offsetHeight - 6, window.innerHeight - popup.offsetHeight - 8))}px`,
   };
 }
-
-watch(avatarStyle, async () => {
-  await nextTick();
-  if (avatarOpen.value) positionAvatarPicker();
-});
 
 function selectAvatar(icon?: string) {
   if (draft.value) draft.value.icon = icon;
@@ -583,6 +582,8 @@ onBeforeUnmount(() => {
                 <button v-for="option in visibleAvatarOptions" :key="option.id" type="button" :title="t(option.label)" :aria-label="t(option.label)" :aria-pressed="draft.icon === option.id" @click="selectAvatar(option.id)">
                   <AssistantConnectionAvatar :connection="{ ...draft, icon: option.id }" />
                 </button>
+                <!-- Keep every style as tall as the largest grid, even when the picker opens above the trigger. -->
+                <span v-for="slot in avatarSlotCount - visibleAvatarOptions.length" :key="slot" aria-hidden="true" />
               </div>
               </div>
             </div>

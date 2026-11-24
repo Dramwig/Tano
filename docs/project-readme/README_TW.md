@@ -10,7 +10,7 @@
 
 [English](../../README.md) | [简体中文](README_ZH.md) | 繁體中文 | [日本語](README_JA.md) | [Español](README_ES.md) | [Deutsch](README_DE.md)
 
-[官方網站](https://tano.page) · [下載](https://github.com/Dramwig/Tano/releases) · [文件](../zh/README.md)
+[官方網站](https://tano.page) · [下載](https://github.com/Dramwig/Tano/releases) · [文件](../zh-tw/README.md)
 
 </div>
 
@@ -46,7 +46,7 @@ npm run desktop
 
 ## 文件與開發
 
-開發與架構文件目前提供[簡體中文](../zh/README.md)及 [English](../README.md) 等版本。另見[本機開發](../zh/local-development.md)、[Agent 工作流程](../zh/agent-workflow.md)、[備份與復原](../zh/backup-recovery.md)和[建置與發行](../zh/releases.md)。
+請參閱[繁體中文文件目錄](../zh-tw/README.md)，或直接閱讀[本機開發](../zh-tw/local-development.md)、[架構](../zh-tw/architecture.md)、[Agent 工作流程](../zh-tw/agent-workflow.md)、[備份與復原](../zh-tw/backup-recovery.md)、[建置與發行](../zh-tw/releases.md)及[授權與範圍](../zh-tw/license.md)。
 
 ```sh
 npm run check

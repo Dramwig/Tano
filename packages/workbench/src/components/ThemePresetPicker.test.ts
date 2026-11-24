@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeAll, afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp, h, nextTick, type App } from 'vue';
-import { AppearanceController } from '../appearance';
+import { AppearanceController, builtinAppearance } from '../appearance';
 import { FileIconRegistry } from '../file-icons/registry';
 import { setUiLocale, preloadUiLocale } from '../i18n';
 import ThemePresetPicker from './ThemePresetPicker.vue';
@@ -27,6 +27,12 @@ async function open() { more().click(); await nextTick(); await nextTick(); }
 const pressed = () => [...root.querySelectorAll('.theme-preset-quick-row [aria-pressed="true"]')].map(card => card.getAttribute('data-preset-id'));
 
 it('lists every preset in catalog order without a collapsed panel when they fit in one row', async () => {
+  app.unmount(); controller.dispose();
+  controller = new AppearanceController(new FileIconRegistry(), 'alice', localStorage, vi.fn(),
+    { ...builtinAppearance, presets: builtinAppearance.presets.slice(0, 3) });
+  controller.sync('one', []);
+  app = createApp(() => h(ThemePresetPicker, { appearance: controller.state.value, onSelect: selection => controller.select(selection) }));
+  app.mount(root);
   expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands', 'builtin:paper']);
   expect(pressed()).toEqual(['builtin:tano']);
   expect(more()).toBeNull();
@@ -37,6 +43,23 @@ it('lists every preset in catalog order without a collapsed panel when they fit 
   expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands', 'builtin:paper']);
   expect(pressed()).toEqual(['builtin:paper']);
   expect(more()).toBeNull();
+});
+
+it('keeps three cards in the row and moves further presets such as frosted glass into more', async () => {
+  expect(root.querySelector('.theme-preset-quick-row')?.children).toHaveLength(3);
+  expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands']);
+  expect(pressed()).toEqual(['builtin:tano']);
+  await open();
+  expect([...root.querySelectorAll('.theme-preset-popover [data-preset-id]')].map(card => card.getAttribute('data-preset-id')))
+    .toEqual(['builtin:paper', 'builtin:frost', 'builtin:liquid']);
+  expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:frost"] [data-preview-surface="frost"]')).not.toBeNull();
+  expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:liquid"] [data-preview-surface="liquid"]')).not.toBeNull();
+  expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:paper"] [data-preview-surface]')).toBeNull();
+  root.querySelector<HTMLButtonElement>('.theme-preset-popover [data-preset-id="builtin:frost"]')!.click();
+  await nextTick();
+  expect(rowIds()).toEqual(['builtin:frost', 'builtin:tano']);
+  expect(pressed()).toEqual(['builtin:frost']);
+  expect(root.querySelector('.theme-preset-quick-row')?.textContent).toContain('磨砂玻璃');
 });
 
 async function customize() {
@@ -54,11 +77,11 @@ it('collapses into current, previous and more once the choices no longer fit', a
   await open();
   expect(more().getAttribute('aria-expanded')).toBe('true');
   expect([...root.querySelectorAll('.theme-preset-popover [data-preset-id]')].map(card => card.getAttribute('data-preset-id')))
-    .toEqual(['builtin:tano', 'builtin:islands']);
+    .toEqual(['builtin:tano', 'builtin:islands', 'builtin:frost', 'builtin:liquid']);
   root.querySelector<HTMLButtonElement>('.theme-preset-popover [data-preset-id="builtin:islands"]')!.click();
   await nextTick();
   expect(root.querySelector('.theme-preset-popover')).toBeNull();
-  expect(rowIds()).toEqual(['builtin:tano', 'builtin:islands', 'builtin:paper']);
+  expect(rowIds()).toEqual(['builtin:islands', 'builtin:paper']);
   expect(pressed()).toEqual(['builtin:islands']);
 });
 
@@ -73,6 +96,23 @@ it('closes on Escape without closing settings and restores keyboard focus', asyn
   expect(root.querySelector('.theme-preset-popover')).toBeNull();
   expect(bubbled).not.toHaveBeenCalled();
   expect(document.activeElement).toBe(more());
+});
+
+it('deletes a custom preset in more and keeps the panel and current appearance', async () => {
+  await customize();
+  controller.select({ workspaceId: 'one', kind: 'save-preset' });
+  const id = controller.state.value.presetId;
+  controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:tano' });
+  controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:islands' });
+  await nextTick();
+  await open();
+  const panel = root.querySelector('.theme-preset-popover')!;
+  panel.querySelector<HTMLButtonElement>('button[aria-label="删除主题「自定义主题 1」"]')!.click();
+  await nextTick();
+  expect(controller.state.value.presets.some(preset => preset.id === id)).toBe(false);
+  expect(pressed()).toEqual(['builtin:islands']);
+  expect(more().getAttribute('aria-expanded')).toBe('true');
+  expect(panel.contains(document.activeElement)).toBe(true);
 });
 
 it('hides unavailable entries from the previous slot of a custom combination', async () => {

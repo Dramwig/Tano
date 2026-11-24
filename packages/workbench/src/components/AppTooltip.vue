@@ -4,7 +4,7 @@ const { window, document } = useWindowContext();
 
 import { isElement, isNode } from '@tano/editor/dom-realm';
 import ShortcutHint from '@tano/editor/shortcut-hint';
-import { nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { shortcutLabel } from '../shortcuts';
 import { featureDefinitions } from '@tano/editor/runtime';
 import type { DocumentFeature } from '@tano/editor/runtime';
@@ -79,6 +79,9 @@ async function place() {
   hint.style.maxWidth = `${Math.min(320, right - left)}px`;
   hint.style.maxHeight = `${bottom - top}px`;
   const rect = button.getBoundingClientRect();
+  // Nested preview triggers share their row's bounds. The preview can cover settings navigation.
+  const leftAnchor = button.closest('[data-tooltip-placement="left"]');
+  hint.toggleAttribute('data-passive', !!leftAnchor);
   const gap = blockExample.value ? 2 : button.closest('.compact-action-menu') ? 3 : 8;
   if (button.dataset.tooltipPlacement === 'right') {
     const edge = button.closest('[data-tooltip-boundary], [role="listbox"]')?.getBoundingClientRect() ?? rect;
@@ -103,12 +106,24 @@ async function place() {
     ready.value = true;
     return;
   }
-  const above = rect.top - hint.offsetHeight - gap;
-  const y = above >= top ? above : rect.bottom + gap;
-  hint.style.left = `${Math.max(left, Math.min(rect.left + (rect.width - hint.offsetWidth) / 2, right - hint.offsetWidth))}px`;
+  const bounds = leftAnchor?.getBoundingClientRect() ?? rect;
+  const besideLeft = bounds.left - hint.offsetWidth - gap;
+  const beside = leftAnchor && besideLeft >= left;
+  const above = bounds.top - hint.offsetHeight - gap;
+  const y = beside ? bounds.top + (bounds.height - hint.offsetHeight) / 2
+    : above >= top ? above : bounds.bottom + gap;
+  const x = beside ? besideLeft : leftAnchor ? bounds.left : rect.left + (rect.width - hint.offsetWidth) / 2;
+  hint.style.left = `${Math.max(left, Math.min(x, right - hint.offsetWidth))}px`;
   hint.style.top = `${Math.max(top, Math.min(y, bottom - hint.offsetHeight))}px`;
   ready.value = true;
 }
+watch([tooltip, settingExample], ([element, setting], _, onCleanup) => {
+  const { ResizeObserver } = window as Window & typeof globalThis;
+  if (!element || !setting || !ResizeObserver) return;
+  const resize = new ResizeObserver(() => { void place(); });
+  resize.observe(element);
+  onCleanup(() => resize.disconnect());
+});
 function update() {
   if (!anchor) return;
   if (!usable(anchor)) return hide();
@@ -214,11 +229,11 @@ onBeforeUnmount(() => {
 <template>
   <Teleport :to="portal">
     <div v-if="label" :id="id" ref="tooltip" class="app-tooltip panel-scrollbar" role="tooltip"
-      popover="manual" :data-ready="ready" @pointerenter="cancelTimer" @pointerleave="leave"
+      popover="manual" :data-ready="ready" :data-setting="settingExample" @pointerenter="cancelTimer" @pointerleave="leave"
       @mousedown="(blockExample || settingExample) && $event.preventDefault()">
       <span v-if="!example && !blockExample && !settingExample">{{ label }}</span>
       <span v-if="shortcut" class="app-tooltip-shortcut"><ShortcutHint :label="shortcut" /></span>
-      <SettingExample v-if="settingExample" :setting="settingExample" />
+      <SettingExample v-if="settingExample" :key="settingExample" :setting="settingExample" />
       <CapabilityExample v-else-if="example" :feature="example" />
       <BlockExample v-else-if="blockExample" :command="blockExample" :value="blockValue" :label="label" />
     </div>
@@ -246,9 +261,12 @@ onBeforeUnmount(() => {
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
-.app-tooltip[data-ready='false'] { visibility: hidden; }
+.app-tooltip[data-ready='false'],
+.app-tooltip[data-setting]:has(.example-viewport[data-ready='false']) { visibility: hidden; }
+.app-tooltip[data-passive] { pointer-events: none; }
 @media (prefers-reduced-motion: no-preference) {
-  .app-tooltip[data-ready='true'] { animation: tano-tooltip-in var(--motion-spring, 300ms) var(--ease-spring, ease-out) both; }
+  /* Settings previews already animate their content at its display scale. */
+  .app-tooltip[data-ready='true']:not([data-passive]) { animation: tano-tooltip-in var(--motion-spring, 300ms) var(--ease-spring, ease-out) both; }
 }
 .app-tooltip::backdrop { background: transparent; pointer-events: none; }
 .app-tooltip-shortcut { justify-self: center; color: #b8b8b8; }

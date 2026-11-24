@@ -6,11 +6,26 @@ import { ownerWindow } from '@tano/editor/dom-realm';
 export const TAB_DRAG_IMAGE_INSET = { x: 24, y: 18 } as const;
 const SHADOW_BOTTOM = 32;
 
+const readiness = new WeakMap<HTMLCanvasElement, Promise<void>>();
+
+/** Resolves once the tab icon is painted, so the bitmap never ships a placeholder glyph. */
+export const tabDragImageReady = (canvas: HTMLCanvasElement) => readiness.get(canvas) ?? Promise.resolve();
+
 /** Painted at device pixels (`scale`), so the native overlay stays as crisp as the DOM. */
-export function tabDragImage(tab: HTMLElement, label: string, scale = ownerWindow(tab).devicePixelRatio || 1) {
+export interface TabDragImageOptions {
+  /** Card size in CSS px; defaults to the element's own box. */
+  width?: number;
+  height?: number;
+  /** Already-decoded icon, drawn synchronously instead of the seeded glyph. */
+  iconImage?: HTMLImageElement;
+  /** Skip looking the icon up inside the element (file rows supply `iconImage`). */
+  noIcon?: boolean;
+}
+
+export function tabDragImage(tab: HTMLElement, label: string, scale = ownerWindow(tab).devicePixelRatio || 1, options: TabDragImageOptions = {}) {
   const rect = tab.getBoundingClientRect();
-  const width = Math.max(28, Math.round(rect.width));
-  const height = Math.max(28, Math.round(rect.height));
+  const width = Math.max(28, Math.round(options.width ?? rect.width));
+  const height = Math.max(28, Math.round(options.height ?? rect.height));
   const { x: insetX, y: insetY } = TAB_DRAG_IMAGE_INSET;
   const canvas = tab.ownerDocument.createElement('canvas');
   canvas.width = Math.round((width + insetX * 2) * scale);
@@ -64,20 +79,30 @@ export function tabDragImage(tab: HTMLElement, label: string, scale = ownerWindo
   context.restore();
   // Seed a file glyph so even an immediate drag has a complete bitmap. Replace
   // it with the actual tab icon once its SVG finishes decoding after pointerdown.
+  const ready = options.iconImage;
+  if (ready?.complete && ready.naturalWidth) {
+    context.drawImage(ready, left, iconY, 15, 15);
+    return canvas;
+  }
   context.strokeStyle = color('--muted', '#777');
   context.lineWidth = 1;
   context.strokeRect(left + 3, iconY + 2, 9, 12);
-  const svg = tab.querySelector('.desktop-tab-icon svg, svg.desktop-tab-icon');
+  const svg = options.noIcon ? null : tab.querySelector('.desktop-tab-icon svg, svg.desktop-tab-icon');
   if (svg) {
     const copy = svg.cloneNode(true) as SVGElement;
     copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     copy.style.color = getComputedStyle(svg).color;
     const image = new Image();
-    image.onload = () => {
-      context.fillStyle = paper;
-      context.fillRect(left, iconY, 15, 15);
-      context.drawImage(image, left, iconY, 15, 15);
-    };
+    readiness.set(canvas, new Promise<void>((resolve) => {
+      image.onload = () => {
+        context.fillStyle = paper;
+        context.fillRect(left, iconY, 15, 15);
+        context.drawImage(image, left, iconY, 15, 15);
+        resolve();
+      };
+      // A broken icon keeps the seeded glyph; never block the drag on it.
+      image.onerror = () => resolve();
+    }));
     image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(copy))}`;
   }
   return canvas;

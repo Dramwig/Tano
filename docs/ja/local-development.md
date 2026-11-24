@@ -1,6 +1,6 @@
 # ローカル開発
 
-[English](../local-development.md) | [中文](../zh/local-development.md) | 日本語 | [Deutsch](../de/local-development.md) | [ドキュメント一覧](README.md)
+[English](../local-development.md) | [简体中文](../zh/local-development.md) | [繁體中文](../zh-tw/local-development.md) | 日本語 | [Español](../es/local-development.md) | [Deutsch](../de/local-development.md) | [ドキュメント一覧](README.md)
 
 Node.js 24.12+、npm、Rust stable をインストールしてください。デスクトップ開発には各 OS の [Tauri 2 の前提条件](https://v2.tauri.app/start/prerequisites/) も必要です。Windows では C++ Build Tools、Windows SDK、WebView2 が必要です。`powershell -File scripts/check-desktop.ps1` で環境を確認できます。
 

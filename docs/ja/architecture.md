@@ -1,6 +1,6 @@
 # アーキテクチャ
 
-[English](../architecture.md) | [中文](../zh/architecture.md) | 日本語 | [Deutsch](../de/architecture.md) | [ドキュメント一覧](README.md)
+[English](../architecture.md) | [简体中文](../zh/architecture.md) | [繁體中文](../zh-tw/architecture.md) | 日本語 | [Español](../es/architecture.md) | [Deutsch](../de/architecture.md) | [ドキュメント一覧](README.md)
 
 Vue の作業画面は文書ストアを介して `WorkspaceAdapter` を使用します。デスクトップ用アダプターは `tano-native` が実装する Tauri IPC コマンドを呼び出し、ブラウザーデモは別のブラウザーストレージ用アダプターを使います。`configureWorkbench(pinia, runtime)` は各作業画面のインスタンスに一つの実行環境を結び付けます。
 

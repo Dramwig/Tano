@@ -79,6 +79,11 @@
     "typescript": "~5.9.3",
     "vitest": "^4.1.11"
   },
+  "overrides": {
+    "@excalidraw/excalidraw@0.18.1": {
+      "@radix-ui/react-tabs": "1.1.13"
+    }
+  },
   "engines": {
     "node": ">=24.12"
   },

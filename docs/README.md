@@ -1,6 +1,6 @@
 # Tano documentation
 
-English | [中文](zh/README.md) | [日本語](ja/README.md) | [Deutsch](de/README.md) | [Project README](../README.md)
+English | [简体中文](zh/README.md) | [繁體中文](zh-tw/README.md) | [日本語](ja/README.md) | [Español](es/README.md) | [Deutsch](de/README.md) | [Project README](../README.md)
 
 Tano is a File-Native Workspace: real files remain the source of truth while people and agents work in the same workspace. Start with [local development](local-development.md) to run the desktop app or browser demo, then use the guides below for the workflow you need.
 

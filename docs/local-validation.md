@@ -61,14 +61,13 @@ manual reload follows the same boundary. Check that startup errors and a stalled
 frontend offer recovery, and late imports cannot overwrite it. Report time to first content
 separately from time to an interactive workbench.
 
-## After completing Git work
+## After a local production release
 
-Agents automatically clean build caches once at the end of a requested
-commit/push/merge workflow in every affected repository. Finish all validation,
-packaging, deployment and acceptance first; do not clear caches between those
-steps. Read-only commands such as `git status`, `git diff` and `git log` do not
-trigger cleanup. This is an agent workflow requirement, not an installed Git
-hook, so manually running Git outside an agent does not invoke it.
+Agents automatically clean build caches once in each participating repository
+after completing a production release run locally. Finish all required validation,
+packaging, publication or deployment, and acceptance before cleanup. Ordinary
+Git operations, local development builds and remote-only releases do not
+trigger local cleanup.
 
 On Windows with PowerShell 7, preview with `npm run cache:clean`, then apply with
 `npm run cache:clean -- -Apply`. The [cleanup script](../scripts/clean-build-cache.ps1)

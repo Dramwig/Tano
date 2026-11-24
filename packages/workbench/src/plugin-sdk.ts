@@ -79,7 +79,7 @@ export interface TanoPluginApi {
     invoke(command: 'git.log', args?: { path?: string; limit?: number }): Promise<PluginGitLog>;
     invoke(command: string, args?: unknown): Promise<unknown>;
   };
-  commands: { register(id: string, handler: (context?: { fileId?: string; workspaceId: string }) => void | Promise<void>): Promise<void> };
+  commands: { register(id: string, handler: (context?: { fileId?: string; workspaceId: string; viewAlreadyOpen?: boolean }) => void | Promise<void>): Promise<void> };
   views: {
     /** Host-rendered controls at the right of this view's breadcrumb row. */
     setHeader(id: string, header: import('./plugins/view-header').PluginViewHeader): Promise<void>;

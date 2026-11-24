@@ -9,6 +9,7 @@ import { remarkTextStyles } from './text-style-markdown';
 import { defaultCapabilities, featureEnabled } from './runtime';
 import type { DocumentFeatures } from './runtime';
 export { sourceChanges } from './source-changes';
+export { mayCompleteSourceSpacing, sourceSpacingPositions } from './source-spacing';
 
 export type SourceStyle =
   | 'frontmatter'

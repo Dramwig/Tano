@@ -53,7 +53,9 @@ export function assistantAnswerText(message: AssistantMessage): string {
 /** Keep the model's prose separate from the application's current review state. */
 export function assistantHistory(messages: readonly AssistantMessage[]): AssistantWireMessage[] {
   return messages.slice(-16).flatMap<AssistantWireMessage>(message => {
-    if (message.role === 'user') return [{ role: 'user', content: message.content }];
+    if (message.role === 'user') return [{ role: 'user', content: message.attachments?.length
+      ? `${message.content}\nPrevious clipboard attachment names (contents no longer supplied): ${JSON.stringify(message.attachments)}`
+      : message.content }];
     const history: AssistantWireMessage[] = [];
     for (const part of assistantMessageParts(message)) {
       if (part.kind === 'text') history.push({ role: 'assistant', content: part.content });

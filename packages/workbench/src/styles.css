@@ -200,12 +200,29 @@ svg {
 button:hover {
   color: var(--text);
 }
+/* The workbench is two physical layers, drawn the way it looks:
+   - the back panel: the window itself (.app-shell), with the sidebar and tab strips sitting on it;
+   - the front panel: each pane's page surface (.workspace-pane-surface), with the active tab and its
+     curved feet joined to it.
+   Materials restyle these two layers rather than individual elements. --workbench-back-paint is how the
+   back panel itself is painted (a material may layer an image or light field); --workbench-back is the
+   colour of things that sit on it and must match it (sidebar, tab strips, close masks). */
+:root {
+  --workbench-back: var(--sidebar);
+  --workbench-back-paint: var(--workbench-back);
+  /* Usually the back colour; a layout whose back panel differs from the sidebar (paper's desk) sets both. */
+  --workbench-sidebar: var(--workbench-back);
+  --workbench-front: var(--paper);
+}
 .app-shell {
   position: relative;
   display: flex;
   height: 100dvh;
   min-height: 450px;
   overflow: hidden;
+  /* Page surfaces sit at z-index -1 behind pane content; this keeps them above the back panel. */
+  isolation: isolate;
+  background: var(--workbench-back-paint);
 }
 .sidebar-dismiss {
   display: none;
@@ -216,7 +233,7 @@ button:hover {
   z-index: 4;
   width: var(--sidebar-width);
   flex: 0 0 var(--sidebar-width);
-  background: var(--sidebar);
+  background: var(--workbench-sidebar);
   border-right: 0;
   display: flex;
   flex-direction: column;
@@ -374,6 +391,19 @@ button:hover {
   width: 32px;
   height: 30px;
 }
+.brand-menu-button {
+  padding: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.brand-menu-button:hover,
+.brand-menu-button[aria-expanded='true'] {
+  background: var(--hover);
+}
+.brand-menu-button:focus-visible {
+  outline: 2px solid var(--text-secondary);
+  outline-offset: 1px;
+}
 .brand[href] {
   color: var(--text);
   text-decoration: none;
@@ -392,6 +422,13 @@ button:hover {
 .sidebar-brand-slot .brand > img {
   /* Align the visible pages, accounting for the SVG's transparent inset. */
   transform: translateX(-3px);
+}
+.sidebar-brand-slot .brand-menu-button > img {
+  /* The button has a visible hover box, so move the box instead of the image to keep the logo centered in it. */
+  transform: none;
+}
+.sidebar-brand-slot .brand-menu-button {
+  margin-left: -3px;
 }
 .version-pill {
   font-size: 12px;
@@ -524,14 +561,32 @@ button:hover {
   letter-spacing: 0;
 }
 .sidebar-view-header {
-  /* Preserve the view switcher's height while showing the root drop hint. */
-  min-height: 28px;
-  margin-bottom: 0;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 0 0 5px;
+  margin-bottom: 4px;
 }
-.assistant-page-placeholder { padding: 24px; }
 .sidebar-view-header + .sidebar-content {
   margin-top: 0;
 }
+.workspace-root-header {
+  /* Fixed height so the root drop hint and the hover-revealed actions never shift the tree. */
+  height: 26px;
+  margin: 2px 0 2px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.workspace-root-name {
+  flex: 1;
+}
+.workspace-root-header + .sidebar-content {
+  margin-top: 0;
+}
+.assistant-page-placeholder { padding: 24px; }
 .section-label > span {
   min-width: 0;
   overflow: hidden;
@@ -655,10 +710,32 @@ button:hover {
 .tree-row.dragging {
   opacity: 0.45;
 }
+/* Slot preview: where the dragged entry will land. Rises in and nudges its
+   neighbours through the tree's FLIP motion, like a tab slot. */
+.tree-row.tree-row-placeholder {
+  background: color-mix(in srgb, var(--hover) 70%, transparent);
+  color: var(--muted);
+  box-shadow: none;
+  pointer-events: none;
+}
+/* Only a soft slot: the content is a faint hint, not a second copy of the row. */
+.tree-row.tree-row-placeholder > * { opacity: 0.42; }
+.tree-row.tree-row-placeholder::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--tree-depth, 0) * 17px);
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--green);
+  opacity: 0.7;
+}
+.tree-row.tree-row-placeholder .tree-label { padding-left: 2px; }
 .tree-row.drop-target {
   background: var(--accent);
   color: var(--green);
-  box-shadow: inset 0 0 0 1px var(--green);
+  box-shadow: none;
 }
 .tree-row.selected {
   background: var(--selected);
@@ -751,7 +828,7 @@ button:hover {
   margin: auto -7px 0;
   border-top: 0;
   padding: 6px 2px 6px 5px;
-  background: var(--sidebar);
+  background: var(--workbench-sidebar);
 }
 .sidebar-bottom > .icon-button {
   flex: 0 0 28px;
@@ -809,6 +886,23 @@ button:hover {
   flex-direction: column;
   background: var(--paper);
 }
+/* Where the sidebar is a card (islands) or a floating sheet, this real element is that card, behind the
+   sidebar's content. The sidebar is its own stacking context (z-index 4), so z-index -1 stays inside it. */
+.sidebar-surface {
+  display: none;
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+}
+/* With panes, the page is each pane's own surface on the back panel; the column itself stays clear. */
+.main-column:has(.workspace-pane) {
+  background: transparent;
+}
+/* A pane that carries its own tab strip (split panes below the top row) starts its page below the strip. */
+.workspace-pane:has(> .workspace-tabbar) > .workspace-pane-surface {
+  top: var(--workspace-pane-tabbar-height);
+}
 .topbar {
   height: var(--topbar-height);
   flex-shrink: 0;
@@ -823,7 +917,7 @@ button:hover {
   display: flex;
   height: var(--workbench-tabbar-height);
   flex-shrink: 0;
-  background: var(--sidebar);
+  background: var(--workbench-back);
 }
 .workspace-tabbar::after {
   content: '';
@@ -4476,12 +4570,6 @@ button:hover {
   gap: 8px;
   width: min(720px, 100%);
   max-height: calc(100dvh - clamp(48px, 12vh, 112px));
-  padding: 0;
-  overflow: visible;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
 }
 .search-input-wrap {
   display: flex;
@@ -4499,9 +4587,13 @@ button:hover {
   min-width: 0;
   height: 32px;
   border: 0;
+  color: var(--text);
   background: transparent;
   padding: 0;
   line-height: 32px;
+}
+.search-input-wrap input::placeholder {
+  color: var(--muted);
 }
 .search-input-wrap input:focus-visible {
   outline: none;
@@ -4579,7 +4671,7 @@ button:hover {
 }
 .search-results mark {
   border-radius: 2px;
-  background: #fef3c7;
+  background: var(--highlight-bg);
   color: var(--text);
   font-weight: 500;
 }

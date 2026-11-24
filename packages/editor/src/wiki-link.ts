@@ -4,6 +4,7 @@ import { markdownPolicy } from './runtime';
 import { InputRule } from '@milkdown/kit/prose/inputrules';
 import type { EditorState } from '@milkdown/kit/prose/state';
 import { parseWikiLink, remarkWikiLinks } from './wiki-link-markdown';
+import { completeInlineObjectSpacing } from './auto-spacing';
 
 export const wikiLinkRemark = $remark('tano-wiki-links', () => remarkWikiLinks);
 
@@ -85,12 +86,13 @@ export const wikiLinkInput = $inputRule(
         if (identity) {
           if (!markdownPolicy(ctx).features.objectReferences) return null;
           const type = state.schema.nodes.tano_reference;
-          return type ? state.tr.replaceWith(start, end, type.create({ url: match[1], label: '' })) : null;
+          return type ? completeInlineObjectSpacing(ctx,
+            state.tr.replaceWith(start, end, type.create({ url: match[1], label: '' })), start) : null;
         }
         if (!markdownPolicy(ctx).features.wikiLink) return null;
         const parsed = parseWikiLink(match[1]);
         if (!parsed) return null;
-        return state.tr.replaceWith(start, end, wikiLink.type(ctx).create(parsed));
+        return completeInlineObjectSpacing(ctx, state.tr.replaceWith(start, end, wikiLink.type(ctx).create(parsed)), start);
       },
       { inCodeMark: false },
     ),

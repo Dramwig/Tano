@@ -1,6 +1,6 @@
 # License and scope
 
-English | [中文](zh/license.md) | [日本語](ja/license.md) | [Deutsch](de/license.md) | [Documentation](README.md)
+English | [简体中文](zh/license.md) | [繁體中文](zh-tw/license.md) | [日本語](ja/license.md) | [Español](es/license.md) | [Deutsch](de/license.md) | [Documentation](README.md)
 
 Tano's desktop application, browser demo, local MCP server, and shared workspace packages are available under the standard [MIT License](../LICENSE). The local product can be built and used without an account.
 

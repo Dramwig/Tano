@@ -24,7 +24,10 @@ export function createFeatureGate<T extends Record<string, FeatureDefinition>>(
     },
   };
 }
-export const features = defineFeatures({});
+export const features = defineFeatures({
+  assistantClipboardAttachments: { status: 'dev', note: 'Paste local files and images into the assistant composer.' },
+  markdownSpacingAutocomplete: { status: 'dev', note: 'Insert real Markdown spaces at mixed-script boundaries while editing.' },
+});
 // Optional env keeps the pure API usable in Node as well as Vite consumers.
 export const featureChannel = resolveFeatureChannel(import.meta.env ?? {});
 export const isFeatureEnabled = createFeatureGate(features, featureChannel).isEnabled;

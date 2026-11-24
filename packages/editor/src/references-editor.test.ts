@@ -203,7 +203,7 @@ it('updates display after rename without rewriting Markdown and preserves unavai
   expect(value.value).toBe(source);
   capabilities.value.features.objectReferences = false;
   await nextTick();
-  expect(root.querySelector<HTMLButtonElement>('.tano-reference button')?.dataset.tooltip).toBe('Level 2 已关闭');
+  expect(root.querySelector<HTMLButtonElement>('.tano-reference button')?.dataset.tooltip).toBe('「工作区对象与引用」已关闭');
   expect(value.value).toBe(source);
   candidates.value = [targets[1]!];
   capabilities.value.features.objectReferences = true;

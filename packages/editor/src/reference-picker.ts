@@ -53,7 +53,7 @@ export function openReferencePicker(state: EditorState, block = false, query = '
     trigger: '@',
   });
 }
-export function applyReference(state: EditorState, target: ReferenceTarget): Transaction | null {
+export function applyReference(state: EditorState, target: ReferenceTarget, completeSpacing?: (tr: Transaction, from: number) => void): Transaction | null {
   const session = referencePickerKey.getState(state);
   if (!session) return null;
   const tr = closeHistory(state.tr);
@@ -65,6 +65,7 @@ export function applyReference(state: EditorState, target: ReferenceTarget): Tra
   if (!session.block) {
     tr.replaceWith(session.from, session.to, state.schema.nodes.tano_reference!.create(attrs));
     tr.setSelection(TextSelection.near(tr.doc.resolve(session.from + 1)));
+    completeSpacing?.(tr, session.from);
   } else {
     if (session.typed) tr.delete(session.from, session.to);
     const clean = state.apply(tr);
@@ -87,6 +88,7 @@ export function applyReference(state: EditorState, target: ReferenceTarget): Tra
 export function referencePicker(options: {
   enabled: () => boolean;
   targets: () => readonly ReferenceTarget[];
+  completeSpacing?: (tr: Transaction, from: number) => void;
 }) {
   let handleKey = (_event: KeyboardEvent) => false;
   return new Plugin<PickerSession | null>({
@@ -229,7 +231,7 @@ export function referencePicker(options: {
           render();
           return;
         }
-        const tr = applyReference(view.state, fresh[0]!);
+        const tr = applyReference(view.state, fresh[0]!, options.completeSpacing);
         if (tr) view.dispatch(tr);
         view.focus();
       };

@@ -19,7 +19,8 @@ let layout: LayoutThemeDefinition | undefined;
 let shape: ShapeThemeDefinition | undefined;
 
 /** Only validated contract tokens reach the host. Empty maps restore built-in CSS. */
-export function applyAppearance(value?: ColorAppearance, layoutValue?: LayoutThemeDefinition, shapeValue?: ShapeThemeDefinition, mode = currentPreference): void {
+/** `material` is a host-drawn card material (e.g. builtin:frost); undefined is the flat default. */
+export function applyAppearance(value?: ColorAppearance, layoutValue?: LayoutThemeDefinition, shapeValue?: ShapeThemeDefinition, mode = currentPreference, material?: string): void {
   appearance = value ?? { light: {}, dark: {} };
   layout = layoutValue ? { ...layoutValue } : undefined;
   shape = shapeValue ? { ...shapeValue, tokens: Object.fromEntries(componentShapeTokens.flatMap(key =>
@@ -29,6 +30,7 @@ export function applyAppearance(value?: ColorAppearance, layoutValue?: LayoutThe
   root.dataset.surface = layout?.surface ?? 'flat';
   root.dataset.layoutTheme = layout?.id ?? 'builtin:tano';
   root.dataset.shapeTheme = shape?.id ?? 'builtin:tano';
+  if (material) root.dataset.material = material; else delete root.dataset.material;
   for (const [key, value] of [['layout-gap', layout ? `${layout.gap ?? 16}px` : undefined],
     ['layout-page-width', layout ? `${layout.pageWidth ?? 880}px` : undefined]]) {
     if (value) root.style.setProperty(`--${key}`, value);

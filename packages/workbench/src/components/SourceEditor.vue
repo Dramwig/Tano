@@ -16,14 +16,14 @@ import {
   undo,
   undoDepth,
 } from '@codemirror/commands';
-import { Compartment, EditorState, RangeSet, StateEffect, StateField, Transaction } from '@codemirror/state';
+import { ChangeSet, Compartment, EditorState, RangeSet, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { Decoration, EditorView, GutterMarker, gutterLineClass, highlightActiveLineGutter, keymap, lineNumbers, WidgetType } from '@codemirror/view';
 import type { DecorationSet } from '@codemirror/view';
 import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
 import type { CommentAnchor, ReferenceIdentity, ReferenceTarget } from '@tano/protocol';
 import type { SuggestionDecorations } from '@tano/protocol';
 import type { CommentGeometry } from '@tano/editor/comment-projection';
-import { sourceChanges, type SourceHighlightChange, type SourceHighlightUpdate } from '@tano/editor/source-highlight';
+import { mayCompleteSourceSpacing, sourceChanges, sourceSpacingPositions, type SourceHighlightChange, type SourceHighlightUpdate } from '@tano/editor/source-highlight';
 import { SourceHighlightParser } from '../source-highlight-parser';
 import { captureModeViewport, restoreModeViewport } from '../editor-mode';
 import type { ModeSelection } from '@tano/editor/mode-selection';
@@ -301,7 +301,8 @@ function syntaxSource(current: EditorView, from: number, to: number, text: strin
  if (!edit || blockedSource(current, from)) return false;
  if (!committed) current.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, userEvent: 'input.type' });
  const start = from - edit.deleteBefore;
- current.dispatch({ changes: { from: start, to: from + text.length, insert: edit.insert }, selection: { anchor: start + edit.insert.length }, userEvent: 'input.type', annotations: isolateHistory.of('before') });
+ if (!completeSourceInput(current, start, from + text.length, edit.insert, { isolate: true }))
+  current.dispatch({ changes: { from: start, to: from + text.length, insert: edit.insert }, selection: { anchor: start + edit.insert.length }, userEvent: 'input.type', annotations: isolateHistory.of('before') });
  return true;
 }
 function chineseInputSettings() {
@@ -311,21 +312,50 @@ function mappedChineseInput(text: string) {
   return mapChineseInput(text, chineseInputSettings());
 }
 function insertChineseInput(current: EditorView, from: number, to: number, text: string, committed = false) {
-  if (syntaxSource(current, from, to, text)) return true;
+  if (syntaxSource(current, from, to, text, committed)) return true;
   const mapped = mappedChineseInput(text);
   if (!props.readonly && !current.compositionStarted && !current.composing && (from === to || committed) && current.state.selection.ranges.length === 1 && normalizeMarkdownAutocomplete(props.preferences?.markdownAutocomplete).bracketPairs) {
-   if (mapped.length === 1 && current.state.field(autoClosers).includes(from) && current.state.sliceDoc(from, from + 1) === mapped) { current.dispatch({ selection: { anchor: from + 1 } }); return true; }
+   if (mapped.length === 1 && current.state.field(autoClosers).includes(from) && current.state.sliceDoc(from, from + 1) === mapped) {
+    if (!completeSourceInput(current, from, from + 1, mapped, { committed: true })) current.dispatch({ selection: { anchor: from + 1 } });
+    return true;
+   }
    const close = closingBracket(current.state.sliceDoc(current.state.doc.lineAt(from).from, from), current.state.sliceDoc(from, from + 1), mapped);
    if (close && !blockedSource(current, from)) { current.dispatch({ changes: { from, to, insert: mapped + close }, selection: { anchor: from + 1 }, effects: autoCloser.of(from + 1), userEvent: 'input.type' }); return true; }
   }
-  return mapped !== text && insertMappedChineseInput(current, from, to, mapped);
+  if (mapped !== text) return insertMappedChineseInput(current, from, to, mapped);
+  return completeSourceInput(current, from, to, text, { committed });
+}
+function completeSourceInput(current: EditorView, from: number, to: number, text: string,
+  { committed = false, isolate = false } = {}) {
+  if (props.preferences?.completeTextSpacing !== true || props.readonly || current.compositionStarted ||
+      current.composing || current.state.selection.ranges.length !== 1 || !text || /[\r\n]/.test(text)) return false;
+  const state = current.state;
+  const line = state.doc.lineAt(from);
+  if (to > line.to) return false;
+  const editedLine = line.text.slice(0, from - line.from) + text + line.text.slice(to - line.from);
+  const caret = from + text.length;
+  if (!mayCompleteSourceSpacing(editedLine, from - line.from, caret - line.from)) return false;
+  const input = state.changes(committed ? [] : { from, to, insert: text });
+  const edited = input.apply(state.doc);
+  const positions = sourceSpacingPositions(edited.toString(), from, caret, props.capabilities);
+  if (!positions.length) return false;
+  const completion = ChangeSet.of(positions.map(at => ({ from: at, insert: ' ' })), edited.length);
+  current.dispatch({
+    changes: input.compose(completion),
+    selection: { anchor: completion.mapPos(caret, -1) },
+    userEvent: committed ? 'input.type.compose' : 'input.type',
+    annotations: isolate ? isolateHistory.of('before') : undefined,
+  });
+  return true;
 }
 function insertMappedChineseInput(current: EditorView, from: number, to: number, mapped: string) {
   if (props.readonly || current.compositionStarted || current.state.selection.ranges.length !== 1) return false;
   if (from !== current.state.selection.main.from || to !== current.state.selection.main.to ||
-      !wrapSourceSelection(current, mapped)) current.dispatch({
-    changes: { from, to, insert: mapped }, selection: { anchor: from + mapped.length }, userEvent: 'input.type',
-  });
+      !wrapSourceSelection(current, mapped)) {
+    if (!completeSourceInput(current, from, to, mapped)) current.dispatch({
+      changes: { from, to, insert: mapped }, selection: { anchor: from + mapped.length }, userEvent: 'input.type',
+    });
+  }
   return true;
 }
 function finishChineseComposition(current: EditorView, text: string) {
@@ -337,7 +367,7 @@ function finishChineseComposition(current: EditorView, text: string) {
     const selection = current.state.selection.main;
     const to = selection.from, from = to - text.length;
     if (selection.empty && from >= 0 && current.state.sliceDoc(from, to) === text)
-      syntaxSource(current, from, to, text, true) || insertChineseInput(current, from, to, text, true);
+      insertChineseInput(current, from, to, text, true);
   }));
 }
 
@@ -368,7 +398,7 @@ onMounted(() => {
         EditorView.domEventHandlers({
           beforeinput: (event, current) => {
             const mapped = mappedChineseBeforeInput(event, chineseInputSettings());
-            if (mapped === null && (event.isComposing || event.inputType !== 'insertText' || !event.data)) return false;
+            if (mapped === null && (!event.cancelable || event.isComposing || event.inputType !== 'insertText' || !event.data)) return false;
             const ranges = event.getTargetRanges?.() ?? [];
             if (ranges.length > 1) return false;
             let { from, to } = current.state.selection.main;

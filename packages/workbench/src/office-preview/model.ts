@@ -6,6 +6,8 @@ export type OfficeBlock =
   | { kind: 'image'; src: string; alt: string };
 export interface OfficePage { name: string; blocks: OfficeBlock[] }
 export const officeDefaultColumnWidth = 72;
+export const officeRowNumberWidth = 44;
+export const officeRowHeight = 22;
 export interface OfficeSheet { name: string; rows: string[][]; columns: number; columnWidths?: number[]; truncated: boolean }
 export type OfficePreview =
   | { kind: 'spreadsheet'; sheets: OfficeSheet[] }

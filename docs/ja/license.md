@@ -1,6 +1,6 @@
 # ライセンスと対象範囲
 
-[English](../license.md) | [中文](../zh/license.md) | 日本語 | [Deutsch](../de/license.md) | [ドキュメント一覧](README.md)
+[English](../license.md) | [简体中文](../zh/license.md) | [繁體中文](../zh-tw/license.md) | 日本語 | [Español](../es/license.md) | [Deutsch](../de/license.md) | [ドキュメント一覧](README.md)
 
 Tano のデスクトップアプリ、ブラウザーデモ、ローカル MCP サーバー、共有ワークスペースのパッケージは標準の [MIT License](../../LICENSE) で公開されています。ローカル製品はアカウントなしでビルドし、利用できます。
 

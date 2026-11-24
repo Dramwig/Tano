@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import WorkbenchSettings from './WorkbenchSettings.vue';
 import { computed, inject, toRefs } from 'vue';
+import { layoutPanes } from '../pane-layout';
 import { workbenchContextKey } from '../workbench-context';
 import { useWindowContext } from '../windows/context';
+import { isFeatureEnabled } from '../features';
 
 const windowContext = useWindowContext();
 const isAuxiliaryWindow = windowContext.id !== 'main';
@@ -291,7 +293,15 @@ const {
   vButterflyPerch,
   vOutlineMotion,
 } = toRefs(context);
+const documentEditorPreferences = computed(() => isFeatureEnabled('markdownSpacingAutocomplete')
+  ? editorPreferences.value
+  : { ...editorPreferences.value, completeTextSpacing: false });
 const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value);
+// The fullscreen host is shared across windows; only its owner may mount the panel.
+const ownsFullscreenAssistant = computed(() => {
+  const layout = store.value.windowLayouts[windowContext.id]?.layout;
+  return !!layout && layoutPanes(layout).some(pane => pane.id === assistant.value.fullscreenPaneId);
+});
 </script>
 
 <template>
@@ -351,7 +361,7 @@ const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value
         </template>
         <template #sidebar>
           <AssistantPanel
-            v-if="assistant.available && assistantPanelMounted"
+            v-if="assistant.available && assistantPanelMounted && (assistant.displayMode !== 'fullscreen' || ownsFullscreenAssistant)"
             :compact="compactPanes"
             :toggle-shortcut="shortcuts.toggleAssistant"
             :fullscreen-target="assistantHosts.get(assistant.fullscreenPaneId ?? '')"
@@ -389,9 +399,10 @@ const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value
             :id="`assistant-fullscreen-${pane.id}`"
             :ref="(el) => setAssistantHost(pane.id, el)"
             v-show="assistant.isFullscreenTab(pane.activeId) && !(templateLibraryOpen && pane.id === templatePaneId)"
-            class="assistant-fullscreen-host"
+            class="assistant-fullscreen-host workspace-card"
           />
-          <div v-show="!assistant.isFullscreenTab(pane.activeId) && !(templateLibraryOpen && pane.id === templatePaneId)" class="workspace-page-content">
+          <div v-show="!assistant.isFullscreenTab(pane.activeId) && !(templateLibraryOpen && pane.id === templatePaneId)" class="workspace-page-content"
+            :class="{ 'workspace-card': tabsEnabled && !compactPanes }">
             <ButtonVisibilityGroup
               v-if="!isAuxiliaryWindow || pane.activeId === CALENDAR_TAB_ID || tab?.pluginView"
               v-slot="{ isVisible }"
@@ -492,7 +503,7 @@ const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value
                 ><template
                   v-for="view in [...extensionViews, settingsTabView].filter((view) => view.id === pane.activeId)"
                   :key="view.id"
-                  ><ChevronRight :size="12" /><component :is="view.icon" :size="14" /><span
+                  ><component :is="view.icon" :size="14" /><span
                     class="breadcrumb-current"
                     >{{ view.label }}</span
                   ></template
@@ -843,8 +854,11 @@ const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value
                 </template>
               </div>
             </ButtonVisibilityGroup>
-            <!-- Everything below the top bar. A layout can raise it as its own surface (card islands); otherwise display: contents. -->
-            <div class="workspace-page-body">
+            <!-- Everything below the top bar (display: contents unless it is the card).
+                 .workspace-card marks the element that is the page's card where a layout draws cards (islands):
+                 with native tab strips the top bar belongs to the card, so the card is the whole page content;
+                 otherwise the top bar sits on the desk and the card is this body. -->
+            <div class="workspace-page-body" :class="{ 'workspace-card': !(tabsEnabled && !compactPanes) }">
             <KeepAlive v-if="pane.tabs.includes(GRAPH_TAB_ID)">
               <RelationGraph
                 v-if="workspace && pane.activeId === GRAPH_TAB_ID"
@@ -918,7 +932,7 @@ const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value
             >
               <div class="plugins-tab-content">
                 <p v-if="!store.capabilities.features.objectReferences" class="tool-level-notice">
-                  {{ t('Level 2 已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。') }}
+                  {{ t('「工作区对象与引用」已关闭，插件对象和关系暂时只读。可在工作区设置中重新启用。') }}
                 </p>
                 <p v-else-if="workspace.readOnly" class="tool-level-notice">
                   {{ t('此工作区为只读，无法修改对象和关系。') }}
@@ -1134,7 +1148,7 @@ const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value
                         @enter="insertBlockBelowTitle"
                         @comment="paneComments.get(pane.id)?.showDiscussion()"
                       />
-                      <SourceEditor :reference-targets="store.referenceTargets" :capabilities="store.capabilities" :preferences="editorPreferences" :suggestion-marks="suggestions.sourceMarks"
+                      <SourceEditor :reference-targets="store.referenceTargets" :capabilities="store.capabilities" :preferences="documentEditorPreferences" :suggestion-marks="suggestions.sourceMarks"
                         :show-all-line-numbers="showAllLineNumbers"
                         v-if="paneSource(pane.activeId)"
                         :key="active.id"
@@ -1165,7 +1179,7 @@ const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value
                         :show-document-properties="showDocumentProperties"
                         :capabilities="store.capabilities"
                         :reference-targets="store.referenceTargets"
-                        :preferences="editorPreferences"
+                        :preferences="documentEditorPreferences"
                         :translate="t"
                         :extension="
                           active.id === store.active?.id ? editing.active?.extension : undefined

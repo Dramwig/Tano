@@ -334,13 +334,13 @@ const uri = computed(() =>
     >
       <header>
         <div>
-          <h2>{{ personal ? t('个人事项') : t('工作区对象') }} <small v-if="!personal">{{ t('Level 2 · 核心与插件对象') }}</small></h2>
+          <h2>{{ personal ? t('个人事项') : t('工作区对象') }}</h2>
           <p>{{ personal ? t('个人计划独立保存，不随工作区分享；尚未开启跨设备同步。') : t('内置事件、人物、文档和资产。需要完成的事件就是任务，也可为事件安排时间。') }}</p>
         </div>
         <button :aria-label="personal ? t('关闭个人事项') : t('关闭工作区对象')" @click="emit('close')">{{ t('关闭') }}</button>
       </header>
       <p v-if="!personal && !store.capabilities.features.objectReferences" class="object-notice">
-        {{ t('Level 2 已关闭。现有对象和引用仍保留，可在工作区设置中重新启用。') }}
+        {{ t('「工作区对象与引用」已关闭。现有对象和引用仍保留，可在工作区设置中重新启用。') }}
       </p>
       <p v-if="store.isDemo" class="object-notice">{{ t('浏览器演示存储：对象保存在当前浏览器中。') }}</p>
       <p v-for="error in objectErrors" :key="error" role="alert">{{ error }}</p>
@@ -368,12 +368,12 @@ const uri = computed(() =>
                 store.objectDefinitions.find((type) => type.type === record.object.type)
                   ?.category === 'core'
                   && !personal
-                  ? 'Level 2-A'
+                  ? t('内置对象')
                   : personal ? t('个人') : objectTypeRegistry.get(record.object.type)?.retired ? t('旧版记录') : t('插件对象')
               }}{{ record.object.archived ? t(' · 已归档') : '' }}</small
             >
           </button>
-          <small v-if="resources.length">{{ t('文件资源 · Level 2-A') }}</small>
+          <small v-if="resources.length">{{ t('文件资源') }}</small>
           <button
             v-for="target in resources"
             :key="`${target.type}:${target.id}`"
@@ -390,7 +390,7 @@ const uri = computed(() =>
         </aside>
         <form v-if="current" @submit.prevent="save()">
           <label
-            >{{ t('类别 ·') }} {{ personal ? t('个人') : retired ? t('旧版记录') : definition?.category === 'plugin' ? t('插件对象') : 'Level 2-A'
+            >{{ t('类别 ·') }} {{ personal ? t('个人') : retired ? t('旧版记录') : definition?.category === 'plugin' ? t('插件对象') : t('内置对象')
             }}<select v-model="current.value.type" :disabled="disabled || !!current.record">
               <option v-if="!definition" :value="current.value.type">
                 {{ referenceTypeLabel(current.value.type) }}
@@ -497,7 +497,7 @@ const uri = computed(() =>
         </form>
         <div v-else-if="resource" class="object-panel-empty object-resource">
           <h3>{{ resource.name }}</h3>
-          <p>{{ referenceTypeLabel(resource.type) }} {{ t('· Level 2-A · 文件资源') }}</p>
+          <p>{{ referenceTypeLabel(resource.type) }} · {{ t('文件资源') }}</p>
           <img
             v-if="previewUrl"
             class="object-asset-preview"

@@ -113,7 +113,7 @@ View 不保存正文、对象副本或权限。打开视图中的条目时，宿
 - `.tano/views/<id>.tano.json` 的 `database` 保存目录相对路径、递归开关、AND 筛选条件、排序和分组。`sources` 可为空；每行来自 File Registry 中的稳定 File ID。目录作用域按路径匹配，文件移出作用域后退出视图；属性与关系仍随 File ID 保留。目录整体重命名后需为新目录建立视图。
 - Markdown 的标签与属性直接读取文档 YAML frontmatter，包括 `owner` / `负责人`、`status` / `状态`；通过已有文档属性编辑，数据库仅提供可重建的查询投影，不写第二份属性。非 Markdown 文件的标签及自定义标量属性保存在 `.tano/files/<fileId>.tano.json`，支持筛选、排序、分组。负责人并不自动创建 Person 对象。
 - 筛选支持包含、等于、为空，多条件取交集。数字属性按数值排序。标签分组时，一个文件可出现在多个组中；内部 `.tano/` 文件永远不进入数据库结果。
-- Markdown 的关联数来自正文内去重的引用（文档链接、双链和对象引用），在正文中编辑引用，不另建关联记录。非 Markdown 文件与对象关联复用 `.tano/relations.tano-relations.json` 的 `related` 边，使用 asset 投影，端点 ID 不依赖路径；此关联功能需要启用 Level 2。历史 Markdown 旁车属性和关系文件保留，但不作为文件数据库中 Markdown 属性或关联数的数据源。
+- Markdown 的关联数来自正文内去重的引用（文档链接、双链和对象引用），在正文中编辑引用，不另建关联记录。非 Markdown 文件与对象关联复用 `.tano/relations.tano-relations.json` 的 `related` 边，使用 asset 投影，端点 ID 不依赖路径；此关联功能需要在「Markdown 与格式」中启用「工作区对象与引用」。历史 Markdown 旁车属性和关系文件保留，但不作为文件数据库中 Markdown 属性或关联数的数据源。
 - 视图保存使用打开时的内容哈希进行比较写入；外部版本改变时拒绝覆盖，当前设置另外保存至 `.tano/conflicts/`。属性保存仍按字段合并独立编辑，冲突保留两份。
 
 示例工作区提供“研究文件数据库”，包含论文状态、负责人、标签及已有对象关系。

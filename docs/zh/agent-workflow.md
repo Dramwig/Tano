@@ -1,6 +1,6 @@
 # Agent 工作流
 
-[English](../agent-workflow.md) | 中文 | [日本語](../ja/agent-workflow.md) | [Deutsch](../de/agent-workflow.md) | [文档目录](README.md)
+[English](../agent-workflow.md) | 简体中文 | [繁體中文](../zh-tw/agent-workflow.md) | [日本語](../ja/agent-workflow.md) | [Español](../es/agent-workflow.md) | [Deutsch](../de/agent-workflow.md) | [文档目录](README.md)
 
 先在桌面应用中打开工作区文件夹。Agent 可通过本地 stdio MCP 查询文件、对象和数据表，并提交跨文件提案。完整接口、SDK 与权限说明见 [Agent Gateway v1](agent-gateway.md)。默认修改需要在 Tano 中审阅采纳；旧 Markdown 直接条件写入需显式配置 `--access write`。
 

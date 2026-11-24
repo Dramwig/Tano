@@ -22,13 +22,13 @@ export function useTabNavigation(host: TabNavigationHost) {
     return histories.get(slot)!;
   }
   function reset() { slots.clear(); histories.clear(); touch(); }
-  function record(fromId: string | undefined, toId: string, historyIndex?: number) {
+  function record(fromId: string | undefined, toId: string, historyIndex?: number, target = toId) {
     const history = ensure(fromId ?? toId, fromId ?? toId);
     const slot = slots.get(fromId ?? toId)!;
     if (fromId && fromId !== toId) { slots.delete(fromId); slots.set(toId, slot); }
     if (historyIndex === undefined) {
-      if (history.entries[history.index] !== toId)
-        history.entries = [...history.entries.slice(0, history.index + 1), toId].slice(-100);
+      if (history.entries[history.index] !== target)
+        history.entries = [...history.entries.slice(0, history.index + 1), target].slice(-100);
       history.index = history.entries.length - 1;
     } else history.index = historyIndex;
     touch();

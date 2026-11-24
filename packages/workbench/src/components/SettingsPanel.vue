@@ -7,15 +7,22 @@ import ModalBackdrop from './ModalBackdrop.vue';
 import CapabilitySyntax from './CapabilitySyntax.vue';
 import { settingHint } from '../setting-examples';
 import ThemePresetPicker from './ThemePresetPicker.vue';
+import GlassWallpaperSetting from './GlassWallpaperSetting.vue';
 import { t, uiLocale, setUiLocale, uiSearchText, localeLoadError } from '../i18n';
 import { uiLocaleOptions } from '../locale';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   ArrowRight,
+  ArrowUpRight,
   BookOpen,
   Bot,
+  Check,
   CircleHelp,
+  Copy,
   ExternalLink,
+  Globe,
+  MessageCircle,
+  ScrollText,
   FileText,
   FolderOpen,
   History,
@@ -35,6 +42,7 @@ import {
   X,
 } from 'lucide-vue-next';
 import type { SettingsPage, SettingsPageContext } from '../runtime';
+import { isFeatureEnabled } from '../features';
 import type { PluginSettingsPage, PluginInteraction } from '../plugins/workbench';
 import PluginSurface from './PluginSurface.vue';
 import UpdatePanel from './UpdatePanel.vue';
@@ -55,8 +63,9 @@ import {
 import type { WorkspaceCapabilities, EditorPreferences } from '@tano/editor/runtime';
 import type { CapabilityPatch } from '../workspace-capabilities';
 import { fixedColorMode, type ThemePreference } from '../theme';
-import type { AppearanceSnapshot, AppearanceSelection } from '../appearance';
-import { appearanceKinds, builtinDefault } from '../appearance';
+import type { AppearanceKind, AppearanceSnapshot, AppearanceSelection } from '../appearance';
+import { appearanceKinds, builtinDefault, glassMaterials } from '../appearance';
+import { glassWallpaper } from '../glass-wallpaper';
 import { defaultSplitFontSettings, sanitizeCustomFontName } from '../editor-font';
 import type { SplitFontSettings, VisualFontChoice } from '../editor-font';
 import { useEditorFontFamily } from '../use-editor-font';
@@ -70,6 +79,8 @@ import { defaultShortcutBindings, shortcutDefinitions } from '../shortcuts';
 import type { ShortcutBindings } from '../shortcuts';
 import { useHelpPreferences } from '../help-guidance';
 import { readSettingsPage, rememberSettingsPage } from '../settings-preference';
+import { helpDocumentationUrl } from '../help-content';
+import { openExternalUrl } from '../attachments';
 
 type Page = string;
 type Action =
@@ -98,6 +109,7 @@ const props = defineProps<{
   mode: 'demo' | 'web' | 'local';
   native: boolean;
   mobile: boolean;
+  developerMode?: boolean;
   defaultSource: boolean;
   theme: ThemePreference;
   appearance?: AppearanceSnapshot;
@@ -116,6 +128,8 @@ const props = defineProps<{
   sourceFontSize: number;
   historyEnabled: boolean;
   version: string;
+  /** Localized documentation root supplied by the product host. */
+  documentationBaseUrl?: string;
   initialPage?: Page;
   rememberPage?: boolean;
   capabilities?: WorkspaceCapabilities;
@@ -124,15 +138,33 @@ const props = defineProps<{
   capabilitySaving?: boolean;
 }>();
 const fixedDisplayMode = computed(() => fixedColorMode(props.appearance?.color));
+/** The background image only exists for the glass materials (frosted and liquid), so its row follows the active material. */
+const frostActive = computed(() => !!glassWallpaper() && glassMaterials.includes(props.appearance?.active.material ?? ''));
+/** One row per appearance setting; the default option of the material row is the plain flat card. */
+const appearanceRows: Record<AppearanceKind, { label: string; description: string; defaultLabel: string }> = {
+  color: { label: '配色主题', description: '从内置项和当前工作区已启用的插件中选择，保存在当前设备。', defaultLabel: '同页默认' },
+  icons: { label: '文件与目录图标', description: '从内置项和当前工作区已启用的插件中选择，保存在当前设备。', defaultLabel: '同页默认' },
+  layout: { label: '布局风格', description: '选择页面结构：连续页面、卡片岛或纸感文稿，可与任意配色、图标混搭。', defaultLabel: '同页默认' },
+  material: { label: '材质', description: '选择侧栏和页面的质感，可与任意布局、配色混搭。', defaultLabel: '平面' },
+  shape: { label: '形态与密度', description: '选择组件圆角、控件间距和阴影；字体在下方单独设置。', defaultLabel: '同页默认' },
+};
+function appearanceChoices(kind: AppearanceKind) {
+  const appearance = props.appearance!;
+  return kind === 'color' ? appearance.colors : kind === 'layout' ? appearance.layouts : kind === 'shape' ? appearance.shapes
+    : kind === 'material' ? appearance.materials : appearance.icons;
+}
 const displayMode = computed(() => fixedDisplayMode.value ?? props.theme);
 const displayModeDescription = computed(() => fixedDisplayMode.value === 'light' ? '当前配色主题仅支持浅色。'
   : fixedDisplayMode.value === 'dark' ? '当前配色主题仅支持深色。' : '选择浅色、深色或跟随系统，偏好在工作区间共用。');
+const showDeveloperMode = computed(() => props.native && !props.mobile);
+const developerModeDescription = '开启后，右键单击顶部标签栏的空白处，即可打开调试窗口。';
 const emit = defineEmits<{
   close: [];
   'open-tab': [page: string];
   'open-window': [page: string];
   'page-change': [page: string];
   'drag-window': [event: MouseEvent];
+  'update:developerMode': [value: boolean];
   'update:defaultSource': [value: boolean];
   'update:theme': [value: ThemePreference];
   appearance: [selection: AppearanceSelection];
@@ -176,6 +208,40 @@ const mathSyntaxDescription = computed(() => ({
   latex: '新旧公式统一使用反斜杠括号（\\(…\\) / \\[…\\]），在下次编辑保存正文时应用。',
 })[rules.value.mathSyntax]);
 const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPreferences();
+const aboutUrls = computed(() => ({
+  website: 'https://tano.page/',
+  docs: helpDocumentationUrl(props.documentationBaseUrl).replace(/\/?$/, '/'),
+  releases: 'https://github.com/Dramwig/Tano/releases',
+  issues: 'https://github.com/Dramwig/Tano/issues',
+  source: 'https://github.com/Dramwig/Tano',
+}));
+const aboutLinks = computed(() => [
+  { id: 'website', icon: Globe, label: t('官网'), description: 'tano.page', url: aboutUrls.value.website },
+  { id: 'docs', icon: BookOpen, label: t('使用文档'), description: t('上手指南与功能说明'), url: aboutUrls.value.docs },
+  { id: 'releases', icon: ScrollText, label: t('发行说明'), description: t('查看每个版本的变化'), url: aboutUrls.value.releases },
+  { id: 'issues', icon: MessageCircle, label: t('反馈问题'), description: t('报告问题或提出建议'), url: aboutUrls.value.issues },
+]);
+const aboutLinkError = ref('');
+function openAboutLink(event: MouseEvent, url: string) {
+  aboutLinkError.value = '';
+  // Desktop webviews cannot open target="_blank" links; hand them to the system browser.
+  if (!props.native) return;
+  event.preventDefault();
+  openExternalUrl(url).catch(error => { aboutLinkError.value = String(error); });
+}
+const versionCopied = ref(false);
+let versionCopiedTimer: ReturnType<typeof setTimeout> | undefined;
+async function copyVersionInfo() {
+  const platform = window.navigator.platform || 'unknown';
+  const text = `Tano ${props.version} · ${props.mode}${props.native ? ' · desktop' : ''} · ${platform} · ${uiLocale.value}`;
+  try {
+    await window.navigator.clipboard.writeText(text);
+    versionCopied.value = true;
+    clearTimeout(versionCopiedTimer);
+    versionCopiedTimer = setTimeout(() => { versionCopied.value = false; }, 1600);
+  } catch (error) { aboutLinkError.value = String(error); }
+}
+onBeforeUnmount(() => clearTimeout(versionCopiedTimer));
 const display = computed(() => props.editorPreferences ?? defaultEditorPreferences);
 const wrapping = computed(() => normalizeSelectionWrapping(display.value.selectionWrapping));
 const wrappingOptions = computed(() => selectionWrappingOptions.map(option => {
@@ -187,6 +253,7 @@ function setWrapping(key: keyof typeof wrapping.value, enabled: boolean) {
   emit('update:editorPreferences', { ...display.value, selectionWrapping: { ...wrapping.value, [key]: enabled } });
 }
 const autocomplete = computed(() => normalizeMarkdownAutocomplete(display.value.markdownAutocomplete));
+const spacingAutocompleteAvailable = isFeatureEnabled('markdownSpacingAutocomplete');
 function setMarkdownAutocomplete(key: keyof typeof autocomplete.value, enabled: boolean) {
  emit('update:editorPreferences', { ...display.value, markdownAutocomplete: { ...autocomplete.value, [key]: enabled } });
 }
@@ -357,10 +424,12 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   ...(props.appearance ? [
   settingSearchEntry('appearance', 'appearance-scope', '为此工作区单独设置', '用户默认与工作区覆盖', 'scope user workspace 用户 默认 覆盖'),
   settingSearchEntry('appearance', 'appearance-shape', '形态与密度', '选择组件圆角、控件间距和阴影；字体在下方单独设置。', 'shape density 圆角 密度 间距 阴影'),
-  settingSearchEntry('appearance', 'appearance-presets', '主题预设', '只应用预设声明的配色、图标、布局和形态，未指定的项保持当前。', 'preset theme 一键 整套 预设 风格'),
+  settingSearchEntry('appearance', 'appearance-presets', '主题预设', '只应用预设声明的配色、图标、布局、材质和形态，未指定的项保持当前。', 'preset theme 一键 整套 预设 风格'),
   settingSearchEntry('appearance', 'appearance-color', '配色主题', '选择工作区主题插件。', 'theme 插件 风格 配色'),
   settingSearchEntry('appearance', 'appearance-icons', '文件与目录图标', '选择工作区图标主题。', 'icon 文件夹 图标 插件'),
-  settingSearchEntry('appearance', 'appearance-layout', '布局风格', '独立选择页面结构和材质，可与任意配色、图标混搭。', 'layout islands paper 卡片岛 纸感 纸质 布局'),
+  settingSearchEntry('appearance', 'appearance-layout', '布局风格', '选择页面结构：连续页面、卡片岛或纸感文稿，可与任意配色、图标混搭。', 'layout islands paper 卡片岛 纸感 纸质 布局 结构'),
+  settingSearchEntry('appearance', 'appearance-material', '材质', '选择侧栏和页面的质感，可与任意布局、配色混搭。', 'material glass frost frosted liquid translucent 材质 玻璃 磨砂 毛玻璃 液态 液态玻璃 透明 质感'),
+  ...(frostActive.value ? [settingSearchEntry('appearance', 'appearance-wallpaper', '背景图片', '玻璃材质会透出这张图片，卡片透明度会按图片自动调整以保证文字清晰。图片只保存在这台设备。', 'wallpaper background image glass overlay opacity 壁纸 背景 图片 柔化 蒙版 不透明度')] : []),
   ] : []),
   ...(!splitFonts.value.enabled ? [settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom')] : []),
   settingSearchEntry('appearance', 'appearance-split-fonts', '分别设置中英文字体', '开启后分别选择中文和英文字体；关闭后恢复统一字体设置。', 'font split Chinese English 中英文 中文 英文 字体 拆分'),
@@ -394,6 +463,8 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('editing', 'editing-wrapping', '输入符号包裹选区', '选中文字后输入符号，自动补齐两端。可视化与源码模式通用。', 'selection wrapping symbols'),
   ...selectionWrappingOptions.map(option => settingSearchEntry('editing', `editing-wrapping-${option.key}`, option.label, option.example, 'selection wrapping Markdown')),
   ...markdownAutocompleteOptions.map(option => settingSearchEntry('editing', `editing-autocomplete-${option.key}`, option.label, '自动补全 列表 续行 代码块 括号 autocomplete list continuation fence bracket')),
+  ...(spacingAutocompleteAvailable ? [settingSearchEntry('editing', 'editing-autocomplete-spacing', '输入时自动补空格',
+    '输入时在中文与英文、数字、行内公式及引用之间补空格，写入 Markdown 原文。可视化与源码模式通用。', '正文自动间距 中英文 spacing')] : []),
   ...[...chineseSyntaxOptions, ...chineseInputOptions].map(option => settingSearchEntry('editing', `editing-chinese-input-${option.key}`, option.label,
     `${option.input} → ${option.output}`, '中文输入优化 输入法 标点 符号映射 Chinese IME punctuation')),
   ...shortcutDefinitions.map(item => settingSearchEntry('shortcuts', `shortcut-${item.id}`, item.label, 'scope' in item ? item.scope : '', 'shortcut keybinding keyboard')),
@@ -418,6 +489,10 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() => [
   settingSearchEntry('workspace', 'workspace-id', '工作区 ID', '', 'workspace id identifier'),
   settingSearchEntry('workspace', 'workspace-delete', '删除当前工作区', '移除当前设备上的工作区注册。', 'workspace delete remove'),
   settingSearchEntry('about', 'about-updates', '版本与更新', '检查并安装同页更新。', 'version update'),
+  ...(showDeveloperMode.value ? [
+    settingSearchEntry('about', 'about-developer-mode', '开发者模式', developerModeDescription, 'devtools debug inspect 调试'),
+  ] : []),
+  settingSearchEntry('about', 'about-links', '资源与支持', '打开官网、使用文档、发行说明，或反馈问题。', 'website docs documentation help release notes changelog feedback issue GitHub tano.page 官网 文档 帮助 更新日志 反馈'),
 ]);
 const settingSearchMatches = computed(() => {
   const query = search.value.trim().toLocaleLowerCase();
@@ -627,7 +702,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
         @click="emit('open-window', page)"
       ><ExternalLink :size="18" /></button>
       <button
-        v-if="canOpenTab && !tabbed"
+        v-if="canOpenTab && !windowed && !tabbed"
         class="settings-close settings-open-tab"
         :class="{ 'settings-action-hidden': !atTop }"
         :inert="!atTop"
@@ -638,7 +713,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
         @click="emit('open-tab', page)"
       ><PanelTop :size="18" /></button>
       <button
-        v-if="!tabbed"
+        v-if="!windowed && !tabbed"
         class="settings-close"
         type="button"
         :aria-label="t('关闭设置')"
@@ -675,7 +750,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
               </div>
               <p v-if="localeLoadError" role="alert">{{ t('无法加载界面语言，请重试。') }}</p>
               <div v-if="appearance" class="settings-row" data-settings-key="appearance-scope">
-                <div><strong>{{ t('为此工作区单独设置') }}</strong><p>{{ t(appearance.scope === 'workspace' ? '仅覆盖配色、图标、布局和形态；关闭后恢复用户默认。' : '四个槽位使用用户默认；其他工作区会沿用这些选择。') }}</p></div>
+                <div><strong>{{ t('为此工作区单独设置') }}</strong><p>{{ t(appearance.scope === 'workspace' ? '仅覆盖配色、图标、布局、材质和形态；关闭后恢复用户默认。' : '外观各项使用用户默认；其他工作区会沿用这些选择。') }}</p></div>
                 <button type="button" class="settings-switch" :class="{ on: appearance.scope === 'workspace' }" role="switch" :aria-label="t('为此工作区单独设置')" :aria-checked="appearance.scope === 'workspace'" :disabled="!appearance.workspaceId"
                   @click="emit('appearance', { workspaceId: appearance.workspaceId, kind: 'scope', id: appearance.scope === 'workspace' ? 'user' : 'workspace' })"><span /></button>
               </div>
@@ -698,23 +773,26 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
               <template v-if="appearance">
                 <section class="theme-presets" data-settings-key="appearance-presets" :aria-label="t('主题预设')">
                   <h3>{{ t('主题预设') }}</h3>
-                  <p>{{ t('只应用预设声明的配色、图标、布局和形态，未指定的项保持当前。') }}</p>
+                  <p>{{ t('只应用预设声明的配色、图标、布局、材质和形态，未指定的项保持当前。') }}</p>
                   <ThemePresetPicker :appearance="appearance" @select="emit('appearance', $event)" />
                 </section>
-                <div v-for="kind in appearanceKinds" :key="kind" class="settings-row" :data-settings-key="`appearance-${kind}`">
+                <template v-for="kind in appearanceKinds" :key="kind">
+                <div class="settings-row" :data-settings-key="`appearance-${kind}`">
                   <div>
-                    <strong>{{ t(kind === 'color' ? '配色主题' : kind === 'layout' ? '布局风格' : kind === 'shape' ? '形态与密度' : '文件与目录图标') }}</strong>
-                    <p>{{ t(kind === 'shape' ? '选择组件圆角、控件间距和阴影；字体在下方单独设置。' : kind === 'layout' ? '独立选择页面结构和材质，可与任意配色、图标混搭。' : '从内置项和当前工作区已启用的插件中选择，保存在当前设备。') }}</p>
+                    <strong>{{ t(appearanceRows[kind].label) }}</strong>
+                    <p>{{ t(appearanceRows[kind].description) }}</p>
                     <p v-if="appearance.selected[kind] !== appearance.active[kind]" role="status">{{ t('原主题当前不可用，已使用同页默认；重新启用后会自动恢复。') }}</p>
                   </div>
-                  <select :aria-label="t(kind === 'color' ? '配色主题' : kind === 'layout' ? '布局风格' : kind === 'shape' ? '形态与密度' : '文件与目录图标')"
+                  <select :aria-label="t(appearanceRows[kind].label)"
                     :value="appearance.selected[kind]"
                     @change="emit('appearance', { workspaceId: appearance.workspaceId, kind, id: ($event.target as HTMLSelectElement).value })">
-                    <option :value="builtinDefault">{{ t('同页默认') }}</option>
+                    <option :value="builtinDefault">{{ t(appearanceRows[kind].defaultLabel) }}</option>
                     <option v-if="appearance.selected[kind] !== appearance.active[kind]" :value="appearance.selected[kind]" disabled>{{ t('原主题暂不可用（使用默认）') }}</option>
-                    <option v-for="choice in (kind === 'color' ? appearance.colors : kind === 'layout' ? appearance.layouts : kind === 'shape' ? appearance.shapes : appearance.icons)" :key="choice.id" :value="choice.id">{{ t(choice.label) }}</option>
+                    <option v-for="choice in appearanceChoices(kind)" :key="choice.id" :value="choice.id">{{ t(choice.label) }}</option>
                   </select>
                 </div>
+                <GlassWallpaperSetting v-if="kind === 'material' && frostActive" />
+                </template>
                 <p v-for="message in appearance.errors" :key="message" role="alert">{{ message }}</p>
               </template>
             </div>
@@ -1018,7 +1096,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
           </section>
           <section v-if="page === 'editing'" class="settings-section" :aria-label="t('自动补全')">
             <h3>{{ t('自动补全') }}</h3>
-            <p class="settings-local-note">{{ t('可视化编辑已内置列表续行和语法识别；以下选项让源码模式获得同样的输入体验。仅保存在当前设备。') }}</p>
+            <p class="settings-local-note">{{ t('可视化编辑内置列表续行与语法识别。设置仅保存在当前设备。') }}</p>
             <div class="settings-card">
               <div v-for="option in markdownAutocompleteOptions" :key="option.key" class="settings-row settings-row-compact"
                 :data-settings-key="`editing-autocomplete-${option.key}`">
@@ -1033,6 +1111,16 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
                 <button type="button" class="settings-switch" role="switch" :aria-label="t(option.label)"
                   :class="{ on: autocomplete[option.key] }" :aria-checked="autocomplete[option.key]"
                   @click="setMarkdownAutocomplete(option.key, !autocomplete[option.key])"><span /></button>
+              </div>
+              <div v-if="spacingAutocompleteAvailable" class="settings-row" data-settings-key="editing-autocomplete-spacing"
+                v-bind="settingHint('editing-autocomplete-spacing')">
+                <div>
+                  <strong>{{ t('输入时自动补空格') }}</strong>
+                  <p>{{ t('输入时在中文与英文、数字、行内公式及引用之间补空格，写入 Markdown 原文。可视化与源码模式通用。') }}</p>
+                </div>
+                <button type="button" class="settings-switch" role="switch" :aria-label="t('输入时自动补空格')"
+                  :class="{ on: display.completeTextSpacing }" :aria-checked="display.completeTextSpacing ?? false"
+                  @click="emit('update:editorPreferences', { ...display, completeTextSpacing: !display.completeTextSpacing })"><span /></button>
               </div>
             </div>
           </section>
@@ -1241,6 +1329,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
                 class="settings-row settings-row-compact"
                 :data-settings-key="`documents-${feature.key}`"
                 :data-tooltip="t(feature.label)" :data-tooltip-example="feature.key"
+                data-tooltip-placement="left"
               >
                 <div class="settings-inline-copy">
                   <strong>{{ t(feature.label) }}</strong>
@@ -1468,17 +1557,70 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
           <div class="settings-card settings-brand-card" data-settings-key="about-updates">
             <div class="settings-about-brand">
               <img src="../assets/tano-logo.svg" alt="" />
-              <!-- i18n-ignore: The Chinese brand suffix is shown only in the Chinese UI. -->
-              <h3>Tano <span v-if="uiLocale === 'zh-CN'">/ 同页</span></h3>
+              <div class="settings-about-identity">
+                <!-- i18n-ignore: The Chinese brand suffix is shown only in the Chinese UI. -->
+                <h3>Tano <span v-if="uiLocale === 'zh-CN'">/ 同页</span></h3>
+                <p class="settings-about-slogan">{{ t('人与 Agent，在同一页工作。') }}</p>
+              </div>
               <div class="settings-brand-actions">
                 <span class="settings-version-pill">{{ version }}</span>
+                <button
+                  type="button"
+                  class="settings-about-copy"
+                  :class="{ copied: versionCopied }"
+                  :aria-label="t('复制版本信息')"
+                  :data-tooltip="versionCopied ? t('已复制版本信息') : t('复制版本信息，反馈问题时附上')"
+                  @click="copyVersionInfo"
+                >
+                  <Check v-if="versionCopied" :size="13" />
+                  <Copy v-else :size="13" />
+                </button>
               </div>
             </div>
-            <p class="settings-about-slogan">{{ t('人与 Agent，在同一页工作。') }}</p>
+            <span class="settings-visually-hidden" role="status" aria-live="polite">{{ versionCopied ? t('已复制版本信息') : '' }}</span>
             <div v-if="native && !mobile" class="settings-about-update">
               <slot name="update-panel"><UpdatePanel /></slot>
             </div>
+            <div v-if="showDeveloperMode" class="settings-row" data-settings-key="about-developer-mode">
+              <div>
+                <strong>{{ t('开发者模式') }}</strong>
+                <p>{{ t(developerModeDescription) }}</p>
+              </div>
+              <button
+                type="button"
+                class="settings-switch"
+                :class="{ on: developerMode }"
+                role="switch"
+                :aria-label="t('开发者模式')"
+                :aria-checked="developerMode === true"
+                @click="emit('update:developerMode', !developerMode)"
+              ><span /></button>
+            </div>
           </div>
+
+          <section class="settings-section" aria-labelledby="settings-about-resources" data-settings-key="about-links">
+            <h3 id="settings-about-resources">{{ t('资源与支持') }}</h3>
+            <div class="settings-about-links">
+              <a
+                v-for="link in aboutLinks"
+                :key="link.id"
+                class="settings-about-link"
+                :href="link.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                :data-about-link="link.id"
+                @click="openAboutLink($event, link.url)"
+              >
+                <span class="settings-about-link-icon" aria-hidden="true"><component :is="link.icon" :size="16" /></span>
+                <span class="settings-about-link-copy">
+                  <strong>{{ link.label }}</strong>
+                  <span>{{ link.description }}</span>
+                </span>
+                <ArrowUpRight class="settings-about-link-arrow" :size="14" aria-hidden="true" />
+              </a>
+            </div>
+            <p v-if="aboutLinkError" class="settings-about-error" role="alert">{{ aboutLinkError }}</p>
+          </section>
 
           <section class="settings-section" aria-labelledby="settings-work-mode">
             <h3 id="settings-work-mode">{{ t('工作方式') }}</h3>
@@ -1505,6 +1647,15 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
             </div>
           </section>
 
+          <footer class="settings-about-footer">
+            <span>© 2026 Tano · {{ t('MIT 许可证') }}</span>
+            <a
+              :href="aboutUrls.source"
+              target="_blank"
+              rel="noopener noreferrer"
+              @click="openAboutLink($event, aboutUrls.source)"
+            >{{ t('查看源代码') }}<ArrowUpRight :size="11" aria-hidden="true" /></a>
+          </footer>
         </div>
       </main>
     </section>
@@ -1519,6 +1670,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   overflow: hidden;
 }
 .settings-dialog {
+  --settings-action-inset: 16px;
   position: relative;
   display: flex;
   width: min(1060px, 100%);
@@ -1712,7 +1864,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
 .settings-close {
   position: absolute;
   top: 16px;
-  right: 16px;
+  right: var(--settings-action-inset);
   display: grid;
   place-items: center;
   width: 32px;
@@ -1725,14 +1877,12 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
 .settings-close:hover {
   background: var(--hover);
 }
-.settings-open-tab {
-  right: 56px;
-}
+.settings-open-tab,
 .settings-open-window {
-  right: 56px;
+  right: calc(var(--settings-action-inset) + 40px);
 }
 .settings-open-window-with-tab {
-  right: 96px;
+  right: calc(var(--settings-action-inset) + 80px);
 }
 .settings-open-tab,
 .settings-open-window {
@@ -1760,7 +1910,7 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   background: var(--paper);
   backdrop-filter: none;
 }
-.settings-tabbed .settings-dialog {
+:root .modal-backdrop.settings-backdrop.settings-tabbed > .settings-dialog {
   width: 100%;
   height: 100%;
   border: 0;
@@ -2252,11 +2402,146 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   background: var(--paper);
   font-size: 11px;
 }
+.settings-about-identity {
+  min-width: 0;
+}
 .settings-about-slogan {
-  margin: 18px 0 5px;
+  margin: 3px 0 0;
   color: var(--text-secondary);
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.6;
+}
+.settings-brand-actions {
+  align-items: center;
+}
+.settings-about-copy {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+.settings-about-copy:hover {
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--hover);
+}
+.settings-about-copy.copied {
+  color: var(--green);
+}
+.settings-about-copy:focus-visible,
+.settings-about-link:focus-visible,
+.settings-about-footer a:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.settings-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.settings-about-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+.settings-about-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--paper);
+  text-decoration: none;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+.settings-about-link:hover {
+  border-color: var(--control-border);
+  background: var(--hover);
+}
+.settings-about-link-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: var(--hover);
+}
+.settings-about-link:hover .settings-about-link-icon {
+  color: var(--green);
+  background: var(--paper);
+}
+.settings-about-link-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.settings-about-link-copy strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.settings-about-link-copy span {
+  overflow: hidden;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-about-link-arrow {
+  flex: none;
+  color: var(--muted);
+  opacity: .55;
+  transition: opacity .15s ease, transform .15s ease;
+}
+.settings-about-link:hover .settings-about-link-arrow {
+  opacity: 1;
+  transform: translate(1px, -1px);
+}
+.settings-about-error {
+  margin: 10px 0 0;
+  color: var(--warning);
+  font-size: 12px;
+}
+.settings-about-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+.settings-about-footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.settings-about-footer a:hover {
+  color: var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-about-link, .settings-about-link-arrow { transition: none; }
+  .settings-about-link:hover .settings-about-link-arrow { transform: none; }
 }
 .settings-about-update {
   margin-top: 22px;
@@ -2300,7 +2585,11 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   .modal-backdrop.settings-backdrop {
     padding: 12px;
   }
+  .settings-about-links {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .settings-dialog {
+    --settings-action-inset: 12px;
     width: 100%;
     height: calc(100dvh - 24px);
     flex-direction: column;
@@ -2314,7 +2603,15 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   }
   .settings-close {
     top: 10px;
-    right: 12px;
+  }
+  .settings-dialog:has(> .settings-close) .settings-search {
+    margin-right: 36px;
+  }
+  .settings-dialog:has(> :is(.settings-open-tab, .settings-open-window)) .settings-search {
+    margin-right: 76px;
+  }
+  .settings-dialog:has(> .settings-open-window-with-tab) .settings-search {
+    margin-right: 116px;
   }
   .settings-nav-scroll {
     display: flex;
@@ -2454,7 +2751,8 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
   background: var(--paper);
   backdrop-filter: none;
 }
-.settings-windowed .settings-dialog {
+/* The native window clips the outer edge. Override the themed modal frame. */
+:root .modal-backdrop.settings-backdrop.settings-windowed > .settings-dialog {
   width: 100%;
   height: 100dvh;
   border: 0;
@@ -2474,11 +2772,6 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
 .settings-window-drag-region:active {
   cursor: grabbing;
 }
-.settings-windowed .settings-close {
-  top: calc(var(--workbench-tabbar-height) + 8px);
-  z-index: 2;
-}
-
 .theme-presets { padding-block: 20px; border-bottom: 1px solid var(--line); }
 .theme-presets > p { color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
 </style>

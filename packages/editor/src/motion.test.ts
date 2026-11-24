@@ -36,6 +36,16 @@ it('sinks a button by a fixed pixel depth and springs it back on release', () =>
   expect(tap).toHaveLength(3);
   expect(Number(tap[1]!.scale)).toBeCloseTo(1 - 5 / 120);
 });
+it('scales a compound card for its main control and presses its action independently', () => {
+  document.body.innerHTML = '<div><button data-press-parent>应用</button><button>删除</button></div>';
+  const card = document.body.firstElementChild!;
+  const [apply, remove] = card.querySelectorAll('button');
+  pointer('pointerdown', apply!);
+  pointer('pointerup', apply!);
+  apply!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  pointer('pointerdown', remove!);
+  expect(calls.map(call => call.element)).toEqual([card, card, card, remove]);
+});
 it('lifts and presses a full-width form button visibly', () => {
   vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 480, bottom: 48, width: 480, height: 48, toJSON() {} } as DOMRect);
   document.body.innerHTML = '<button type="submit" style="background: black">继续</button>';

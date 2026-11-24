@@ -24,6 +24,7 @@ vi.mock('./UpdatePanel.vue', () => ({
 
 let app: App;
 const tabbed = ref(false);
+const windowed = ref(false);
 const openedTabs: string[] = [];
 const openedWindows: string[] = [];
 const canOpenWindow = ref(true);
@@ -78,6 +79,14 @@ it('renders tab settings without modal controls or trapping Escape', async () =>
   root.querySelector('.settings-dialog')!.dispatchEvent(event);
   expect(propagated).toHaveBeenCalledOnce();
 });
+
+it('hides panel actions in detached settings', async () => {
+  windowed.value = true;
+  await nextTick();
+
+  expect(root.querySelector('.settings-close')).toBeNull();
+  expect(root.textContent).not.toContain('作为标签页打开');
+});
 let root: HTMLDivElement;
 let revealUpdates: boolean[];
 let preferenceUpdates: EditorPreferences[];
@@ -100,6 +109,7 @@ let visualFontSize = ref(16);
 let sourceFontSize = ref(14);
 let toolbarMode = ref<ToolbarMode>('selection');
 let workspaceMode = ref<'demo' | 'web' | 'local'>('local');
+const developerMode = ref(false);
 let hostWorkspace = ref<SettingsPageContext['workspace']>(null);
 let hostFile = ref<SettingsPageContext['activeFile']>(null);
 const ExtraSettings = defineComponent({
@@ -124,6 +134,7 @@ beforeEach(() => {
   initialSettingsPage.value = 'about';
   localStorage.removeItem(settingsPagePreferenceKey);
   tabbed.value = false;
+  windowed.value = false;
   openedTabs.length = 0;
   openedWindows.length = 0;
   canOpenWindow.value = true;
@@ -150,6 +161,7 @@ beforeEach(() => {
   sourceFontSize = ref(14);
   toolbarMode = ref('selection');
   workspaceMode = ref('local');
+  developerMode.value = false;
   hostWorkspace = ref(null);
   hostFile = ref(null);
   root = document.createElement('div');
@@ -160,6 +172,7 @@ beforeEach(() => {
         key: panelKey.value,
         rememberPage: rememberPage.value,
         tabbed: tabbed.value,
+        windowed: windowed.value,
         canOpenTab: true,
         canOpenWindow: canOpenWindow.value,
         openingWindow: openingWindow.value,
@@ -185,6 +198,8 @@ beforeEach(() => {
         ],
         native: true,
         mobile: false,
+        developerMode: developerMode.value,
+        'onUpdate:developerMode': (enabled: boolean) => { developerMode.value = enabled; },
         defaultSource: false,
         theme: theme.value,
         appearance: appearance.value,
@@ -423,8 +438,17 @@ it('offers workspace bullet markers under Markdown syntax and disables them with
 it('offers extension rendering switches in shared document capabilities', async () => {
   hostWorkspace.value = { id: 'local-workspace', name: '本地', path: 'C:/Notes' };
   await openPage('Markdown 与格式');
-  for (const feature of ['superscript', 'subscript', 'underline', 'highlight', 'inlineComment'] as const) {
+  const featureLabels = {
+    objectReferences: '工作区对象与引用',
+    superscript: '上标',
+    subscript: '下标',
+    underline: '下划线',
+    highlight: '高亮',
+    inlineComment: '注释',
+  };
+  for (const [feature, label] of Object.entries(featureLabels)) {
     const control = root.querySelector<HTMLButtonElement>(`[data-settings-key="documents-${feature}"] [role="switch"]`)!;
+    expect(control.getAttribute('aria-label')).toBe(label);
     expect(control.getAttribute('aria-checked')).toBe('true');
     control.click();
     expect(capabilityUpdates.at(-1)).toEqual({ feature, enabled: false });
@@ -487,9 +511,9 @@ it('offers light, dark, and system display modes', async () => {
 });
 
 it.each(['light', 'dark'] as const)('limits display mode options for a %s-only theme and restores the user preference for dual themes', async mode => {
-  const selected = { color: 'sample:fixed', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' };
+  const selected = { color: 'sample:fixed', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' };
   const palette = mode === 'light' ? { light: {} } : { dark: {} };
-  appearance.value = { workspaceId: 'one', scope: 'workspace', mode: 'system', colors: [], icons: [], layouts: [], shapes: [], presets: [],
+  appearance.value = { workspaceId: 'one', scope: 'workspace', mode: 'system', colors: [], icons: [], layouts: [], materials: [], shapes: [], presets: [],
     selected, active: selected, color: { id: 'sample:fixed', label: '单模式', ...palette }, errors: [] };
   await openPage('外观');
   const select = root.querySelector<HTMLSelectElement>('[aria-label="显示模式"]')!;
@@ -781,6 +805,26 @@ it('opens directly on the complete about page with the current locale slogan', a
   expect(root.textContent).not.toContain('人与 Agent，在同一页工作。');
 });
 
+it('toggles developer mode from the about page', async () => {
+  const toggle = root.querySelector<HTMLButtonElement>('[role="switch"][aria-label="开发者模式"]')!;
+  expect(toggle.getAttribute('aria-checked')).toBe('false');
+  toggle.click();
+  await nextTick();
+  expect(toggle.getAttribute('aria-checked')).toBe('true');
+  toggle.click();
+  await nextTick();
+  expect(toggle.getAttribute('aria-checked')).toBe('false');
+});
+
+it('links the about page to the website, documentation, releases, and feedback', () => {
+  const href = (id: string) => root.querySelector<HTMLAnchorElement>(`[data-about-link="${id}"]`)?.getAttribute('href');
+  expect(href('website')).toBe('https://tano.page/');
+  expect(href('docs')).toBe('https://tano.page/zh-cn/docs/');
+  expect(href('releases')).toBe('https://github.com/Dramwig/Tano/releases');
+  expect(href('issues')).toBe('https://github.com/Dramwig/Tano/issues');
+  expect(root.querySelector('.settings-about-copy')?.getAttribute('aria-label')).toBe('复制版本信息');
+});
+
 it('keeps the about content inside settings navigation', async () => {
   await openPage('外观');
   expect(root.querySelector('h2')?.textContent).toBe('外观');
@@ -914,8 +958,8 @@ it('offers math recognition separately from output and respects math and write p
 
 
 it('emits a single complete-preset command and reflects matched or customized state', async () => {
-  const selected = { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' };
-  appearance.value = { workspaceId: 'one', scope: 'user', mode: 'system', shapes: [], colors: [], icons: [], layouts: [],
+  const selected = { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' };
+  appearance.value = { workspaceId: 'one', scope: 'user', mode: 'system', shapes: [], colors: [], icons: [], layouts: [], materials: [],
     presets: [{ id: 'builtin:tano', label: '同页默认', selected }], presetId: 'builtin:tano', selected, active: selected, errors: [] };
   await openPage('外观'); await nextTick();
   const card = root.querySelector<HTMLButtonElement>('[data-preset-id="builtin:tano"]')!;
@@ -941,8 +985,9 @@ it('emits a single complete-preset command and reflects matched or customized st
   expect(root.textContent).toContain('偏好在工作区间共用');
 });
 it('selects colors and icons independently and explains unavailable selections', async () => {
-  appearance.value = { workspaceId: 'one', scope: 'user', mode: 'system', shapes: [], colors: [{ id: 'paper:paper', label: '纸页' }], icons: [{ id: 'lines:lines', label: '线条' }], layouts: [...builtinAppearance.layouts], presets: [],
-    selected: { color: 'builtin:tano', icons: 'missing', layout: 'builtin:tano', shape: 'builtin:tano' }, active: { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', shape: 'builtin:tano' }, errors: [] };
+  const active = { color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' };
+  appearance.value = { workspaceId: 'one', scope: 'user', mode: 'system', shapes: [], colors: [{ id: 'paper:paper', label: '纸页' }], icons: [{ id: 'lines:lines', label: '线条' }], layouts: [...builtinAppearance.layouts], materials: [], presets: [],
+    selected: { ...active, icons: 'missing' }, active, errors: [] };
   await openPage('外观'); await nextTick();
   const color = root.querySelector<HTMLSelectElement>('[aria-label="配色主题"]')!;
   const icons = root.querySelector<HTMLSelectElement>('[aria-label="文件与目录图标"]')!;
@@ -964,7 +1009,13 @@ beforeAll(async () => {
 it('exposes autocomplete switches and separate Chinese syntax defaults', async () => {
  await openPage('编辑器');
  const section = root.querySelector('section[aria-label="自动补全"]')!;
- expect(section.querySelectorAll('[role="switch"]')).toHaveLength(3);
+ expect(section.querySelectorAll('[role="switch"]')).toHaveLength(4);
+ const spacing = section.querySelector<HTMLButtonElement>('[aria-label="输入时自动补空格"]')!;
+ expect(spacing.getAttribute('aria-checked')).toBe('false');
+ spacing.click();
+ await nextTick();
+ expect(spacing.getAttribute('aria-checked')).toBe('true');
+ expect(editorPreferences.value.autoSpacing).toBe(false);
  expect(root.querySelector('[data-settings-key="editing-chinese-input-quoteMarker"] [role="switch"]')?.getAttribute('aria-checked')).toBe('true');
  expect(root.querySelector('section[aria-label="中文输入优化"]')?.textContent).toContain('全局映射');
 });

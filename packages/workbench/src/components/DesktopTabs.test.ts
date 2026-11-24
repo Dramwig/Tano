@@ -7,12 +7,14 @@ import WorkspacePanes from './WorkspacePanes.vue';
 import { dockLayout, layoutPanes, newPane } from '../pane-layout';
 import { finishedTabDrag, tabDragMetaType } from '../tab-docking';
 import { animate } from 'motion/mini';
+import { workbenchContextKey, type WorkbenchContext } from '../workbench-context';
 
 vi.mock('motion/mini', () => ({
   animate: vi.fn(() => ({ finished: new Promise<void>(() => {}), cancel: vi.fn() })),
 }));
 
 const fixture = vi.hoisted(() => ({ store: null as any }));
+const workbench = reactive({ developerMode: true });
 const platform = vi.hoisted(() => ({ nativeOs: 'windows', mobile: false }));
 const nativeWindow = vi.hoisted(() => ({
   label: 'main',
@@ -73,6 +75,7 @@ beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn();
   platform.nativeOs = 'windows';
   platform.mobile = false;
+  workbench.developerMode = true;
   nativeCore.invoke.mockReset().mockImplementation(() => new Promise(resolve => { releaseNative = resolve; }));
   nativeEvents.listeners.clear();
   nativeEvents.emitTo.mockClear();
@@ -103,6 +106,7 @@ beforeEach(() => {
     '<header class="desktop-window-titlebar"><div class="desktop-window-tab-slot"></div><div class="desktop-window-drag"></div></header>';
   document.body.append(root);
   app = createApp(DesktopTabs);
+  app.provide(workbenchContextKey, workbench as WorkbenchContext);
   app.mount(root.querySelector('.desktop-window-tab-slot')!);
   const list = root.querySelector<HTMLElement>('.desktop-tab-list')!;
   list.getBoundingClientRect = () => ({ left: 0, right: 600, top: 0, bottom: 36 }) as DOMRect;
@@ -1126,6 +1130,19 @@ it('reports a devtools invocation failure', async () => {
   [...document.body.querySelectorAll<HTMLButtonElement>('.desktop-tab-context-menu button')]
     .find(button => button.textContent?.includes('打开调试窗口'))!.click();
   await vi.waitFor(() => expect(fixture.store.report).toHaveBeenCalledWith(new Error('调试窗口无法打开')));
+});
+
+it('updates the blank-track menu when developer mode changes', async () => {
+  root.querySelector<HTMLElement>('.desktop-window-drag')!
+    .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await nextTick();
+  const menu = document.body.querySelector<HTMLElement>('.desktop-tab-context-menu')!;
+  workbench.developerMode = false;
+  await nextTick();
+  expect(menu.textContent).not.toContain('打开调试窗口');
+  workbench.developerMode = true;
+  await nextTick();
+  expect(menu.textContent).toContain('打开调试窗口');
 });
 
 it.each([

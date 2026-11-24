@@ -1,6 +1,6 @@
 # エージェントの利用
 
-[English](../agent-workflow.md) | [中文](../zh/agent-workflow.md) | 日本語 | [Deutsch](../de/agent-workflow.md) | [ドキュメント一覧](README.md)
+[English](../agent-workflow.md) | [简体中文](../zh/agent-workflow.md) | [繁體中文](../zh-tw/agent-workflow.md) | 日本語 | [Español](../es/agent-workflow.md) | [Deutsch](../de/agent-workflow.md) | [ドキュメント一覧](README.md)
 
 まずデスクトップアプリでワークスペースフォルダーを開きます。エージェントは Markdown ファイルを直接編集できるほか、Tano のローカル stdio MCP サーバーで文書の一覧、読み取り、作成、条件付き書き込みを行えます。
 

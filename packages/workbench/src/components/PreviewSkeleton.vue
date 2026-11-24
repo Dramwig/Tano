@@ -2,18 +2,41 @@
 import { computed } from 'vue';
 import { t } from '../i18n';
 import { previewLoadingLabels, previewSkeletonKind, type PreviewSkeletonKind } from '../preview-skeleton';
+import { officeDefaultColumnWidth, officeRowHeight, officeRowNumberWidth } from '../office-preview/model';
 import '../loading-skeleton.css';
 
 // Async preview components also forward binary props to their loading component.
 defineOptions({ inheritAttrs: false });
 const props = withDefaults(defineProps<{ path?: string; kind?: PreviewSkeletonKind; controls?: boolean }>(), { path: '', controls: true });
 const layout = computed(() => props.kind ?? previewSkeletonKind(props.path));
+const excel = computed(() => layout.value === 'spreadsheet' && /\.xlsx?$/i.test(props.path));
 const toolbar = computed(() => props.controls && ['pdf', 'word', 'spreadsheet', 'presentation'].includes(layout.value));
+const excelGridStyle = {
+  '--office-row-height': `${officeRowHeight}px`,
+  gridTemplateColumns: `${officeRowNumberWidth}px repeat(5, ${officeDefaultColumnWidth}px)`,
+};
 </script>
 
 <template>
-  <div class="preview-skeleton" :class="`preview-skeleton-${layout}`" :data-preview-kind="layout" role="status" aria-busy="true" :aria-label="t(previewLoadingLabels[layout])">
-    <div aria-hidden="true">
+  <div class="preview-skeleton" :class="[`preview-skeleton-${layout}`, { 'preview-skeleton-excel': excel }]" :data-preview-kind="layout" role="status" aria-busy="true" :aria-label="t(previewLoadingLabels[layout])">
+    <div v-if="excel" class="excel-skeleton" aria-hidden="true">
+      <div v-if="toolbar" class="excel-skeleton-toolbar">
+        <span class="tano-skeleton-bar excel-skeleton-format" />
+        <span class="tano-skeleton-bar excel-skeleton-zoom" />
+      </div>
+      <div class="excel-skeleton-grid" :style="excelGridStyle">
+        <div v-for="column in 6" :key="column" class="excel-skeleton-column">
+          <div class="excel-skeleton-cell excel-skeleton-heading"><span v-if="column > 1" class="tano-skeleton-bar" /></div>
+          <div v-for="row in 18" :key="row" class="excel-skeleton-cell">
+            <span class="tano-skeleton-bar" :style="{ width: column === 1 ? '10px' : `${42 + (row * 17 + column * 11) % 35}%` }" />
+          </div>
+        </div>
+      </div>
+      <div class="excel-skeleton-tabs">
+        <div v-for="tab in 2" :key="tab"><span class="tano-skeleton-bar" /></div>
+      </div>
+    </div>
+    <div v-else aria-hidden="true">
       <div v-if="toolbar" class="preview-skeleton-controls">
         <span v-if="layout !== 'pdf'" class="tano-skeleton-bar preview-skeleton-badge" />
         <span v-if="layout === 'spreadsheet'" class="tano-skeleton-bar preview-skeleton-picker" />
@@ -46,6 +69,19 @@ const toolbar = computed(() => props.controls && ['pdf', 'word', 'spreadsheet', 
 
 <style scoped>
 .preview-skeleton { width: 100%; min-width: 0; color: var(--text, #37352f); }
+.preview-skeleton-excel, .excel-skeleton { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; background: var(--paper); }
+.excel-skeleton-toolbar { display: flex; align-items: center; justify-content: center; position: relative; min-height: 42px; flex-shrink: 0; border-bottom: 1px solid var(--line); background: var(--surface); }
+.excel-skeleton-format { position: absolute; left: 18px; width: 28px; height: 8px; }
+.excel-skeleton-zoom { width: 100px; height: 10px; }
+.excel-skeleton-grid { flex: 1; min-height: 0; display: grid; overflow: hidden; }
+.excel-skeleton-column { border-right: 1px solid var(--line); background: repeating-linear-gradient(to bottom, transparent 0 calc(var(--office-row-height) - 1px), var(--line) calc(var(--office-row-height) - 1px) var(--office-row-height)); }
+.excel-skeleton-cell { box-sizing: border-box; display: flex; align-items: center; height: var(--office-row-height); padding: 0 4px; }
+.excel-skeleton-heading, .excel-skeleton-column:first-child .excel-skeleton-cell { justify-content: center; }
+.excel-skeleton-cell .tano-skeleton-bar { height: 6px; }
+.excel-skeleton-heading .tano-skeleton-bar { width: 9px; }
+.excel-skeleton-tabs { flex: 0 0 auto; display: flex; min-height: 34px; border-top: 1px solid var(--line); }
+.excel-skeleton-tabs > div { display: grid; place-items: center; width: 64px; border-right: 1px solid var(--line); }
+.excel-skeleton-tabs .tano-skeleton-bar { width: 28px; height: 8px; }
 .preview-skeleton-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-height: 32px; margin-bottom: 12px; }
 .preview-skeleton-badge { width: 64px; height: 26px; }
 .preview-skeleton-picker { width: 160px; height: 30px; }

@@ -25,6 +25,7 @@ import { uiLocale, t } from './i18n';
 import { documentTabLabel } from './tab-label';
 
 import { readSettingsPage } from './settings-preference';
+import { featureChannel } from './features';
 
 import { focusedOutlineIndices } from './outline-tree';
 
@@ -48,6 +49,7 @@ import {
   ref,
   shallowReactive,
   shallowRef,
+  useTemplateRef,
   watch,
 } from 'vue';
 
@@ -284,6 +286,7 @@ import { handleMobileVisibility } from './mobile-lifecycle';
 import { useViewport } from './viewport';
 
 import { useWorkspaceStore } from './stores/workspace';
+import { fileDragImage, settleFileDragCard } from './file-drag-image';
 
 import { retainWorkbenchSession } from './workbench-session';
 
@@ -291,7 +294,7 @@ import { useSuggestionStore } from './stores/suggestions';
 
 import { useWorkbenchRuntime, createLocalExtensions } from './runtime';
 
-import type { WorkbenchActions } from './runtime';
+import type { WorkbenchActions, WorkbenchViewTab } from './runtime';
 
 import { native } from './adapter';
 
@@ -365,6 +368,7 @@ import { useUpdatesStore } from './stores/updates';
 import { resolveWikiLink } from './wiki-links';
 
 import { applyFileMovePreview, planFileMovePreview, type FileMovePreview } from './file-move';
+import { DROP_PLACEHOLDER_PREFIX } from './file-tree-model';
 
 import {
   isSidebarToggleShortcut, matchesShortcut, parseShortcutBindings, readShortcutBindings,
@@ -384,6 +388,9 @@ import { pageRoutePath, pageRouteUrl, parsePageRoute } from './web-navigation';
 import { applyTheme } from './theme';
 
 import { AppearanceController } from './appearance';
+import { GlassWallpaperController, indexedDbWallpaperStore, setGlassWallpaper } from './glass-wallpaper';
+import { LiquidGlassController } from './liquid-glass';
+import { builtinThumbnail, customThumbnail, decodeImage, normalizeImport, paintBuiltin, renderWallpaper } from './glass-wallpaper-render';
 
 import LayoutDocumentChrome from './components/LayoutDocumentChrome.vue';
 
@@ -504,15 +511,21 @@ const sidebarNavigationItems = computed(() => [
     .filter((view) => view.sidebar)
     .map((view) => ({ id: view.id, label: view.label })),
 ]);
+// Sidebar buttons are grouped by scope: the header row holds workspace-wide actions (search, graph,
+// extension headers), the view row switches sidebar views, and the workspace root row holds
+// file-tree actions. Keep each action in the row matching what it affects.
 const sidebarHeaderItems = computed(() => [
+  ...(navigationModule.value === 'workspace' ? [
+    { id: 'search', get label() { return t('查找文档'); } },
+    ...(store.workspaceSettings.showGraph ? [{ id: 'graph', get label() { return t('关系图谱'); } }] : []),
+  ] : []),
   ...extensionViews
     .filter((view) => view.header)
     .map((view) => ({ id: view.id, label: view.label })),
 ]);
 const repositoryActionItems = computed(() => [
-  ...(store.workspaceSettings.showGraph ? [{ id: 'graph', get label() { return t('关系图谱'); } }] : []),
-  { id: 'search', get label() { return t('查找文档'); } },
   { id: 'create', get label() { return t('新建文档'); } },
+  { id: 'folder', get label() { return t('新建文件夹'); } },
 ]);
 const documentToolItems = [
   { id: 'markdown-reveal', get label() { return t('光标展开源码'); } },
@@ -565,7 +578,7 @@ function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: 
   ].map((item, index, items) => ({ ...item, separatorBefore: items[index - 1]?.id === 'document-status' }));
 }
 const SETTINGS_TAB_ID = 'view:settings';
-const settingsTabView = { id: SETTINGS_TAB_ID, get label() { return t('设置'); }, icon: Settings2, detachable: true };
+const settingsTabView: WorkbenchViewTab = { id: SETTINGS_TAB_ID, get label() { return t('设置'); }, icon: Settings2, scope: 'account', detachable: true };
 store.registerViews([...extensionViews, settingsTabView, { id: ASSISTANT_TAB_ID, label: t('助手'), icon: Bot }]);
 store.setBeforeWorkspaceChange(async () => {
   if (!(await auxiliaryWindows.closeAll())) throw new Error(t('还有未保存的修改，请先处理保存错误。'));
@@ -950,6 +963,9 @@ const appearanceIcons = new FileIconRegistry();
 provide(fileIconRegistryKey, appearanceIcons);
 const appearanceController = new AppearanceController(appearanceIcons, useWorkbenchRuntime().plugins?.principal ?? 'device', {
   getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value),
+  get length() { return window.localStorage.length; },
+  key: index => window.localStorage.key(index),
+  removeItem: key => window.localStorage.removeItem(key),
 });
 const appearance = appearanceController.state;
 watch([() => store.workspace?.id ?? '', () => store.installedPlugins, () => store.installedPluginWorkspace], ([id, installed, loadedFor]) => {
@@ -958,8 +974,22 @@ watch([() => store.workspace?.id ?? '', () => store.installedPlugins, () => stor
 onBeforeUnmount(() => appearanceController.dispose());
 const theme = computed<ThemePreference>({ get: () => appearance.value.mode,
   set: mode => appearanceController.select({ workspaceId: appearance.value.workspaceId, kind: 'mode', id: mode }) });
-const onAppearanceStorage = (event: StorageEvent) => appearanceController.refreshPreferences(event.key);
+// The frosted-glass background image is a device preference; it publishes CSS variables on <html>.
+const glassWallpaperController = new GlassWallpaperController(useWorkbenchRuntime().plugins?.principal ?? 'device', {
+  getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value),
+}, indexedDbWallpaperStore(), { normalizeImport, decode: decodeImage, builtin: paintBuiltin, thumbnail: builtinThumbnail, customThumbnail, render: renderWallpaper });
+setGlassWallpaper(glassWallpaperController);
+onMounted(() => { void glassWallpaperController.load(); });
+onBeforeUnmount(() => { glassWallpaperController.dispose(); setGlassWallpaper(undefined); });
+const onAppearanceStorage = (event: StorageEvent) => {
+  appearanceController.refreshPreferences(event.key);
+  glassWallpaperController.refreshPreferences(event.key);
+};
 onMounted(() => window.addEventListener('storage', onAppearanceStorage));
+// Liquid glass bends its backdrop through per-surface SVG filters (Chromium only; see liquid-glass.ts).
+const liquidGlass = new LiquidGlassController();
+onMounted(() => liquidGlass.start());
+onBeforeUnmount(() => liquidGlass.dispose());
 // Delegated press/hover springs for every button in the workbench and its
 // teleported surfaces (dialogs, menus, settings).
 let disposeInteractionMotion: (() => void) | undefined;
@@ -1150,6 +1180,12 @@ const sourceFontSize = ref(readFontSizePreference('sourceFontSize', 14));
 watch(visualFontSize, (value) => saveFontSizePreference('visualFontSize', value));
 watch(sourceFontSize, (value) => saveFontSizePreference('sourceFontSize', value));
 const showPageTitle = ref(readPreference('showPageTitle', true));
+const developerMode = ref(readPreference('developerMode', featureChannel === 'dev'));
+glassWallpaperController.setDeveloperMode(developerMode.value);
+watch(developerMode, (enabled) => {
+  savePreference('developerMode', enabled);
+  glassWallpaperController.setDeveloperMode(enabled);
+});
 const showAllLineNumbers = ref(readPreference('showAllLineNumbers', false));
 watch(showAllLineNumbers, (value) => savePreference('showAllLineNumbers', value));
 watch(showPageTitle, (value) => savePreference('showPageTitle', value));
@@ -1196,6 +1232,7 @@ function readChineseInput() {
 const editorPreferences = ref<EditorPreferences>({
   copyFormat: normalizeCopyFormat(readTextPreference('copyFormat')),
   autoSpacing: readPreference('autoSpacing', defaultEditorPreferences.autoSpacing ?? false),
+  completeTextSpacing: readPreference('completeTextSpacing', false),
   previewMathWhileEditing: readPreference(
     'previewMathWhileEditing',
     defaultEditorPreferences.previewMathWhileEditing,
@@ -1218,6 +1255,7 @@ watch(
   (preferences) => {
     saveTextPreference('copyFormat', normalizeCopyFormat(preferences.copyFormat));
     savePreference('autoSpacing', preferences.autoSpacing ?? false);
+    savePreference('completeTextSpacing', preferences.completeTextSpacing === true);
     savePreference('previewMathWhileEditing', preferences.previewMathWhileEditing);
     savePreference('previewMermaidWhileEditing', preferences.previewMermaidWhileEditing !== false);
     savePreference('folding', preferences.folding);
@@ -1437,6 +1475,20 @@ const tabFileDrag = computed(() =>
     : undefined,
 );
 const dropFolder = ref<string | null>(null);
+// Slot preview: while a valid folder is hovered, the tree shows where the dragged
+// entries would land as placeholder rows (the real rows stay put so the native
+// drag source is never re-parented mid-drag).
+const dropPlaceholders = computed<FileEntry[]>(() => {
+  const folder = dropFolder.value;
+  if (folder === null || !draggedEntry.value) return [];
+  const changes = planDropIn(folder);
+  if (!changes) return [];
+  const byId = new Map(changes.map((change) => [change.id, change.to]));
+  return draggedSelection.value.flatMap((file) => {
+    const path = byId.get(file.id);
+    return path ? [{ ...file, id: `${DROP_PLACEHOLDER_PREFIX}${file.id}`, path, name: basename(path) }] : [];
+  });
+});
 const moveBusy = ref(false);
 const optimisticFileMove = ref<{ workspaceId: string; changes: FileMovePreview[] } | null>(null);
 const treeFiles = computed(() => {
@@ -1546,6 +1598,12 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.search', category: t('文档'), get label() { return t('查找文档'); }, shortcut: shortcuts.value.findDocument, available: !busy.value, run: () => showModal('search') },
     { id: 'workbench.open', category: t('文档'), get label() { return t('打开文档'); }, shortcut: shortcuts.value.openDocument, available: !busy.value, run: () => showModal('newTab') },
     { id: 'workbench.new', category: t('文档'), get label() { return t('新建文档'); }, shortcut: shortcuts.value.newDocument, available: writableWorkspace, run: createNewDocument },
+    // Opens a blank tab in its own window. It shares the current workspace; an independent
+    // window with its own workspace would need a second app instance and is not supported.
+    { id: 'workbench.new-window', category: t('文档'), get label() { return t('新建窗口'); }, available: native && !mobile && !isAuxiliaryWindow && !!workspace.value && !busy.value && !updateLock.value,
+      run: () => { const id = store.createBlankTab(); if (id) return detachTab(id); } },
+    { id: 'workbench.reveal', category: t('文档'), get label() { return t('在资源管理器中显示'); }, available: native && !mobile && !isAuxiliaryWindow && !!workspace.value && !store.isWeb, run: () => store.reveal() },
+    { id: 'workbench.open-folder', category: t('文档'), get label() { return t('打开文件夹'); }, available: !isAuxiliaryWindow && !busy.value && !updateLock.value, run: () => store.openWorkspace() },
     { id: 'workbench.save', category: t('文档'), get label() { return t('立即保存'); }, shortcut: shortcuts.value.save, available: hasDocument && !busy.value && !updateLock.value, run: () => store.flush() },
     { id: 'workbench.saveAs', category: t('文档'), get label() { return t('另存副本'); }, available: standardEditor && writableWorkspace, run: () => showModal('saveAs') },
     { id: 'workbench.folder', category: t('文档'), get label() { return t('新建文件夹'); }, available: writableWorkspace, run: () => createNewEntry('folder') },
@@ -1589,16 +1647,17 @@ const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     { id: 'workbench.settings.shortcuts', category: t('设置'), get label() { return t('快捷键'); }, run: () => openSettings('shortcuts') },
     { id: 'workbench.settings.workspace', category: t('设置'), get label() { return t('工作区设置'); }, available: navigationContext.value === 'workspace' && !!workspace.value, run: () => openSettings('workspace') },
     { id: 'workbench.settings.about', category: t('设置'), get label() { return t('关于同页'); }, run: () => openSettings('about') },
+    { id: 'workbench.check-updates', category: t('设置'), get label() { return t('检查更新'); }, available: native && !mobile && !updateLock.value && !updates.state.busy, run: () => { openSettings('about'); return updates.check(); } },
   ];
 });
 const settingsPage = ref<SettingsPageId>(readSettingsPage());
 // A loaded workspace keeps its session, but only the workspace navigation owns its settings.
 const settingsWorkspace = computed(() => navigationContext.value === 'workspace' ? workspace.value : null);
 function openSettingsTab(page: SettingsPageId) {
-  if (!settingsWorkspace.value) return;
   settingsPage.value = page;
   store.openViewTab(SETTINGS_TAB_ID);
   settingsPanel.value = false;
+  if (compactPanes.value) sidebar.value = false;
 }
 const openingSettingsWindow = ref(false);
 async function openSettingsInNewWindow(page: SettingsPageId) {
@@ -1669,7 +1728,7 @@ watch(
 const input = ref('');
 const modalError = ref('');
 const modalBusy = ref(false);
-const inputEl = ref<HTMLInputElement>();
+const inputEl = useTemplateRef<HTMLInputElement>('inputEl');
 const paneEditors = shallowReactive(new Map<string, InstanceType<typeof MarkdownEditor>>());
 type InlineAssistantTarget = {
   paneId: string;
@@ -2539,7 +2598,8 @@ async function openEntry(file: FileEntry, newTab = false) {
     return;
   }
   if (workspace.value) {
-    store.openAttachmentInNewTab(file);
+    if (newTab) await store.openAttachmentInNewTab(file);
+    else await store.openAttachment(file);
     if (compactPanes.value) sidebar.value = false;
     return;
   }
@@ -2935,7 +2995,12 @@ function fileDeleteDisabled(file: FileEntry) {
   );
 }
 const selectionDeleteDisabled = computed(() => contextEntries.value.some(fileDeleteDisabled));
-function canDragEntry(file: FileEntry) {
+// Dragging only needs to be possible so entries can be dropped on tabs, the editor or
+// the assistant (references / open). Whether a drop may *move* files is decided separately.
+function canDragEntry(_file: FileEntry) {
+  return !!workspace.value && !updateLock.value;
+}
+function canMoveEntry(file: FileEntry) {
   if (
     !workspace.value ||
     workspace.value.readOnly ||
@@ -2955,7 +3020,7 @@ function planDropIn(folder: string): FileMovePreview[] | null {
     !workspace.value ||
     drag.workspaceId !== workspace.value.id ||
     !draggedSelection.value.length ||
-    !draggedSelection.value.every(canDragEntry)
+    !draggedSelection.value.every(canMoveEntry)
   )
     return null;
   try {
@@ -2991,23 +3056,64 @@ function fileDragStart(file: FileEntry, event: DragEvent) {
     'application/x-tano-entry',
     selection.map((entry) => entry.id).join(','),
   );
+  // Same card as a dragged tab instead of the browser's row snapshot.
+  const row = event.currentTarget as HTMLElement | null;
+  if (row) {
+    const label = selection.length === 1
+      ? row.querySelector('.tree-label')?.textContent?.trim() || file.name
+      : t('{0} 个文档', [selection.length]);
+    const image = fileDragImage(row, label, { x: event.clientX, y: event.clientY });
+    if (image) event.dataTransfer.setDragImage(image.canvas, image.x, image.y);
+  }
 }
 function fileDragEnd() {
+  settleFileDragCard(); // no slot took it (cancelled, or dropped elsewhere): fade in place
   draggedEntry.value = null;
   draggedSelection.value = [];
   dropFolder.value = null;
+  dropPointer = undefined;
+  cancelDropLeave();
+}
+// The slot preview changes row layout under a stationary pointer. Retargeting only
+// counts when the pointer itself moved, otherwise the shifted rows would flip the
+// target back and forth.
+let dropPointer: { x: number; y: number } | undefined;
+const pointerMovedSinceTarget = (event: DragEvent) =>
+  !dropPointer || Math.hypot(event.clientX - dropPointer.x, event.clientY - dropPointer.y) >= 4;
+function setDropFolder(folder: string | null, event: DragEvent) {
+  if (dropFolder.value === folder) return;
+  dropFolder.value = folder;
+  dropPointer = { x: event.clientX, y: event.clientY };
+}
+// Moving between rows fires dragleave on the old row before the next dragover. Clearing
+// at once would remove the slot placeholder and re-add it a moment later, so its leaving
+// ghost and the arriving row would both claim space. Clear only if no dragover follows.
+let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+function cancelDropLeave() {
+  if (leaveTimer) clearTimeout(leaveTimer);
+  leaveTimer = undefined;
 }
 function fileDragOver(folder: string, event: DragEvent) {
   event.preventDefault();
   event.stopPropagation();
+  cancelDropLeave();
+  if (dropFolder.value !== null && dropFolder.value !== folder && !pointerMovedSinceTarget(event)) folder = dropFolder.value;
   const valid = planDropIn(folder) !== null;
   if (event.dataTransfer) event.dataTransfer.dropEffect = valid ? 'move' : 'none';
-  dropFolder.value = valid ? folder : null;
+  setDropFolder(valid ? folder : null, event);
 }
 function fileDragLeave(folder: string, event: DragEvent) {
   const target = event.currentTarget as HTMLElement | null;
   if (target?.contains(event.relatedTarget as Node | null)) return;
-  if (dropFolder.value === folder) dropFolder.value = null;
+  if (dropFolder.value !== folder || !pointerMovedSinceTarget(event)) return;
+  cancelDropLeave();
+  const { clientX: x, clientY: y } = event;
+  leaveTimer = setTimeout(() => {
+    leaveTimer = undefined;
+    if (dropFolder.value !== folder) return;
+    dropFolder.value = null;
+    dropPointer = { x, y };
+  }, 120);
 }
 async function fileDrop(folder: string, event: DragEvent) {
   event.preventDefault();
@@ -3679,10 +3785,10 @@ function openSettings(page: SettingsPageId = readSettingsPage(settingsPage.value
   menu.value = false;
   workspaceMenu.value = false;
   settingsPage.value = page === 'preferences' ? 'appearance' : page;
-  const pane = settingsWorkspace.value && store.panes.find(pane => pane.tabs.includes(SETTINGS_TAB_ID));
+  const pane = store.panes.find(pane => pane.tabs.includes(SETTINGS_TAB_ID));
   if (pane) {
     store.focusPane(pane.id);
-    store.openViewTab(SETTINGS_TAB_ID);
+    openSettingsTab(settingsPage.value);
     return;
   }
   settingsPanel.value = true;
@@ -4008,7 +4114,7 @@ function keydown(event: KeyboardEvent) {
   if (event.key === 'Tab' && modal.value) {
     const targets = [
       ...document.querySelectorAll<HTMLElement>(
-        '.modal button:not(:disabled), .modal input, .modal a',
+        ':is(.modal, .search-modal) :is(button:not(:disabled), input, a)',
       ),
     ];
     const first = targets[0],
@@ -4348,6 +4454,7 @@ const helpBlocked = computed(() => !!(
     sidebarView,
     draggedEntry,
     dropFolder,
+    dropPlaceholders,
     fileDragOver,
     fileDragLeave,
     fileDrop,
@@ -4656,6 +4763,7 @@ const helpBlocked = computed(() => !!(
     openSettingsInNewWindow,
     settingsPage,
     settingsContext,
+    developerMode,
     workspaceExporting,
     workspaceExportError,
     workspaceDeletionError,

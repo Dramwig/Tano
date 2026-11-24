@@ -1,4 +1,9 @@
-use tauri::{webview::NewWindowResponse, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    webview::{NewWindowResponse, PageLoadEvent},
+    Manager, WebviewUrl, WebviewWindowBuilder,
+};
+
+const AUXILIARY_PREFIX: &str = "aux-";
 
 #[derive(Debug, PartialEq)]
 enum Kind {
@@ -25,7 +30,7 @@ fn request(opener: &str, url: &str) -> Option<(String, Kind)> {
         "settings" => Kind::Settings,
         _ => return None,
     };
-    Some((format!("aux-{id}"), kind))
+    Some((format!("{AUXILIARY_PREFIX}{id}"), kind))
 }
 
 pub fn create_main(
@@ -34,11 +39,28 @@ pub fn create_main(
 ) -> tauri::Result<tauri::WebviewWindow> {
     let handle = app.clone();
     WebviewWindowBuilder::from_config(app, config)?
+        .on_page_load(|main, payload| {
+            if payload.event() != PageLoadEvent::Started {
+                return;
+            }
+            // These popups render from the old main document's Vue tree. On
+            // reload, window.close() can leave the native WebView2 host alive.
+            for (label, window) in main.webview_windows() {
+                if label.starts_with(AUXILIARY_PREFIX) {
+                    if let Err(error) = window.destroy() {
+                        eprintln!("Unable to destroy auxiliary window {label} on main navigation: {error}");
+                    }
+                }
+            }
+        })
         .on_new_window(move |url, features| {
             let Some((label, kind)) = request("main", url.as_str()) else {
                 return NewWindowResponse::Deny;
             };
-            let mut builder = WebviewWindowBuilder::new(&handle, label, WebviewUrl::External(url))
+            // WebView2 requires an unnavigated WebView for SetNewWindow.
+            // Tauri skips initial navigation only for the exact about:blank URL.
+            let blank = WebviewUrl::External("about:blank".parse().expect("valid blank URL"));
+            let mut builder = WebviewWindowBuilder::new(&handle, label, blank)
                 .window_features(features)
                 .visible(false)
                 .decorations(false)

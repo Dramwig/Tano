@@ -81,4 +81,23 @@ export const builtinColors: ColorThemeDefinition[] = [
       danger: '#ffb4ac', dangerBg: '#3d1f1a', warning: '#f0dca0', warningBg: '#33301a', addBg: '#25392a', removeBg: '#3f2622', thumb: '#4a5545', thumbHover: '#66725f',
     }),
   },
+  // The frosted-glass layout paints its desk gradient and soft glows from these tokens (sidebar, syntax-blue, syntax-purple, syntax-teal).
+  {
+    // Frosted glass: a bright misty desk with soft blue, lilac and mint light behind milky sheets, a quiet slate-blue accent.
+    id: 'builtin:haze', label: '霜雾',
+    light: palette({
+      desk: '#dfe6ee', paper: '#fbfcfe', surface: '#f1f5f9', raised: '#ffffff', hover: '#e6ecf2',
+      text: '#1c2430', secondary: '#455163', muted: '#5c687a', line: '#dbe2eb', strong: '#b1bdcc',
+      selected: '#dfe7ef', selectedText: '#1f3a58', brand: '#3a5d82', brandHover: '#2d4b6b', fill: '#3a5d82', fillHover: '#335475',
+      highlight: '#ffe58a', backdrop: '#18233355', purple: '#6a45b8', blue: '#2d5fb8', teal: '#0b7480', green: '#2f7a45', orange: '#b05a10', red: '#bf3b52',
+      danger: '#b3261e', dangerBg: '#fdeceb', warning: '#7a4b00', warningBg: '#fff4d6', addBg: '#e2f3e8', removeBg: '#fce7ea', thumb: '#b2bdcc', thumbHover: '#8e9bb0',
+    }),
+    dark: palette({
+      desk: '#0f131a', paper: '#19202a', surface: '#202834', raised: '#27303d', hover: '#2b3544',
+      text: '#e3e8f0', secondary: '#b4becc', muted: '#8d99ab', line: '#28303c', strong: '#465267',
+      selected: '#24365a', selectedText: '#d2def7', brand: '#94bde6', brandHover: '#b3d1ef', fill: '#3b6fa3', fillHover: '#4a80b6',
+      highlight: '#6b5a14', backdrop: '#000000aa', purple: '#cbb5ff', blue: '#9cbcff', teal: '#86d9e0', green: '#a3dcae', orange: '#ffbd85', red: '#ff9fb0',
+      danger: '#ffb4ac', dangerBg: '#40181a', warning: '#ffe0a3', warningBg: '#372d16', addBg: '#1d382a', removeBg: '#41232a', thumb: '#465267', thumbHover: '#647189',
+    }),
+  },
 ];

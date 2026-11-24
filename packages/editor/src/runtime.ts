@@ -11,7 +11,7 @@ export type { SelectionWrappingPreferences } from './selection-wrapping';
 export { workspaceCapabilityPath as capabilityPath } from '@tano/protocol';
 
 export const featureDefinitions = [
-  { key: 'objectReferences', label: 'Level 2 · 工作区对象与统一引用' },
+  { key: 'objectReferences', label: '工作区对象与引用' },
   { key: 'math', label: '数学公式' },
   { key: 'mermaid', label: 'Mermaid 图表' },
   { key: 'wikiLink', label: 'Wiki Links / 文档提及' },
@@ -20,11 +20,11 @@ export const featureDefinitions = [
   { key: 'embed', label: '嵌入预览' },
   { key: 'html', label: 'HTML 预览' },
   { key: 'enhanced', label: '折叠、标签页、分栏与附件' },
-  { key: 'superscript', label: '上标（扩展）' },
-  { key: 'subscript', label: '下标（扩展）' },
-  { key: 'underline', label: '下划线（扩展）' },
+  { key: 'superscript', label: '上标' },
+  { key: 'subscript', label: '下标' },
+  { key: 'underline', label: '下划线' },
   { key: 'highlight', label: '高亮' },
-  { key: 'inlineComment', label: '注释（扩展）' },
+  { key: 'inlineComment', label: '注释' },
 ] as const;
 export type DocumentFeature = (typeof featureDefinitions)[number]['key'];
 export type DocumentFeatures = Record<DocumentFeature, boolean>;
@@ -52,6 +52,8 @@ export interface EditorPreferences {
   copyFormat?: CopyFormat;
   /** Device-local visual spacing; never inserts characters into Markdown. */
   autoSpacing?: boolean;
+  /** Device-local autocomplete that inserts spaces into Markdown while typing. */
+  completeTextSpacing?: boolean;
   previewMathWhileEditing: boolean;
   /** Device-local Mermaid preview while editing revealed Markdown source. */
   previewMermaidWhileEditing?: boolean;
@@ -90,6 +92,7 @@ export const defaultCapabilities: WorkspaceCapabilities = {
 export const defaultEditorPreferences: EditorPreferences = {
   copyFormat: 'markdown',
   autoSpacing: false,
+  completeTextSpacing: false,
   previewMathWhileEditing: true,
   previewMermaidWhileEditing: true,
   folding: true,
@@ -184,12 +187,15 @@ export function workspaceWrapping(options: Partial<SelectionWrappingPreferences>
 }
 
 // Policy belongs to the codec instance, never to a process-wide current workspace.
-const policies = new WeakMap<Ctx, () => WorkspaceCapabilities>();
-export function configureMarkdownRuntime(ctx: Ctx, policy: () => WorkspaceCapabilities) {
-  policies.set(ctx, policy);
+const runtimes = new WeakMap<Ctx, { policy: () => WorkspaceCapabilities; completeSpacing?: () => boolean }>();
+export function configureMarkdownRuntime(ctx: Ctx, policy: () => WorkspaceCapabilities, completeSpacing?: () => boolean) {
+  runtimes.set(ctx, { policy, completeSpacing });
 }
 export function markdownPolicy(ctx: Ctx) {
-  return policies.get(ctx)?.() ?? defaultCapabilities;
+  return runtimes.get(ctx)?.policy() ?? defaultCapabilities;
+}
+export function completesMarkdownSpacing(ctx: Ctx) {
+  return runtimes.get(ctx)?.completeSpacing?.() === true;
 }
 export function newMathSyntax(policy: WorkspaceCapabilities) {
   return policy.mathSyntax === 'preserve'

@@ -595,7 +595,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
         type="button"
         class="icon-button"
         :aria-label="t('引用对象或文档')"
-        :data-tooltip="t('@ 引用对象或文档 · Level 2')"
+        :data-tooltip="t('@ 引用对象或文档')"
         :disabled="disabled"
         @mousedown.prevent
         @click="run('reference')"

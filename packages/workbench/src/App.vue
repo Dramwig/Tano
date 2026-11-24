@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import WindowScope from './windows/WindowScope.vue';
 import WorkbenchSettings from './components/WorkbenchSettings.vue';
-import { provide, proxyRefs, shallowReactive, toRefs } from 'vue';
+import AppMenu from './components/AppMenu.vue';
+import { provide, proxyRefs, ref, shallowReactive, toRefs } from 'vue';
 import { useWorkbench, type WorkbenchProps } from './use-workbench';
 import { workbenchContextKey } from './workbench-context';
 import WorkbenchPanes from './components/WorkbenchPanes.vue';
@@ -47,6 +48,7 @@ const {
   sidebarView,
   draggedEntry,
   dropFolder,
+  dropPlaceholders,
   fileDragOver,
   fileDragLeave,
   fileDrop,
@@ -55,6 +57,7 @@ const {
   workspaceMenu,
   modal,
   settingsPanel,
+  SETTINGS_TAB_ID,
   repositoryActionItems,
   showModal,
   activeId,
@@ -324,6 +327,9 @@ const {
   vScrollFade,
   vSurfaceMotion,
 } = toRefs(context);
+// The brand icon opens the self-drawn application menu on desktop; the web build keeps it as a home link.
+const appMenuOpen = ref(false);
+const brandButton = ref<HTMLElement | null>(null);
 </script>
 
 <template>
@@ -367,7 +373,22 @@ const {
       'workspace-empty': !workspace,
     }"
   >
+    <!-- Liquid glass draws its rim refraction and highlights here, under everything (liquid-glass.ts). -->
+    <div class="liquid-backdrop" aria-hidden="true"></div>
     <Teleport :to="activeWindow.overlays"><WindowScope :key="activeWindow.id" :context="activeWindow"><AssistantButterflyLayer :controller="butterfly" /></WindowScope></Teleport>
+    <Teleport :to="activeWindow.overlays">
+      <WindowScope :key="activeWindow.id" :context="activeWindow">
+        <AppMenu
+          v-if="appMenuOpen && brandButton"
+          :commands="workbenchCommands"
+          :anchor="brandButton"
+          :palette-hint="shortcutHint('commandPalette')"
+          :open-palette="() => { commandPaletteOpened = true; }"
+          :close-window="activeWindow.native ? () => activeWindow.native!.close() : undefined"
+          @close="appMenuOpen = false"
+        />
+      </WindowScope>
+    </Teleport>
     <Teleport :to="activeWindow.overlays"><FileMetadataPanel v-if="fileMetadataTarget && !switchingWorkspace" v-bind="fileMetadataTarget" @close="fileMetadataTarget = null" /></Teleport>
     <Transition name="sidebar-dismiss">
       <button
@@ -386,8 +407,21 @@ const {
     >
         <div class="sidebar-header">
           <div class="sidebar-brand-slot">
+            <button
+              v-if="native && !mobile"
+              ref="brandButton"
+              type="button"
+              class="brand brand-menu-button"
+              aria-haspopup="menu"
+              :aria-expanded="appMenuOpen"
+              :aria-label="t('同页')"
+              @click="appMenuOpen = !appMenuOpen"
+            >
+              <img src="./assets/tano-logo.svg" alt="" />
+            </button>
             <component
               :is="native ? 'div' : 'a'"
+              v-else
               class="brand"
               :href="native ? undefined : '/'"
               :aria-label="native ? undefined : t('返回同页首页')"
@@ -406,6 +440,31 @@ const {
             :menu-label="t('侧栏顶部按钮显示设置')"
             @open="closeButtonVisibilityMenus"
           >
+            <template v-if="navigationModule === 'workspace'">
+              <button
+                v-if="isVisible('search')"
+                type="button"
+                class="icon-button"
+                :aria-label="t('查找文档')"
+                :data-tooltip="t('查找文档')" :data-tooltip-shortcut="shortcuts.findDocument"
+                :disabled="!workspace"
+                @click="showModal('search')"
+              >
+                <Search :size="16" :stroke-width="1.6" />
+              </button>
+              <button
+                v-if="store.workspaceSettings.showGraph && isVisible('graph')"
+                type="button"
+                class="icon-button"
+                :aria-label="t('打开关系图谱')"
+                :data-tooltip="t('关系图谱')"
+                :aria-pressed="activeId === GRAPH_TAB_ID"
+                :disabled="!workspace"
+                @click="store.openGraphTab()"
+              >
+                <GitFork :size="16" :stroke-width="1.6" />
+              </button>
+            </template>
             <template v-for="view in extensionViews" :key="`header-${view.id}`">
               <component
                 :is="view.header"
@@ -450,25 +509,32 @@ const {
             </button>
           </template>
         </SidebarNavigation>
-          <div
-            v-show="navigationModule === 'workspace'"
-            class="section-label sidebar-view-header"
-            :class="{ 'drop-target': draggedEntry && dropFolder === '' }"
-            @dragover="fileDragOver('', $event)"
-            @dragleave="fileDragLeave('', $event)"
-            @drop="fileDrop('', $event)"
-          >
-            <span v-if="draggedEntry">{{ t('放到工作区根目录') }}</span>
+          <div v-show="navigationModule === 'workspace'" class="sidebar-view-header">
             <WorkspaceViewSwitcher
-              v-else
               :model-value="workspaceView"
               @update:model-value="selectWorkspaceView"
               :active="sidebar && !workspaceMenu && !modal && !settingsPanel"
               @open="closeButtonVisibilityMenus"
             />
+          </div>
+          <!-- Workspace root row: names the tree it heads, accepts root drops and owns file-tree actions. -->
+          <div
+            v-show="navigationModule === 'workspace' && sidebarView === 'repository'"
+            class="section-label workspace-root-header"
+            :class="{ 'drop-target': draggedEntry && dropFolder === '' }"
+            @dragover="fileDragOver('', $event)"
+            @dragleave="fileDragLeave('', $event)"
+            @drop="fileDrop('', $event)"
+            @contextmenu.self.prevent="openDirectoryContextMenu('', $event)"
+          >
+            <span
+              class="workspace-root-name"
+              :title="draggedEntry ? undefined : workspace?.name"
+              @contextmenu.prevent="openDirectoryContextMenu('', $event)"
+            >{{ draggedEntry ? t('放到工作区根目录') : (workspace?.name ?? '') }}</span>
             <ButtonVisibilityGroup
               v-slot="{ isVisible }"
-              v-show="sidebarView === 'repository'"
+              v-show="!draggedEntry"
               :items="repositoryActionItems"
               :active="sidebar && sidebarView === 'repository'"
               preference-key="tano.preference.repositoryHiddenActions"
@@ -478,28 +544,8 @@ const {
               @open="closeButtonVisibilityMenus"
             >
               <button
-                v-if="isVisible('search')"
-                type="button"
-                class="icon-button"
-                :aria-label="t('查找文档')"
-                :data-tooltip="t('查找文档')" :data-tooltip-shortcut="shortcuts.findDocument"
-                @click="showModal('search')"
-              >
-                <Search :size="15" :stroke-width="1.6" />
-              </button>
-              <button
-                v-if="store.workspaceSettings.showGraph && isVisible('graph')"
-                type="button"
-                class="icon-button"
-                :aria-label="t('打开关系图谱')"
-                :data-tooltip="t('关系图谱')"
-                :aria-pressed="activeId === GRAPH_TAB_ID"
-                @click="store.openGraphTab()"
-              >
-                <GitFork :size="15" :stroke-width="1.6" />
-              </button>
-              <button
                 v-if="isVisible('create')"
+                type="button"
                 class="icon-button"
                 :aria-label="t('新建文档')"
                 :data-tooltip="t('新建文档')" :data-tooltip-shortcut="shortcuts.newDocument"
@@ -507,6 +553,17 @@ const {
                 @click="createNewDocument"
               >
                 <SquarePen :size="15" :stroke-width="1.6" />
+              </button>
+              <button
+                v-if="isVisible('folder')"
+                type="button"
+                class="icon-button"
+                :aria-label="t('新建文件夹')"
+                :data-tooltip="t('新建文件夹')"
+                :disabled="!workspace || workspace.readOnly || busy"
+                @click="createNewEntry('folder')"
+              >
+                <FolderPlus :size="15" :stroke-width="1.6" />
               </button>
             </ButtonVisibilityGroup>
           </div>
@@ -520,7 +577,7 @@ const {
           <div
             v-scroll-fade
             class="tree-scroll"
-            :class="{ 'drop-root': draggedEntry && dropFolder === '' }"
+            :class="{ 'drop-root': draggedEntry && dropFolder === '' && !dropPlaceholders.length }"
             @contextmenu.self.prevent="openDirectoryContextMenu('', $event)"
             @dragover.self="fileDragOver('', $event)"
             @dragleave.self="fileDragLeave('', $event)"
@@ -539,6 +596,7 @@ const {
               :context-selected="fileContextMenu?.file.id"
               :dragged-id="draggedEntry?.file.id"
               :drop-target="dropFolder"
+              :drop-preview="dropPlaceholders"
               :can-drag="canDragEntry"
               :renaming-id="treeRename?.fileId"
               :rename-entry="renameTreeEntry"
@@ -1192,7 +1250,8 @@ const {
         />
     </WorkspaceSidebar>
 
-    <div ref="mainColumn" class="main-column" :inert="compactPanes && sidebar || undefined">
+    <!-- Without workbench panes (home, extension views, empty) the whole column is the page card. -->
+    <div ref="mainColumn" class="main-column" :class="{ 'workspace-card': !(workspace || startupPending || filesPending) }" :inert="compactPanes && sidebar || undefined">
       <button v-if="!workspace && !sidebar && !isAuxiliaryWindow" class="icon-button" :aria-label="t('展开侧栏')" @click="sidebar = true"><PanelLeftOpen :size="18" /></button>
       <Teleport :to="activeWindow.overlays"><WindowScope :key="activeWindow.id" :context="activeWindow">
       <ReferenceGraphPopover
@@ -1205,7 +1264,7 @@ const {
         @open="openReference"
       />
       </WindowScope></Teleport>
-      <div v-if="(workspace || startupPending || filesPending) && compactPanes && tabsEnabled" class="workspace-tabbar">
+      <div v-if="compactPanes && tabsEnabled && (workspace || startupPending || filesPending || store.tabs.length)" class="workspace-tabbar">
         <DesktopTabs
           :loading="sessionPending"
           :file-drag="tabFileDrag"
@@ -1222,6 +1281,7 @@ const {
           <div class="workspace-tabbar" :data-tab-pane-id="pane.id"><DesktopTabs :pane-id="pane.id" :show-navigation="rect.top === 0 && rect.left === 0" :detachable="false" /></div>
         </template>
         <template #default="{ pane }">
+          <WorkbenchSettings v-if="pane.activeId === SETTINGS_TAB_ID" tabbed />
           <template v-for="view in extensionViews" :key="view.id"><component v-if="pane.activeId === view.id" :is="view.component" :actions="viewActions[view.id]" /></template>
         </template>
       </WorkspacePanes>
@@ -1406,8 +1466,7 @@ const {
       @mousedown.self="!modalBusy && !updateLock && (modal = '')"
     >
       <section
-        class="modal"
-        :class="{ 'search-modal': modal === 'search' }"
+        :class="modal === 'search' ? 'search-modal' : 'modal'"
         role="dialog"
         aria-modal="true"
         :aria-label="modalTitle"
