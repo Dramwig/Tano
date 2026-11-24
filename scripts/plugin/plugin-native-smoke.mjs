@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import { buildPlugin } from './plugin-build.mjs';
-import { acceptTaskInsights, selectWorkspaceSidebarTab } from '../../tests/fixtures/task-insights-acceptance.mjs';
+import { acceptTaskInsights } from '../../tests/fixtures/task-insights-acceptance.mjs';
 
 if (process.platform !== 'win32') throw new Error('This acceptance test requires Windows and WebView2.');
 if (!process.env.npm_execpath) throw new Error('Run npm run test:plugins:native from the repository.');
@@ -16,7 +16,8 @@ const artifacts = join(root, 'artifacts'); await mkdir(artifacts, { recursive: t
 const directory = await mkdtemp(join(artifacts, 'plugin-native-smoke-'));
 const target = join(root, 'apps/client/src-tauri/target');
 const cargoArgs = ['build', '--release', '--locked', '--features', 'tauri/custom-protocol', '--manifest-path', 'apps/client/src-tauri/Cargo.toml'];
-const config = { identifier: 'app.tano.plugin-smoke', app: { windows: [{ label: 'main', title: 'Tano Plugin Smoke', visible: false, width: 1280, height: 900, decorations: false }] } };
+// The desktop shell creates its own hidden main window during startup.
+const config = { identifier: 'app.tano.plugin-smoke' };
 async function openPluginCenter(page) {
   await page.getByRole('button', { name: /^切换上下文：/ }).click();
   await page.getByRole('button', { name: '更多操作', exact: true }).click();
@@ -103,8 +104,9 @@ try {
   await page.locator('.plugin-detail-page').getByRole('button', { name: '权限', exact: true }).click();
   await page.getByRole('button', { name: '授权此版本运行', exact: true }).click();
   await closePluginDetails(page);
-  await selectWorkspaceSidebarTab(page, '插件');
-  await page.getByRole('region', { name: '插件', exact: true }).getByRole('button', { name: /^Git 变更/ }).click();
+  const gitPlugin = page.getByRole('region', { name: '插件工具', exact: true })
+    .getByRole('article').filter({ hasText: '本机查询测试' });
+  await gitPlugin.getByRole('button', { name: '打开标签页', exact: true }).click();
   const view = page.getByRole('region', { name: '本机查询测试 · Git 变更', exact: true }).frameLocator('iframe[title="插件界面隔离容器"]').frameLocator('iframe');
   await expect(view.getByRole('heading', { name: 'Git 变更', exact: true })).toBeVisible({ timeout: 15000 });
   await expect(view.getByRole('heading', { name: 'Git 变更', exact: true })).toHaveCSS('font-size', '24px');
