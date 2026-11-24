@@ -27,7 +27,8 @@
     "./extension": "./src/extension.ts",
     "./search": "./src/search.ts",
     "./surface-motion": "./src/primitives/surface-motion.ts",
-    "./motion": "./src/primitives/motion.ts"
+    "./motion": "./src/primitives/motion.ts",
+    "./styles.css": "./src/styles/index.css"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
