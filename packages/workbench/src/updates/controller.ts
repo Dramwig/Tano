@@ -1,5 +1,6 @@
 export interface UpdateStatus {
   currentVersion: string;
+  channel?: string;
   configured: boolean;
   reason: string | null;
   /** Native distribution identity chooses the manual download channel. */
@@ -12,6 +13,8 @@ export interface UpdateCandidate {
   notes: string;
   /** A Local announcement opens a release page and cannot be installed here. */
   manualUrl?: string | null;
+  /** Native channels such as Microsoft Store may stage the package silently during check. */
+  ready?: boolean;
 }
 export interface UpdateProgress {
   downloaded: number;
@@ -72,7 +75,7 @@ export class UpdateController {
     this.changed();
     try {
       this.candidate = (await this.host.check()) ?? undefined;
-      this.phase = this.candidate ? 'available' : 'current';
+      this.phase = this.candidate ? (this.candidate.ready ? 'ready' : 'available') : 'current';
     } catch (error) {
       this.phase = 'idle';
       this.error = String(error);

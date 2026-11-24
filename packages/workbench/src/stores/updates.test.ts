@@ -34,3 +34,13 @@ it('requires conflict resolution even when workspace flush safely journals a con
   expect(mocks.disconnect).not.toHaveBeenCalled();
   expect(mocks.invoke.mock.calls.some(([command]) => command === 'update_install')).toBe(false);
 });
+
+it('promotes silently staged Store candidates directly to ready phase', async () => {
+  mocks.invoke.mockImplementation(async (command: string) => {
+    if (command === 'update_status') return { currentVersion: '0.14.0', channel: 'microsoft-store', configured: true };
+    if (command === 'update_check') return { id: 'store-1', version: '0.15.0', notes: '', ready: true };
+  });
+  const updates = useUpdatesStore();
+  await updates.initialize();
+  expect(updates.state.phase).toBe('ready');
+});

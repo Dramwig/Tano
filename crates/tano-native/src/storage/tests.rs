@@ -44,29 +44,29 @@ mod protocol_vector_tests {
         let vectors: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(
-            tano_page::WORKSPACE_DATA_DIRECTORY,
+            tano_protocol::WORKSPACE_DATA_DIRECTORY,
             vectors["constants"]["WORKSPACE_DATA_DIRECTORY"]
                 .as_str()
                 .unwrap()
         );
         assert_eq!(
-            tano_page::OBJECT_DIRECTORY,
+            tano_protocol::OBJECT_DIRECTORY,
             vectors["constants"]["OBJECT_DIRECTORY"].as_str().unwrap()
         );
         assert_eq!(
-            tano_page::WORKSPACE_CAPABILITY_PATH,
+            tano_protocol::WORKSPACE_CAPABILITY_PATH,
             vectors["constants"]["WORKSPACE_CAPABILITY_PATH"]
                 .as_str()
                 .unwrap()
         );
         assert_eq!(
-            tano_page::WORKSPACE_SETTINGS_PATH,
+            tano_protocol::WORKSPACE_SETTINGS_PATH,
             vectors["constants"]["WORKSPACE_SETTINGS_PATH"]
                 .as_str()
                 .unwrap()
         );
         assert_eq!(
-            tano_page::WORKSPACE_RELATION_PATH,
+            tano_protocol::WORKSPACE_RELATION_PATH,
             vectors["constants"]["WORKSPACE_RELATION_PATH"]
                 .as_str()
                 .unwrap()
@@ -75,7 +75,7 @@ mod protocol_vector_tests {
             let input = item["input"].as_str().unwrap().as_bytes();
             let expected = item["sha256"].as_str().unwrap();
             assert_eq!(hash(input), expected);
-            assert_eq!(tano_page::content_hash(input), expected);
+            assert_eq!(tano_protocol::content_hash(input), expected);
         }
         for id in vectors["shortIds"]["valid"].as_array().unwrap() {
             let s = id.as_str().unwrap();
@@ -90,22 +90,22 @@ mod protocol_vector_tests {
             .unwrap()
         {
             let s = p.as_str().unwrap();
-            assert!(tano_page::is_workspace_internal_path(s), "{s}");
+            assert!(tano_protocol::is_workspace_internal_path(s), "{s}");
         }
         for p in vectors["workspaceInternalPaths"]["invalid"]
             .as_array()
             .unwrap()
         {
             let s = p.as_str().unwrap();
-            assert!(!tano_page::is_workspace_internal_path(s), "{s}");
+            assert!(!tano_protocol::is_workspace_internal_path(s), "{s}");
         }
         for p in vectors["workspaceDataPaths"]["valid"].as_array().unwrap() {
             let s = p.as_str().unwrap();
-            assert!(tano_page::is_workspace_data_path(s), "{s}");
+            assert!(tano_protocol::is_workspace_data_path(s), "{s}");
         }
         for p in vectors["workspaceDataPaths"]["invalid"].as_array().unwrap() {
             let s = p.as_str().unwrap();
-            assert!(!tano_page::is_workspace_data_path(s), "{s}");
+            assert!(!tano_protocol::is_workspace_data_path(s), "{s}");
         }
     }
 }

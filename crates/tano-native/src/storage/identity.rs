@@ -145,7 +145,7 @@ pub(crate) fn cached_identity_exists(cache: &Path, workspace_id: &str) -> Result
 }
 
 pub fn is_short_id(id: &str) -> bool {
-    tano_page::is_short_id(id)
+    tano_protocol::is_short_id(id)
 }
 
 pub(crate) fn claim_reference_id(

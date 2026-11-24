@@ -4,11 +4,10 @@ Tano - Humans and agents, on the same page.
 
 This preview Python library provides working helpers for Tano's local File-Native
 workspace protocol. It is not the desktop application or a sync client.
-PyPI normalizes the distribution name `tano.page` to `tano-page`; import it as
-`tano_page`.
+The PyPI distribution is `tano-page-protocol`. Import it as `tano_page_protocol`.
 
 ```python
-from tano_page import content_hash, is_short_id, is_workspace_data_path
+from tano_page_protocol import content_hash, is_short_id, is_workspace_data_path
 
 revision = content_hash(b"# Notes\n")
 assert len(revision) == 64

@@ -11,12 +11,13 @@ const updates = useUpdatesStore();
 const state = computed(() => props.remoteState ?? updates.state);
 const downloaded = computed(() => (state.value.progress.downloaded / 1024 / 1024).toFixed(1));
 const manual = computed(() => state.value.status?.manual === true);
+const isStore = computed(() => state.value.status?.channel === 'microsoft-store');
 const unconfigured = computed(() => state.value.status?.configured === false && !manual.value);
 const externalError = ref('');
 const title = computed(() => {
   if (unconfigured.value) return t('自动更新暂不可用');
   if (state.value.phase === 'current') return t('当前已是最新版本。');
-  if (state.value.phase === 'available') return t('发现新版本 {0}', [state.value.candidate?.version ?? '']);
+  if (state.value.phase === 'available') return t('发现新版本 {0}', [state.value.candidate?.version ?? '']).trim();
   if (state.value.phase === 'ready') return t('更新已准备就绪');
   if (state.value.phase === 'downloading') return t('正在下载更新');
   if (state.value.phase === 'installing') return t('正在安装更新');
@@ -69,7 +70,12 @@ async function openManualRelease(url: string) {
 async function openDownloads() {
   externalError.value = '';
   const localUrl = 'https://tano.page/zh-cn/download/#local';
-  const url = state.value.status?.downloadUrl === localUrl ? localUrl : 'https://tano.page/zh-cn/download/';
+  const storeUrl = 'https://apps.microsoft.com/detail/9P3925SGRTB0';
+  const url = isStore.value && state.value.status?.downloadUrl === storeUrl
+    ? storeUrl
+    : state.value.status?.downloadUrl === localUrl
+      ? localUrl
+      : 'https://tano.page/zh-cn/download/';
   try { await openExternalUrl(url); }
   catch (error) { externalError.value = String(error); }
 }
@@ -90,7 +96,7 @@ async function openDownloads() {
       <button v-if="manual" type="button" class="update-manual-link" @click="openDownloads">{{ t('前往官网下载') }}</button>
     </div>
     <button v-if="unconfigured" type="button" class="update-button" @click="openDownloads">
-      <span>{{ t('前往官网下载') }}</span><ExternalLink :size="13" />
+      <span>{{ isStore ? t('打开 Microsoft Store') : t('前往官网下载') }}</span><ExternalLink :size="13" />
     </button>
     <button
       v-else

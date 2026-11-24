@@ -2822,6 +2822,7 @@
   "检查更新": "Check for updates",
   "此安装包未配置更新源，请从官网下载新版安装包。": "This installation has no update source. Download the latest installer from the official website.",
   "前往官网下载": "Download from the official website",
+  "打开 Microsoft Store": "Open Microsoft Store",
   "自动更新暂不可用": "Automatic updates unavailable",
   "发现新版本 {0}": "Version {0} is available",
   "更新已准备就绪": "Update ready to install",

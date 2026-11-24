@@ -7,7 +7,7 @@ description = "Tano local filesystem, search and desktop host core"
 include = ["src/**", "build.rs", "Cargo.toml", "LICENSE"]
 
 [dependencies]
-tano-page = { version = "0.1.0-alpha.2", path = "../../packages/rust-protocol" }
+tano_protocol = { package = "tano-page-protocol", version = "0.1.0-alpha.2", path = "../../packages/rust-protocol" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }

@@ -57,8 +57,11 @@ export async function publishCore({ root = repository, apply = false, evidencePa
         else throw error;
       }
     }
-    const nativeUrl = `https://crates.io/api/v1/crates/tano-native/${manifest.version}`;
-    const nativeResponse = await fetchImpl(nativeUrl, { headers: { 'User-Agent': 'Tano-Core-distribution (https://github.com/Dramwig/Tano)' }, signal: AbortSignal.timeout(30_000) });
+    const queryCrate = (name, version) => fetchImpl(
+      `https://crates.io/api/v1/crates/${name}/${encodeURIComponent(version)}`,
+      { headers: { 'User-Agent': 'Tano-Core-distribution (https://github.com/Dramwig/Tano)' }, signal: AbortSignal.timeout(30_000) },
+    );
+    const nativeResponse = await queryCrate('tano-native', manifest.version);
     let publishNative = false;
     if (nativeResponse.status === 404) publishNative = true;
     else {
@@ -66,14 +69,26 @@ export async function publishCore({ root = repository, apply = false, evidencePa
       if ((await nativeResponse.json()).version?.checksum !== manifest.native.sha256)
         throw new Error('Immutable Rust version already contains different code');
     }
+    const nativeManifestPath = join(root, 'crates/tano-native/Cargo.toml');
+    const nativeManifest = await readFile(nativeManifestPath, 'utf8');
+    const protocolDependency = /^\s*tano_protocol\s*=\s*\{([^}\r\n]*)\}/m.exec(nativeManifest)?.[1] ?? '';
+    const protocolVersion = /(?:^|,)\s*version\s*=\s*"([^"]+)"/.exec(protocolDependency)?.[1];
+    if (!protocolVersion || !/(?:^|,)\s*package\s*=\s*"tano-page-protocol"\s*(?:,|$)/.test(protocolDependency))
+      throw new Error('Cannot read the tano-page-protocol dependency version from crates/tano-native/Cargo.toml');
+    const protocolResponse = await queryCrate('tano-page-protocol', protocolVersion);
+    if (protocolResponse.status === 404)
+      throw new Error(`Publish tano-page-protocol@${protocolVersion} to crates.io before publishing Core`);
+    if (!protocolResponse.ok)
+      throw new Error(`Cannot query tano-page-protocol@${protocolVersion} on crates.io: HTTP ${protocolResponse.status}`);
+
     // Complete all collision checks before the first remote write. Retrying a partial
     // publication skips only versions whose exact bytes and provenance already match.
     if (publishNative) {
-      run('cargo', ['package', '--manifest-path', join(root, 'crates/tano-native/Cargo.toml'),
+      run('cargo', ['package', '--manifest-path', nativeManifestPath,
         '--target-dir', join(directory, 'native-target'), '--locked', '--no-verify'], { cwd: root, stdio: 'inherit' });
       const packed = await readFile(join(directory, 'native-target/package', manifest.native.file));
       if (sha256(packed) !== manifest.native.sha256) throw new Error('Rust archive changed; prepare the distribution again');
-      run('cargo', ['publish', '--manifest-path', join(root, 'crates/tano-native/Cargo.toml'),
+      run('cargo', ['publish', '--manifest-path', nativeManifestPath,
         '--target-dir', join(directory, 'native-target'), '--locked', '--no-verify'], { cwd: root, stdio: 'inherit' });
     }
     for (const item of pending)

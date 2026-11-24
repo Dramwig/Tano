@@ -1,5 +1,5 @@
 [package]
-name = "tano-page"
+name = "tano-page-protocol"
 version = "0.1.0-alpha.2"
 edition = "2021"
 rust-version = "1.70"
