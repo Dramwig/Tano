@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test('real shell stays interactive while the editor module is still downloading', async ({ page }) => {
   let release;
   const pending = new Promise(resolve => { release = resolve; });
-  await page.route('**/packages/editor/src/MarkdownEditor.vue*', async route => {
+  await page.route('**/packages/editor/src/views/MarkdownEditor.vue*', async route => {
     await pending;
     await route.continue();
   });
@@ -47,7 +47,7 @@ test(`workspace recovery retains chrome and content origin (desktop tabs: ${desk
   });
   let releaseEditor;
   const pending = new Promise(resolve => { releaseEditor = resolve; });
-  await page.route('**/packages/editor/src/MarkdownEditor.vue*', async route => {
+  await page.route('**/packages/editor/src/views/MarkdownEditor.vue*', async route => {
     await pending; await route.continue();
   });
   try {

@@ -3,8 +3,8 @@ import type { Ctx } from '@milkdown/kit/ctx';
 import { DOMSerializer, type Fragment } from '@milkdown/kit/prose/model';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { parseReferenceUrl, resolveReference, type ReferenceTarget } from '@tano/protocol';
-import { destinationClipboardHTML, selectedFormulaMathML, tableTSV } from '../clipboard-formats';
-import { normalizeCopyFormat, type CopyFormat, type EditorPreferences } from '../runtime';
+import { destinationClipboardHTML, selectedFormulaMathML, tableTSV } from '../core/clipboard-formats';
+import { normalizeCopyFormat, type CopyFormat, type EditorPreferences } from '../core/runtime';
 
 export function containsEmbeddedImage(data: DataTransfer | null): boolean {
   return /<img\b[^>]*\bsrc\s*=\s*["']?data:image\//i.test(

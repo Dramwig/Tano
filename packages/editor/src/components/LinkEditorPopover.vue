@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useEditorWindow } from '../primitives/dom-context';
 import { vSurfaceMotion } from '../primitives/surface-motion';
-import type { SlashTranslate } from '../slash-commands';
+import type { SlashTranslate } from '../plugins/slash-commands';
 import type { LinkPanel, LinkPanelField } from '../plugins/link-panel-controller';
 
 const props = defineProps<{

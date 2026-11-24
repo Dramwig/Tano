@@ -2,8 +2,8 @@ import { nextTick, ref, shallowRef } from 'vue';
 import { editorViewCtx, type Editor } from '@milkdown/kit/core';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import type { Mark } from '@milkdown/kit/prose/model';
-import { floatingPanelPosition, type PanelSide } from '../panel-position';
-import { activateEditorPanel, announceEditorPanel, onOtherEditorPanel } from '../editor-panel';
+import { floatingPanelPosition, type PanelSide } from '../core/panel-position';
+import { activateEditorPanel, announceEditorPanel, onOtherEditorPanel } from '../core/editor-panel';
 
 export type LinkPanel =
   | {

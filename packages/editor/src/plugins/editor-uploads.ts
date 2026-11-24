@@ -12,8 +12,8 @@ import {
   referenceUrl,
   type ReferenceTarget,
 } from '@tano/protocol';
-import { commandEnabled } from '../document-model';
-import type { WorkspaceCapabilities } from '../runtime';
+import { commandEnabled } from '../core/document-model';
+import type { WorkspaceCapabilities } from '../core/runtime';
 import { containsEmbeddedImage } from './editor-clipboard';
 
 export interface ImportedResource {
