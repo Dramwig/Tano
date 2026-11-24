@@ -1,10 +1,10 @@
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 
-import { isElement, isHTMLElement } from './dom-realm';
+import { isElement, isHTMLElement } from './primitives/dom-realm';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/kit/prose/view';
 import type { Node } from '@milkdown/kit/prose/model';
-import { canAnimate, spring, springEasing } from './motion';
+import { canAnimate, spring, springEasing } from './primitives/motion';
 
 /* Live Markdown fields (links, inline code, emphasis, …) open and close with
  * motion instead of jumping.

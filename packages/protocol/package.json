@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./features": "./src/features.ts",
     "./frontmatter": "./src/frontmatter.ts",
     "./markdown-file-metadata": "./src/markdown-file-metadata.ts"
   },

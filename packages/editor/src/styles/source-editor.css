@@ -1,0 +1,146 @@
+.source-editor {
+  display: block;
+  width: 100%;
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--tano-source-font-size, 14px);
+  line-height: calc(var(--tano-source-font-size, 14px) * 1.928571);
+  tab-size: 2;
+}
+.source-editor .cm-editor,
+.source-editor .cm-scroller {
+  overflow: visible;
+  background: transparent;
+}
+.source-editor .cm-scroller,
+.source-editor .cm-content {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  tab-size: inherit;
+}
+.source-editor .cm-gutters {
+  /* Keep line numbers outside the text measure, including when digits grow.
+     Override CodeMirror's inline sticky positioning: the page scrolls here. */
+  position: absolute !important;
+  left: var(--tano-block-padding-inline);
+  top: 0;
+  transform: translateX(-100%);
+  border: 0;
+  background: transparent;
+}
+.source-editor .cm-line {
+  padding-inline: var(--tano-block-padding-inline);
+}
+.source-editor .cm-lineNumbers .cm-gutterElement {
+  padding: 0 10px 0 0;
+  color: var(--muted);
+}
+/* Center on the heading's first visual row, not its full wrapped block.
+   CodeMirror still measures each complete block to position subsequent numbers. */
+.source-editor .cm-lineNumbers .cm-source-heading-1-gutter {
+  padding-top: calc(4px + var(--tano-source-font-size, 14px) * (2.285714 * 1.4 - 1.928571) / 2);
+}
+.source-editor .cm-lineNumbers .cm-source-heading-2-gutter {
+  padding-top: calc(3px + var(--tano-source-font-size, 14px) * (1.714286 * 1.45 - 1.928571) / 2);
+}
+.source-editor .cm-lineNumbers .cm-source-heading-3-gutter {
+  padding-top: calc(3px + var(--tano-source-font-size, 14px) * (1.357143 * 1.5 - 1.928571) / 2);
+}
+.source-editor .cm-lineNumbers .cm-source-heading-4-gutter {
+  padding-top: calc(var(--tano-source-font-size, 14px) * (1.285714 * 1.55 - 1.928571) / 2);
+}
+.source-editor .cm-lineNumbers .cm-activeLineGutter {
+  background: transparent;
+  color: var(--muted);
+}
+/* Keep the gutter width stable as the caret moves or all numbers are toggled. */
+.source-editor:not(.show-all-line-numbers) .cm-lineNumbers .cm-gutterElement:not(.cm-activeLineGutter) {
+  color: transparent;
+}
+.source-editor .cm-content {
+  min-height: calc(100vh - 290px);
+  padding: 0;
+  caret-color: #5f5e5b;
+}
+.source-editor .cm-focused {
+  outline: none;
+}
+.source-editor .cm-selectionBackground,
+.source-editor .cm-focused .cm-selectionBackground {
+  background: var(--block-selection);
+}
+.source-editor .cm-source-frontmatter,
+.source-editor .cm-source-quote-marker,
+.source-editor .cm-source-list-marker,
+.source-editor .cm-source-rule {
+  color: var(--syntax-purple);
+}
+.source-editor .cm-source-heading {
+  color: var(--syntax-red);
+  font-weight: 600;
+}
+.source-editor .cm-source-heading-1 {
+  font-size: calc(var(--tano-source-font-size, 14px) * 2.285714);
+  line-height: 1.4;
+  letter-spacing: -0.5px;
+}
+.source-editor .cm-source-heading-2 {
+  font-size: calc(var(--tano-source-font-size, 14px) * 1.714286);
+  line-height: 1.45;
+}
+.source-editor .cm-source-heading-3 {
+  font-size: calc(var(--tano-source-font-size, 14px) * 1.357143);
+  line-height: 1.5;
+}
+.source-editor .cm-source-heading-4 {
+  font-size: calc(var(--tano-source-font-size, 14px) * 1.285714);
+  line-height: 1.55;
+}
+.source-editor .cm-source-heading-5 {
+  font-size: calc(var(--tano-source-font-size, 14px) * 1.071429);
+}
+.source-editor .cm-source-heading-6 {
+  font-size: var(--tano-source-font-size, 14px);
+}
+.source-editor .cm-line.cm-source-heading-1-line {
+  padding-top: 4px;
+  padding-bottom: 10px;
+}
+.source-editor .cm-line.cm-source-heading-2-line,
+.source-editor .cm-line.cm-source-heading-3-line {
+  padding-top: 3px;
+  padding-bottom: 6px;
+}
+.source-editor .cm-line.cm-source-heading-4-line,
+.source-editor .cm-line.cm-source-heading-5-line,
+.source-editor .cm-line.cm-source-heading-6-line {
+  padding-bottom: 3px;
+}
+.source-editor .cm-source-strong {
+  font-weight: 600;
+}
+.source-editor .cm-source-emphasis {
+  font-style: italic;
+}
+.source-editor .cm-source-delete {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.source-editor .cm-source-code {
+  color: var(--syntax-orange);
+  background: var(--surface);
+}
+.source-editor .cm-source-link {
+  color: #5f5e5b;
+  text-decoration: underline;
+  text-decoration-color: rgba(74, 85, 104, 0.4);
+}
+.source-editor .cm-source-image,
+.source-editor .cm-source-math {
+  color: var(--syntax-purple);
+}
+.source-editor .cm-source-html {
+  color: var(--syntax-orange);
+}

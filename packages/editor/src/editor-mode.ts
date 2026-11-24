@@ -1,5 +1,5 @@
-import { ownerWindow } from '@tano/editor/dom-realm';
-import type { ModeSelection } from '@tano/editor/mode-selection';
+import { ownerWindow } from './primitives/dom-realm';
+import type { ModeSelection } from './mode-selection';
 
 export interface ModeEditor {
   captureModeSelection(): ModeSelection | null;

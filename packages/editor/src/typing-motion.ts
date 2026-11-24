@@ -1,8 +1,8 @@
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/kit/prose/view';
 import type { Node } from '@milkdown/kit/prose/model';
-import { canAnimate } from './motion';
+import { canAnimate } from './primitives/motion';
 import { FrameLoop } from './typing/spring';
 import { SmoothCaret } from './typing/caret';
 import { TypedReveal } from './typing/typed-reveal';

@@ -1,5 +1,5 @@
-import { IncrementalSourceHighlighter, type SourceHighlightChange, type SourceHighlightUpdate } from '@tano/editor/source-highlight';
-import type { DocumentFeatures } from '@tano/editor/runtime';
+import { IncrementalSourceHighlighter, type SourceHighlightChange, type SourceHighlightUpdate } from './source-highlight';
+import type { DocumentFeatures } from './runtime';
 
 export interface SourceHighlightRequest {
   id: number;

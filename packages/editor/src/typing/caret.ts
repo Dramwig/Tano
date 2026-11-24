@@ -1,6 +1,6 @@
-import { ownerWindow } from '../dom-realm';
+import { ownerWindow } from '../primitives/dom-realm';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import { reducedMotion, spring } from '../motion';
+import { reducedMotion, spring } from '../primitives/motion';
 import { CARET_FOLLOW_SPRING, CARET_SPRING, Spring, type SpringConfig } from './spring';
 
 /* The drawn caret. Its position is three springs (x, y, height) stepped by

@@ -1,5 +1,5 @@
 
-import { isNode } from './dom-realm';
+import { isNode } from './primitives/dom-realm';
 import { observePanelPosition } from './panel-position';
 
 const openEvent = 'tano-editor-panel-open';

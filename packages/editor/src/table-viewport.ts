@@ -1,11 +1,11 @@
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 import type { Node } from '@milkdown/kit/prose/model';
 import { Plugin, type Transaction } from '@milkdown/kit/prose/state';
 import { columnResizingPluginKey, TableMap, TableView } from '@milkdown/kit/prose/tables';
 import type { EditorView, ViewMutationRecord } from '@milkdown/kit/prose/view';
 import { defaultTableColumnWidth } from '@tano/protocol';
 import { animate } from 'motion/mini';
-import { springEasing } from './motion';
+import { springEasing } from './primitives/motion';
 
 const viewports = new WeakMap<EditorView, Set<TableViewport>>();
 const queues = new WeakMap<EditorView, { pending: Set<TableViewport>; frame?: number }>();

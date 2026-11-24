@@ -1148,7 +1148,7 @@ const ownsFullscreenAssistant = computed(() => {
                         @enter="insertBlockBelowTitle"
                         @comment="paneComments.get(pane.id)?.showDiscussion()"
                       />
-                      <SourceEditor :reference-targets="store.referenceTargets" :capabilities="store.capabilities" :preferences="documentEditorPreferences" :suggestion-marks="suggestions.sourceMarks"
+                      <SourceEditor :reference-targets="store.referenceTargets" :capabilities="store.capabilities" :preferences="documentEditorPreferences" :suggestion-marks="suggestions.sourceMarks" :translate="t"
                         :show-all-line-numbers="showAllLineNumbers"
                         v-if="paneSource(pane.activeId)"
                         :key="active.id"

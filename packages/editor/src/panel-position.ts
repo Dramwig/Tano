@@ -1,5 +1,5 @@
 export type PanelSide = 'above' | 'below';
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 
 interface PanelPosition {
   x: number;

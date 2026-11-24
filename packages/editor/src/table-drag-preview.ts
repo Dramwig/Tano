@@ -1,6 +1,6 @@
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 
-import { isHTMLElement } from './dom-realm';
+import { isHTMLElement } from './primitives/dom-realm';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { tableLineSelection } from './table-commands';
 import type { TableTarget } from './table-commands';

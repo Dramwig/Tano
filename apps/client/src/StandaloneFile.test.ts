@@ -16,7 +16,7 @@ vi.mock('@tano/editor', async () => {
     setup: (props, { emit }) => () => h('textarea', { value: props.modelValue, onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLTextAreaElement).value) }),
   }) };
 });
-vi.mock('@tano/workbench/components/SourceEditor.vue', async () => ({ default: (await import('@tano/editor')).default }));
+vi.mock('@tano/editor/source-editor', async () => ({ default: (await import('@tano/editor')).default }));
 
 let app: App | undefined;
 afterEach(() => { app?.unmount(); document.body.replaceChildren(); localStorage.clear(); vi.clearAllMocks(); });

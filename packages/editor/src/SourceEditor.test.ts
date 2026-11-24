@@ -4,7 +4,7 @@ import { createApp, h, nextTick, ref } from 'vue';
 import type { App } from 'vue';
 import { EditorView } from '@codemirror/view';
 import SourceEditor from './SourceEditor.vue';
-import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping, defaultChineseInput } from '@tano/editor/runtime';
+import { defaultCapabilities, defaultEditorPreferences, defaultSelectionWrapping, defaultChineseInput } from './runtime';
 
 let app: App | undefined;
 let root: HTMLDivElement;

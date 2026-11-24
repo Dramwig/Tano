@@ -1,4 +1,4 @@
-import { setSurfaceVisible } from './surface-motion';
+import { setSurfaceVisible } from './primitives/surface-motion';
 import type { NodeViewConstructor } from '@milkdown/kit/prose/view';
 import { Ellipsis, ExternalLink, FileUp, Image as ImageIcon } from 'lucide-vue-next';
 import { h, render as renderIcon, watch, type Component } from 'vue';

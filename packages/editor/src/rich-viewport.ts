@@ -1,6 +1,6 @@
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 
-import { isHTMLElement, isElement } from './dom-realm';
+import { isHTMLElement, isElement } from './primitives/dom-realm';
 import { DOMSerializer, type Node } from '@milkdown/kit/prose/model';
 import { Plugin, PluginKey, TextSelection, type Transaction } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet, type EditorView, type NodeView, type NodeViewConstructor } from '@milkdown/kit/prose/view';

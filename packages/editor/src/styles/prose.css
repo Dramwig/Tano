@@ -1,0 +1,1127 @@
+.tano-comment-mark, .cm-comment-mark {
+  background: color-mix(in srgb, #f4d35e 24%, transparent);
+  text-decoration: underline;
+  text-decoration-color: #e2b62f;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  text-decoration-skip-ink: none;
+  cursor: pointer;
+}
+.tano-comment-mark:hover, .cm-comment-mark:hover { background: color-mix(in srgb, #f4d35e 38%, transparent); }
+.tano-search-match { background: color-mix(in srgb, #f4d35e 48%, transparent); border-radius: 2px; }
+.tano-search-current { background: color-mix(in srgb, #eea82b 72%, var(--paper)); box-shadow: 0 0 0 1px #c79027; }
+.tano-reference-flash { border-radius: 3px; background: color-mix(in srgb, var(--green) 28%, transparent); animation: tano-reference-pulse 800ms ease-in-out 3; }
+@keyframes tano-reference-pulse {
+  0%, 100% { background-color: color-mix(in srgb, var(--green) 12%, transparent); }
+  50% { background-color: color-mix(in srgb, var(--green) 38%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 24%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .tano-reference-flash { animation: none; } }
+
+/* Text blocks own their inset; list items and table cells already supply theirs.
+   Keep semantic ProseMirror nodes instead of adding editable wrapper elements. */
+.tano-prose :is(p, h1, h2, h3, h4, h5, h6) {
+  --tano-text-padding-block: var(--tano-block-padding-block);
+  --tano-text-padding-inline: var(--tano-block-padding-inline);
+  padding: var(--tano-text-padding-block) var(--tano-text-padding-inline);
+}
+.tano-prose :is(li, th, td) > :is(p, h1, h2, h3, h4, h5, h6) {
+  --tano-text-padding-block: 0px;
+  --tano-text-padding-inline: 0px;
+}
+.tano-prose blockquote > :is(p, h1, h2, h3, h4, h5, h6) {
+  --tano-text-padding-block: 0px;
+}
+.tano-prose .tano-html-node {
+  white-space: normal;
+}
+.tano-prose .tano-html-block {
+  display: block;
+}
+.tano-prose .tano-html-fallback,
+.tano-prose .tano-unsupported-block {
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 0;
+  border-radius: 5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tano-prose .tano-html-fallback {
+  /* Include wrapped source and padding in the line box so it cannot paint
+     over adjacent lines. A compact box keeps short anchors unobtrusive. */
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  vertical-align: baseline;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+}
+.tano-prose .tano-unsupported-block {
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+.tano-prose > .tano-unsupported-block {
+  margin-inline: var(--tano-block-frame-inset);
+}
+.tano-prose .tano-unsupported-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 5px;
+}
+.tano-prose .tano-unsupported-block pre {
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  white-space: pre-wrap;
+}
+.tano-prose strong {
+  font-weight: 600;
+  color: var(--text);
+}
+.tano-prose em {
+  color: inherit;
+  font-synthesis: style;
+}
+.tano-prose blockquote {
+  margin: 12px 0;
+  font-size: inherit;
+}
+/* Keep the base quote style below block selection and drag feedback. */
+.tano-prose blockquote:where(:not(.tano-callout)) {
+  margin: 12px 0;
+  position: relative;
+  border-left: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 0 0 0 23px;
+  color: var(--text-secondary);
+}
+.tano-prose blockquote:where(:not(.tano-callout))::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  background: var(--quote-border);
+  pointer-events: none;
+}
+.tano-prose > blockquote:where(:not(.tano-callout)) {
+  /* Keep the top-level quote frame on the same content rail as text blocks.
+     Reduced inner padding preserves the quote text's existing position. */
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline-start: calc(23px - var(--tano-block-frame-inset));
+}
+.tano-prose blockquote p {
+  margin: 4px 0;
+}
+.tano-prose blockquote:not(.tano-callout) > :first-child {
+  margin-top: 0;
+}
+.tano-prose blockquote:not(.tano-callout) > :last-child {
+  margin-bottom: 0;
+}
+/* Milkdown represents a soft newline as a span containing a space. Keep the
+   Markdown node unchanged while rendering a line break within quoted paragraphs. */
+.tano-prose blockquote span[data-type='hardbreak'][data-is-inline='true'] {
+  font-size: 0;
+}
+.tano-prose blockquote span[data-type='hardbreak'][data-is-inline='true']::after {
+  content: '\a';
+  white-space: pre;
+}
+.tano-prose ul,
+.tano-prose ol {
+  margin: 4px 0;
+  padding-left: calc(23px + var(--tano-block-padding-inline));
+  padding-right: var(--tano-block-padding-inline);
+}
+.tano-prose li {
+  padding-left: 2px;
+  margin: 3px 0;
+}
+.tano-prose li p {
+  margin: 0;
+}
+.tano-prose li :is(ul, ol) {
+  margin: 0;
+}
+.tano-prose li::marker {
+  color: var(--text-secondary);
+}
+.tano-prose li[data-item-type='task'] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  position: relative;
+  padding-left: 3px;
+}
+.tano-prose li[data-item-type='task'] > input[type='checkbox'] {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.tano-prose li[data-item-type='task'] > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tano-prose li[data-item-type='task'] > div > :is(p, h1, h2, h3, h4, h5, h6) {
+  padding: 0;
+}
+.tano-prose li[data-item-type='task']:before {
+  content: '';
+  position: absolute;
+  left: -19px;
+  top: calc(0.825em - 6px);
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface);
+}
+.tano-prose li[data-item-type='task'][data-checked='true']:before {
+  background: var(--green-fill);
+  border-color: var(--line);
+  content: '✓';
+  color: var(--on-accent, white);
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+.tano-prose li[data-checked='true'] {
+  color: var(--muted);
+}
+.tano-prose code {
+  font-family: var(--font-mono);
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+  color: var(--syntax-red);
+  border: 0;
+  border-radius: 4px;
+  font-size: 0.85em;
+  padding: 2px 5px;
+}
+.tano-prose pre {
+  background: var(--surface);
+  padding: 19px 22px;
+  border: 0;
+  border-radius: 8px;
+  overflow: auto;
+  line-height: 1.7;
+}
+.tano-prose > pre {
+  /* Align the frame with text blocks while keeping code text and wrapping
+     stable after the frame moves in by the shared block inset. */
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline: calc(22px - var(--tano-block-frame-inset));
+}
+.tano-prose pre code {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+.tano-prose pre.tano-code-block {
+  position: relative;
+}
+.tano-prose pre.tano-code-block[data-empty-code] code {
+  display: block;
+  height: 0;
+  overflow: hidden;
+}
+.tano-prose pre.tano-code-block code > br.ProseMirror-trailingBreak {
+  display: none;
+}
+.tano-prose pre.tano-code-block .tano-code-language {
+  display: none;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  box-sizing: border-box;
+  width: 112px;
+  height: 28px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  font-family: var(--font-ui);
+  outline: none;
+  z-index: 1;
+}
+.tano-prose pre.tano-code-block[data-empty-code] .tano-code-language {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.tano-prose pre.tano-code-block .tano-code-language:focus {
+  border-color: var(--green);
+  color: var(--text);
+}
+.tano-prose pre.tano-code-block:hover .tano-code-language:not([hidden]),
+.tano-prose pre.tano-code-block:focus-within .tano-code-language:not([hidden]) {
+  display: block;
+}
+.tano-code-language-menu {
+  z-index: 110;
+  width: min(260px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+}
+.tano-code-language-option {
+  color: var(--text);
+}
+.tano-code-language-icon {
+  display: inline-flex;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+.tano-code-language-icon img {
+  display: block;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+.tano-code-language-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tano-code-language-id {
+  flex-shrink: 0;
+  max-width: 48%;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.tano-code-language-option:hover {
+  background: var(--surface);
+}
+.tano-prose table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  width: auto;
+  max-width: none;
+  margin: 24px 0;
+  font-size: calc(var(--tano-prose-font-size, 16px) * 0.875);
+  display: table;
+  table-layout: fixed;
+}
+.tano-prose th,
+.tano-prose td {
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 8px 13px;
+  text-align: left;
+  vertical-align: top;
+  position: relative;
+}
+.tano-prose th {
+  font-weight: inherit;
+}
+.tano-prose th,
+.tano-prose td {
+  color: var(--text);
+}
+.tano-prose table p {
+  margin: 0;
+}
+/* The table paints the continuous rounded outline; cells paint each divider once. */
+.tano-prose table tr > :last-child { border-right: 0; }
+.tano-prose table > :is(tbody, tfoot):last-child > tr:last-child > :is(th, td) { border-bottom: 0; }
+.tano-prose .selectedCell {
+  box-shadow: inset 0 0 0 100vmax var(--block-selection-overlay);
+}
+.tano-prose .selectedCell:after {
+  content: none;
+}
+.tano-prose .tableWrapper {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tano-prose .tableWrapper::-webkit-scrollbar { display: none; }
+.tano-table-scrollbar {
+  height: var(--scrollbar-size);
+  position: relative;
+  margin-top: -16px;
+  margin-bottom: 6px;
+  touch-action: none;
+  cursor: pointer;
+  border-radius: 5px;
+  background: transparent;
+  transition: opacity 120ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tano-table-scrollbar {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .tano-table-viewport:hover .tano-table-scrollbar,
+  .tano-table-scrollbar:focus-visible,
+  .tano-table-scrollbar.is-dragging {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+.tano-table-scrollbar[hidden] { display: none; }
+.tano-table-scroll-thumb {
+  position: absolute;
+  top: var(--scrollbar-inset);
+  left: 0;
+  height: calc(var(--scrollbar-size) - 2 * var(--scrollbar-inset));
+  background: var(--scrollbar-thumb, var(--control-border));
+  border-radius: var(--scrollbar-radius);
+  cursor: grab;
+}
+.tano-table-scroll-thumb:hover,
+.tano-table-scrollbar.is-dragging .tano-table-scroll-thumb { background: var(--scrollbar-thumb-hover, var(--muted)); }
+.tano-table-scrollbar.is-dragging .tano-table-scroll-thumb { cursor: grabbing; }
+.tano-table-scrollbar:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 2px; }
+.tano-table-viewport {
+  position: relative;
+  margin-bottom: 16px;
+}
+.tano-table-viewport > .tableWrapper > table { margin-bottom: 16px; }
+
+/* A top-level framed block starts on the same rail as a paragraph or heading.
+   The selector intentionally stops at direct children so nested panels,
+   columns, tabs, and resources keep their own internal layout. TableViewport
+   is excluded because it owns horizontal width and margin compensation. */
+.tano-prose > :is(.tano-callout, .tano-enhanced, .tano-unsupported-block, .tano-reference-card) {
+  margin-inline: var(--tano-block-frame-inset);
+}
+.tano-prose > :first-child {
+  margin-block-start: 0;
+}
+.tano-prose > :last-child {
+  margin-block-end: 0;
+}
+.tano-table-viewport.has-comments::before,
+.tano-table-viewport.has-comments::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  top: 24px;
+  bottom: 26px;
+  width: 24px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.tano-table-viewport.has-comments::before {
+  left: 0;
+  background: linear-gradient(to right, var(--paper), transparent);
+}
+.tano-table-viewport.has-comments::after {
+  right: 0;
+  background: linear-gradient(to left, var(--paper), transparent);
+}
+.tano-table-viewport.has-comments.can-scroll-left::before,
+.tano-table-viewport.has-comments.can-scroll-right::after {
+  opacity: 1;
+}
+.tano-prose .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--tano-table-stroke-width, 3px);
+  background: var(--green);
+  pointer-events: none;
+  z-index: 2;
+}
+.tano-prose.resize-cursor,
+.tano-prose.resize-cursor * {
+  cursor: col-resize !important;
+}
+.tano-table-controls { position: absolute; inset: 0; pointer-events: none; }
+.tano-table-insert-controls[hidden], .tano-table-insert[hidden], .tano-table-insert-line[hidden] { display: none; }
+.tano-table-insert {
+  position: absolute;
+  z-index: 16;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.tano-table-insert > span {
+  display: none;
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  background: var(--green-fill);
+  color: var(--on-accent, white);
+  pointer-events: none;
+}
+.tano-table-insert:is(:hover, :focus-visible) > span { display: flex; }
+.tano-table-insert:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 2px; }
+/* Split the shared corner hit area without moving the visible control. */
+.tano-table-insert.is-corner { pointer-events: none; }
+.tano-table-insert.is-corner:is(:hover, :focus-visible) { z-index: 17; }
+.tano-table-insert-hit { position: absolute; inset: 0; pointer-events: auto; }
+.tano-table-insert.is-column > .tano-table-insert-hit { clip-path: polygon(0 0, 100% 0, 100% 100%); }
+.tano-table-insert.is-row > .tano-table-insert-hit { clip-path: polygon(0 0, 0 100%, 100% 100%); }
+.tano-table-insert-line { position: absolute; z-index: 12; background: var(--green); pointer-events: none; }
+.tano-table-grip {
+  position: absolute;
+  z-index: 15;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  pointer-events: auto;
+  cursor: grab;
+  display: grid;
+  place-items: center;
+}
+.tano-table-grip[hidden], .tano-table-line-outline[hidden], .tano-table-line-drop[hidden] { display: none; }
+.tano-table-grip::before {
+  content: '';
+  position: absolute;
+  top: calc(50% - 1.5px);
+  left: calc(50% - 11px);
+  width: 22px;
+  height: 3px;
+  background: currentColor;
+  opacity: 0.4;
+  border-radius: 3px;
+}
+.tano-table-grip.is-row::before {
+  top: calc(50% - 11px);
+  left: calc(50% - 1.5px);
+  width: 3px;
+  height: 22px;
+}
+.tano-table-grip > span {
+  display: none;
+  width: 24px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--surface);
+  align-items: center;
+  justify-content: center;
+}
+.tano-table-grip.is-row > span { width: 16px; height: 24px; }
+.tano-table-grip:is(:hover, :focus-visible, .is-selected)::before,
+.tano-table-controls.is-dragging .tano-table-grip::before { display: none; }
+.tano-table-grip:is(:hover, :focus-visible, .is-selected) > span,
+.tano-table-controls.is-dragging .tano-table-grip > span { display: flex; }
+.tano-table-grip.is-selected > span { background: var(--surface); color: var(--text); }
+.tano-table-grip:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 1px; border-radius: 4px; }
+.tano-table-controls.is-dragging .tano-table-grip { cursor: grabbing; }
+.tano-table-controls.is-dragging .tano-table-grip:not(.is-selected) { visibility: hidden; }
+.tano-table-dragging .selectedCell { opacity: 0.3; }
+.tano-prose.tano-table-drag-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  outline: 1px solid var(--line);
+  background: transparent;
+  pointer-events: none;
+  user-select: none;
+  will-change: transform;
+}
+.tano-table-drag-preview > table { position: absolute; margin: 0; }
+.tano-prose.tano-table-drag-preview :is(table, thead, tbody, tr, th, td) { background: transparent; }
+.tano-table-controls.is-dragging .tano-table-grip.is-selected { z-index: 41; will-change: transform; }
+.tano-table-line-outline {
+  position: absolute;
+  z-index: 12;
+  box-sizing: border-box;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.tano-table-line-drop { position: absolute; z-index: 42; background: var(--green); pointer-events: none; }
+.tano-editor-panel.tano-table-menu,
+.tano-editor-panel.tano-table-color-menu {
+  position: fixed;
+  z-index: 60;
+  /* The menu receives focus before arrow-key navigation; focused items supply
+     the visual feedback, so the container should keep its normal border. */
+  outline: none;
+  max-width: var(--tano-panel-available-width, calc(100vw - 16px));
+  max-height: var(--tano-panel-available-height, calc(100vh - 16px));
+  overflow: auto;
+  box-sizing: border-box;
+  background: var(--paper);
+  color: var(--text);
+  pointer-events: auto;
+  font-size: 12px;
+}
+.tano-table-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.tano-table-menu-item > span { display: flex; flex: none; }
+.tano-table-menu-item:not(:disabled):is(:hover, :focus-visible) { background: var(--hover); outline: none; }
+.tano-table-menu-item:disabled { color: var(--muted); cursor: default; }
+.tano-table-menu-item.is-danger { color: var(--danger, #c44040); }
+.tano-table-menu-item > .tano-table-menu-trailing { margin-left: auto; }
+.tano-table-alignment { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding-bottom: 4px; margin-bottom: 3px; border-bottom: 1px solid var(--line); }
+.compact-action-menu .tano-table-alignment-option { display: flex; align-items: center; justify-content: center; height: 26px; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.tano-table-alignment-option > span { display: flex; }
+.tano-table-alignment-option:is(:hover, :focus-visible) { background: var(--hover); outline: none; }
+.compact-action-menu .tano-table-alignment-option[aria-checked='true'] { background: var(--hover); color: var(--text); }
+.compact-action-menu .tano-table-alignment-option:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: -2px; }
+.tano-editor-panel.tano-table-color-menu { z-index: 61; }
+.tano-table-color-back[hidden] { display: none; }
+.tano-table-color-back { margin-bottom: 4px; }
+.tano-table-color-title { padding: 5px 7px 4px; color: var(--muted); font-size: 11px; }
+.tano-table-color-group + .tano-table-color-group { border-top: 1px solid var(--line); margin-top: 3px; padding-top: 3px; }
+.tano-table-color-swatch { box-sizing: border-box; width: 18px; height: 18px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--text); font-size: 14px; }
+.tano-prose [data-tano-table-color='gray'], .tano-table-color-swatch[data-tano-table-color='gray'] { background-color: color-mix(in srgb, #a1a1aa var(--table-tint, 22%), var(--paper)); }
+.tano-prose [data-tano-table-color='red'], .tano-table-color-swatch[data-tano-table-color='red'] { background-color: color-mix(in srgb, #f87171 var(--table-tint, 22%), var(--paper)); }
+.tano-prose [data-tano-table-color='yellow'], .tano-table-color-swatch[data-tano-table-color='yellow'] { background-color: color-mix(in srgb, #facc15 var(--table-tint, 22%), var(--paper)); }
+.tano-prose [data-tano-table-color='green'], .tano-table-color-swatch[data-tano-table-color='green'] { background-color: color-mix(in srgb, #4ade80 var(--table-tint, 22%), var(--paper)); }
+.tano-prose [data-tano-table-color='blue'], .tano-table-color-swatch[data-tano-table-color='blue'] { background-color: color-mix(in srgb, #60a5fa var(--table-tint, 22%), var(--paper)); }
+.tano-prose [data-tano-table-color='purple'], .tano-table-color-swatch[data-tano-table-color='purple'] { background-color: color-mix(in srgb, #c084fc var(--table-tint, 22%), var(--paper)); }
+.tano-prose [data-tano-table-color='brown'], .tano-table-color-swatch[data-tano-table-color='brown'] { background-color: color-mix(in srgb, #b98a65 var(--table-tint, 22%), var(--paper)); }
+.tano-prose [data-tano-table-color='orange'], .tano-table-color-swatch[data-tano-table-color='orange'] { background-color: color-mix(in srgb, #fb923c var(--table-tint, 22%), var(--paper)); }
+.tano-prose [data-tano-table-color='pink'], .tano-table-color-swatch[data-tano-table-color='pink'] { background-color: color-mix(in srgb, #f472b6 var(--table-tint, 22%), var(--paper)); }
+.tano-prose [data-tano-table-text-color='gray'], .tano-table-color-swatch[data-tano-table-text-color='gray'] { color: var(--table-text-gray, #787878); }
+.tano-prose [data-tano-table-text-color='brown'], .tano-table-color-swatch[data-tano-table-text-color='brown'] { color: var(--table-text-brown, #9a6b4a); }
+.tano-prose [data-tano-table-text-color='orange'], .tano-table-color-swatch[data-tano-table-text-color='orange'] { color: var(--table-text-orange, #c2671a); }
+.tano-prose [data-tano-table-text-color='yellow'], .tano-table-color-swatch[data-tano-table-text-color='yellow'] { color: var(--table-text-yellow, #a17b00); }
+.tano-prose [data-tano-table-text-color='green'], .tano-table-color-swatch[data-tano-table-text-color='green'] { color: var(--table-text-green, #25804e); }
+.tano-prose [data-tano-table-text-color='blue'], .tano-table-color-swatch[data-tano-table-text-color='blue'] { color: var(--table-text-blue, #2877c7); }
+.tano-prose [data-tano-table-text-color='purple'], .tano-table-color-swatch[data-tano-table-text-color='purple'] { color: var(--table-text-purple, #9464c9); }
+.tano-prose [data-tano-table-text-color='pink'], .tano-table-color-swatch[data-tano-table-text-color='pink'] { color: var(--table-text-pink, #c45490); }
+.tano-prose [data-tano-table-text-color='red'], .tano-table-color-swatch[data-tano-table-text-color='red'] { color: var(--table-text-red, #cf4444); }
+.tano-prose img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+.tano-prose a {
+  color: var(--text-secondary);
+  /* Hairline, translucent underline so link-dense passages and tables stay calm. */
+  text-decoration-color: color-mix(in srgb, var(--muted) 40%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.12s ease, color 0.12s ease;
+}
+.tano-prose a:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+.milkdown-host.tano-link-modifier .tano-prose a[href]:not(.tano-live-wiki) {
+  cursor: pointer;
+}
+.tano-prose .tano-live-source-inline,
+.tano-prose a.tano-live-wiki {
+  cursor: text;
+}
+
+.tano-prose pre.tano-live-source-block {
+  min-height: 1em;
+  margin: 4px 0;
+  padding: var(--tano-block-padding-block) var(--tano-block-padding-inline);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+.tano-prose pre.tano-live-source-block code {
+  font: inherit;
+  color: inherit;
+  white-space: inherit;
+}
+.tano-prose pre.tano-live-source-block[data-source-kind='code_block'] {
+  margin: 1em 0;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface);
+  font: 0.85em/1.7 var(--font-mono);
+  white-space: pre;
+  overflow: auto;
+  overflow-wrap: normal;
+}
+.tano-prose > pre.tano-live-source-block {
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline: 0;
+}
+.tano-prose > pre.tano-live-source-block[data-source-kind='code_block'] {
+  margin-inline: var(--tano-block-frame-inset);
+  padding-inline: calc(22px - var(--tano-block-frame-inset));
+}
+.tano-prose pre.tano-live-source-block[data-source-kind='code_block'] code {
+  /* The fence rows reuse the rendered block's vertical padding. */
+  display: block;
+  line-height: var(--tano-code-fence-line-height, 19px);
+}
+.tano-prose pre.tano-live-source-block[data-source-kind='code_block'] .tano-live-code-body {
+  /* The editable body is wrapped in a decoration span. Chromium rounds its
+     line boxes one 1/64px step taller than the original inline code rows;
+     subtract that step so entering/leaving source mode keeps block geometry.
+  */
+  position: relative;
+  top: 1px;
+  line-height: calc(var(--tano-code-body-line-height, 27.2px) - 0.015625px);
+}
+.tano-prose pre.tano-live-source-block[data-source-kind='heading'] {
+  color: var(--text);
+  line-height: 1.65;
+}
+.tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='1'] {
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.875);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 32px 0 8px;
+}
+.tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='2'] {
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.5);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  margin: 28px 0 6px;
+}
+.tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='3'] {
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.25);
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 20px 0 4px;
+}
+.tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='4'] {
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.125);
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 16px 0 4px;
+}
+.tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='5'] {
+  font-size: 0.83em;
+  font-weight: 600;
+  margin: 1.67em 0;
+}
+.tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='6'] {
+  font-size: 0.67em;
+  font-weight: 600;
+  margin: 2.33em 0;
+}
+.tano-prose > pre.tano-live-source-block[data-source-kind='heading']:first-child {
+  margin-top: 0;
+}
+.tano-prose pre.tano-live-source-block .tano-live-source-strong {
+  font-weight: 600;
+}
+.tano-prose pre.tano-live-source-block .tano-live-source-emphasis {
+  font-style: italic;
+}
+.tano-prose pre.tano-live-source-block .tano-live-source-delete {
+  text-decoration: line-through;
+}
+.tano-prose pre.tano-live-source-block .tano-live-source-marker {
+  color: var(--muted);
+  font-weight: 400;
+  font-style: normal;
+  text-decoration: none;
+}
+.tano-prose .tano-live-source-inline {
+  position: relative;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tano-prose pre.tano-live-source-block[data-source-kind='math_block'] {
+  position: relative;
+}
+.tano-prose .tano-live-math-preview,
+.tano-prose .tano-live-mermaid-preview {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  display: block;
+  width: max-content;
+  max-width: min(640px, calc(100vw - 32px));
+  overflow-x: auto;
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: #fff;
+  background: #151515;
+  box-shadow: 0 4px 14px #00000026;
+  font-size: var(--tano-prose-font-size, 16px);
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+.tano-prose pre.tano-live-source-block .tano-live-math-preview {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.tano-prose .tano-live-math-preview[hidden],
+.tano-prose .tano-live-mermaid-preview[hidden] {
+  display: none;
+}
+.tano-prose .tano-live-mermaid-preview {
+  /* Code source scrolls horizontally; fixed positioning escapes its clipping. */
+  position: fixed;
+  max-width: min(640px, var(--tano-panel-available-width, calc(100vw - 32px)));
+  white-space: normal;
+}
+.tano-prose .tano-live-mermaid-preview svg {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(320px, 40vh);
+}
+.tano-prose .tano-live-source-inline .tano-live-source-strong {
+  font-weight: 600;
+}
+.tano-prose .tano-live-source-inline .tano-live-source-emphasis {
+  font-style: italic;
+}
+.tano-prose .tano-live-source-inline .tano-live-source-delete {
+  text-decoration: line-through;
+}
+.tano-prose .tano-live-source-inline .tano-live-source-marker {
+  color: var(--muted);
+  font-weight: 400;
+  font-style: normal;
+  text-decoration: none;
+}
+.tano-prose .tano-math-token-delimiter {
+  color: var(--syntax-purple);
+}
+.tano-prose .tano-math-token-command {
+  color: var(--syntax-red);
+}
+.tano-prose .tano-math-token-number {
+  color: var(--syntax-blue);
+}
+.tano-prose .tano-math-token-operator {
+  color: var(--syntax-red);
+}
+.tano-prose .tano-mermaid-token-fence {
+  color: var(--syntax-purple);
+}
+.tano-prose .tano-mermaid-token-keyword {
+  color: var(--syntax-blue);
+}
+.tano-prose .tano-mermaid-token-direction {
+  color: var(--syntax-orange);
+}
+.tano-prose .tano-mermaid-token-node {
+  color: var(--syntax-teal);
+}
+.tano-prose .tano-mermaid-token-arrow {
+  color: var(--syntax-red);
+}
+.tano-prose .tano-mermaid-token-label {
+  color: var(--syntax-purple);
+}
+.tano-prose .tano-mermaid-token-comment {
+  color: var(--muted);
+}
+.tano-prose .tano-wiki-link::before {
+  content: '📄 ';
+  text-decoration: none;
+}
+.tano-editor-panel {
+  position: absolute;
+  z-index: 100;
+  width: fit-content;
+  max-width: min(560px, var(--tano-panel-available-width, calc(100vw - 16px)));
+  max-height: min(320px, var(--tano-panel-available-height, calc(100vh - 16px)));
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 6px 18px #0000001f;
+}
+.tano-editor-panel[hidden] {
+  display: none;
+}
+.tano-prose a.tano-editor-active,
+.tano-prose .tano-image.tano-editor-active,
+.tano-prose .tano-math.tano-editor-active > .math-preview,
+.tano-prose .tano-mermaid.tano-editor-active > .tano-mermaid-preview {
+  background-color: var(--block-selection);
+  border-radius: 4px;
+  box-shadow: 0 0 0 4px var(--block-selection);
+}
+.tano-link-editor-panel {
+  position: fixed;
+  display: grid;
+  gap: 7px;
+}
+.tano-link-editor-panel label {
+  display: grid;
+  grid-template-columns: 36px minmax(160px, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tano-link-editor-panel input {
+  box-sizing: border-box;
+  width: min(36ch, calc(100vw - 95px));
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  outline-color: var(--green);
+  color: var(--text);
+  background: var(--paper);
+  font: 13px/1.4 var(--font-mono);
+  user-select: text;
+}
+.tano-prose hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 36px 0;
+}
+.tano-prose > hr {
+  margin-inline: var(--tano-block-frame-inset);
+}
+.tano-prose .ProseMirror-gapcursor::after {
+  border-top-color: var(--text);
+}
+.tano-prose .ProseMirror-selectednode,
+.tano-prose .tano-block-selected {
+  outline: none;
+  border-radius: 4px;
+  /* Paint the selection inside the block so its own surface remains visible
+     underneath and the highlight cannot expand beyond the block range. */
+  box-shadow: inset 0 0 0 100vmax var(--block-selection-overlay);
+}
+/* Paint the divider's selection as its own rounded rectangle: an expanded
+   outline also expands the corner radius and makes a one-pixel rule a pill. */
+.tano-prose hr:is(.ProseMirror-selectednode, .tano-block-selected) {
+  position: relative;
+  overflow: visible;
+  border-top-color: var(--green);
+  box-shadow: none;
+}
+.tano-prose hr:is(.ProseMirror-selectednode, .tano-block-selected)::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1px - var(--tano-block-frame-inset)) 0 calc(-1 * var(--tano-block-frame-inset));
+  border-radius: inherit;
+  background: var(--block-selection-overlay);
+  pointer-events: none;
+}
+.tano-prose > hr:is(.ProseMirror-selectednode, .tano-block-selected)::before {
+  inset-inline: calc(-1 * var(--tano-block-frame-inset));
+}
+.tano-prose hr:is(.ProseMirror-selectednode, .tano-block-selected)::after {
+  content: '';
+  position: absolute;
+  inset: -1px 0 auto;
+  height: 1px;
+  background: var(--green);
+  pointer-events: none;
+}
+/* A table's scroll viewport includes page gutters; paint selection on the
+   table itself, with the same outer inset as other top-level framed blocks. */
+.tano-prose .tano-table-viewport.ProseMirror-selectednode,
+.tano-prose .tano-table-viewport.tano-block-selected {
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+.tano-prose > .tano-table-viewport:is(.ProseMirror-selectednode, .tano-block-selected):not(.tano-block-drag-source) > .tableWrapper > table {
+  outline: var(--tano-block-frame-inset) solid var(--block-selection);
+}
+.tano-prose .tano-table-viewport:is(.ProseMirror-selectednode, .tano-block-selected):not(.tano-block-drag-source) > .tableWrapper > table > tbody > tr > :is(th, td) {
+  box-shadow: inset 0 0 0 100vmax var(--block-selection-overlay);
+}
+/* Framed blocks use an inline margin to put their visible frame on the text
+   rail. Their exact selection outline covers that margin, so the highlight
+   represents the block range without a shadow or visual bleed. */
+.tano-prose > :is(
+  blockquote:where(:not(.tano-callout)),
+  pre,
+  .tano-callout,
+  .tano-enhanced,
+  .tano-unsupported-block,
+  .tano-reference-card
+):is(.ProseMirror-selectednode, .tano-block-selected) {
+  outline: var(--tano-block-frame-inset) solid var(--block-selection);
+}
+.tano-prose .tano-math.ProseMirror-selectednode.tano-editor-active,
+.tano-prose .tano-mermaid.ProseMirror-selectednode.tano-editor-active {
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+.tano-prose.ProseMirror-hideselection ::selection,
+.tano-prose .ProseMirror-selectednode::selection,
+.tano-prose .ProseMirror-selectednode ::selection,
+.tano-prose .tano-block-selected::selection,
+.tano-prose .tano-block-selected ::selection {
+  background: transparent;
+}
+.tano-block-selection-box {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  border: none;
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+.tano-block-selection-box[hidden] { display: none; }
+.tano-prose .tano-block-drag-source {
+  opacity: 0.3;
+  background-color: transparent;
+  box-shadow: none;
+}
+.tano-block-drag-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  min-height: 0;
+  max-height: 320px;
+  overflow: hidden;
+  padding: 4px;
+  box-sizing: content-box;
+  pointer-events: none;
+  user-select: none;
+}
+.tano-block-drag-preview > :first-child {
+  margin: 0;
+}
+
+.tano-prose li[data-item-type='task']:before {
+  display: none !important;
+}
+.tano-prose li[data-item-type='task'] > input {
+  position: absolute;
+  left: -19px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: #5f5e5b;
+  cursor: pointer;
+}
+
+.tano-prose .token.comment,
+.tano-prose .token.prolog {
+  color: var(--muted);
+}
+.tano-prose .token.keyword,
+.tano-prose .token.boolean {
+  color: var(--syntax-purple);
+}
+.tano-prose .token.string,
+.tano-prose .token.attr-value {
+  color: var(--syntax-green);
+}
+.tano-prose .token.number,
+.tano-prose .token.function {
+  color: var(--syntax-orange);
+}
+.tano-prose .token.operator,
+.tano-prose .token.punctuation {
+  color: var(--text-secondary);
+}
+.tano-prose .token.tag,
+.tano-prose .token.property {
+  color: var(--syntax-teal);
+}
+
+/* Rendering preferences never change the underlying Markdown nodes. */
+.tano-prose {
+  /* Spacing is owned by editor decorations, consistently across WebViews. */
+  text-autospace: no-autospace;
+}
+.tano-prose .tano-auto-space-before {
+  margin-inline-start: 0.25em;
+}
+
+.tano-feature-source {
+  color: var(--text-secondary);
+  background: var(--surface);
+  border-radius: 5px;
+  cursor: text;
+}
+div.tano-feature-source {
+  padding: 12px 16px;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+}
+.tano-feature-source pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tano-feature-source code {
+  padding: 2px 4px;
+  white-space: pre-wrap;
+}
+
+/* Pending review decorations are presentation only, never Markdown marks. */
+.tano-suggestion-insert { background: var(--suggestion-bg); color: var(--suggestion-color); border-bottom: 1px solid var(--suggestion-color); text-decoration: none; cursor: pointer; }
+.tano-suggestion-delete { background: var(--suggestion-bg); color: var(--suggestion-color); text-decoration: line-through; white-space: pre-wrap; cursor: pointer; user-select: none; }
+.tano-suggestion-delete.is-source-text { user-select: text; }
+
+
+.tano-prose [data-tano-comment] {
+  opacity: 0.55;
+  text-decoration: underline dotted;
+}
+.tano-prose[contenteditable="false"] [data-tano-comment] {
+  display: none;
+}
+
+.source-editor .cm-source-highlight,
+.tano-prose .tano-live-source-highlight { background: #fde04766; }
+.source-editor .cm-source-underline,
+.tano-prose .tano-live-source-underline { text-decoration: underline; }
+.source-editor .cm-source-superscript { vertical-align: super; font-size: 0.85em; }
+.source-editor .cm-source-subscript { vertical-align: sub; font-size: 0.85em; }
+/* Match rendered sup/sub metrics so revealing syntax does not grow the line. */
+.tano-prose .tano-live-source-superscript,
+.tano-prose .tano-live-source-subscript { font-size: 0.75em; line-height: 0; }
+.tano-prose .tano-live-source-superscript { vertical-align: super; }
+.tano-prose .tano-live-source-subscript { vertical-align: sub; }
+.source-editor .cm-source-inline_comment,
+.tano-prose .tano-live-source-inline_comment { opacity: 0.55; }

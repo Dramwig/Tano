@@ -1,5 +1,5 @@
-import { ownerWindow } from './dom-realm';
-import { setSurfaceVisible, showSurface, removeSurface } from './surface-motion';
+import { ownerWindow } from './primitives/dom-realm';
+import { setSurfaceVisible, showSurface, removeSurface } from './primitives/surface-motion';
 import { DOMSerializer } from '@milkdown/kit/prose/model';
 import type { Mark, Node } from '@milkdown/kit/prose/model';
 import type { NodeViewConstructor, MarkViewConstructor } from '@milkdown/kit/prose/view';

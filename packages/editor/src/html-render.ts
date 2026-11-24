@@ -1,5 +1,5 @@
 
-import { isElement } from './dom-realm';
+import { isElement } from './primitives/dom-realm';
 import DOMPurify from 'dompurify';
 
 const blockTags = new Set([

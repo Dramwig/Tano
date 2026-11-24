@@ -1,0 +1,779 @@
+.tano-math {
+  position: relative;
+  max-width: 100%;
+}
+.tano-prose u {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.tano-prose mark {
+  color: inherit;
+  background-color: var(--highlight-bg);
+  border-radius: 2px;
+}
+.tano-prose sup,
+.tano-prose sub {
+  font-size: 0.75em;
+  line-height: 0;
+}
+.math-inline {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  gap: 3px;
+}
+.math-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  margin: 20px 0;
+}
+.math-preview {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.25em;
+  overflow-x: auto;
+}
+.math-inline .math-preview {
+  padding: 0 2px;
+}
+.math-block .math-preview-empty {
+  color: color-mix(in srgb, var(--muted) 40%, var(--paper));
+}
+.tano-prose .math-inline.ProseMirror-selectednode {
+  box-shadow: none;
+}
+.math-click-to-edit .math-preview {
+  cursor: text;
+}
+.tano-math:has(.math-editor-panel:not([hidden])) {
+  z-index: 20;
+}
+.math-editor-panel {
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+}
+
+.math-editor-input {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+}
+.math-editor-highlight {
+  position: absolute;
+  inset: 0;
+  padding: 3px 0;
+  overflow: hidden;
+  white-space: pre;
+  overflow-wrap: normal;
+  tab-size: 4;
+  pointer-events: none;
+  color: var(--text);
+  font: 14px/1.5 var(--font-mono);
+}
+.tano-math textarea {
+  position: relative;
+  display: block;
+  field-sizing: content;
+  width: auto;
+  min-width: 16ch;
+  max-width: min(538px, calc(100vw - 54px));
+  min-height: 1.5em;
+  max-height: min(240px, calc(100vh - 48px));
+  padding: 3px 0;
+  border: 0;
+  outline: none;
+  overflow: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  tab-size: 4;
+  resize: none;
+  user-select: text;
+  color: transparent;
+  caret-color: var(--text);
+  background: transparent;
+  font: 14px/1.5 var(--font-mono);
+}
+.tano-math textarea:placeholder-shown {
+  min-width: min(28ch, calc(100vw - 54px));
+}
+.tano-math textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+.tano-prose .math-editor-panel textarea::selection {
+  color: HighlightText;
+  background: Highlight;
+}
+.tano-math [hidden] {
+  display: none;
+}
+.frontmatter-panel {
+  max-width: var(--tano-content-measure);
+  margin: 0 auto 20px;
+  color: var(--text);
+  font-size: 14px;
+}
+.document-title:has(+ .frontmatter-panel) {
+  margin-bottom: 12px;
+}
+.frontmatter-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  min-height: 26px;
+  list-style: none;
+  /* Metadata entry point stays quieter than body text until hovered. */
+  color: color-mix(in srgb, var(--muted) 72%, var(--paper));
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.frontmatter-heading:hover,
+.frontmatter-panel[open] > .frontmatter-heading {
+  color: var(--muted);
+}
+.frontmatter-heading::-webkit-details-marker {
+  display: none;
+}
+.frontmatter-chevron {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: inherit;
+  transform: rotate(0);
+  transform-origin: center;
+  transition: transform var(--motion-spring, 380ms) var(--ease-spring, ease);
+}
+/* Follows the panel's own expanded state (not [open]) so it turns the moment
+ * the user clicks, while the content is still animating closed. */
+.frontmatter-chevron.is-expanded {
+  transform: rotate(90deg);
+}
+.frontmatter-rows {
+  display: contents;
+}
+.frontmatter-order-toggle {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  padding: 0;
+  border-radius: 3px;
+  color: var(--muted);
+}
+.frontmatter-panel:not([open]) .frontmatter-order-toggle {
+  display: none;
+}
+.frontmatter-order-toggle:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+@media (hover: hover) {
+  .frontmatter-order-toggle {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .frontmatter-panel:hover .frontmatter-order-toggle,
+  .frontmatter-order-toggle:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+.frontmatter-content {
+  padding: 6px 0 0 20px;
+}
+.frontmatter-property {
+  position: relative;
+  display: grid;
+  grid-template-columns: 17px minmax(100px, 140px) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-height: 32px;
+  padding: 5px 0;
+  line-height: 22px;
+}
+.frontmatter-property-icon {
+  width: 17px;
+  height: 17px;
+  color: var(--muted);
+}
+.frontmatter-property-type {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 24px;
+  margin-left: -3px;
+  padding: 0;
+  border-radius: 3px;
+  color: var(--muted);
+}
+.frontmatter-property-type:hover,
+.frontmatter-property-type[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+.frontmatter-property-name {
+  min-width: 0;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.frontmatter-property-value {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.frontmatter-property-button {
+  width: 100%;
+  padding: 0 4px;
+  border-radius: 4px;
+  text-align: left;
+  line-height: inherit;
+}
+.frontmatter-property.is-editing {
+  z-index: 2;
+  align-items: start;
+}
+.frontmatter-property-button:hover,
+.frontmatter-property-button:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+.frontmatter-row-editor {
+  display: grid;
+  grid-column: 2 / -1;
+  grid-template-columns: minmax(100px, 140px) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-width: 0;
+}
+.frontmatter-row-editor input,
+.frontmatter-row-editor select,
+.frontmatter-row-editor textarea {
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: 22px;
+}
+.frontmatter-row-editor .frontmatter-name-input {
+  color: var(--text-secondary);
+}
+.frontmatter-value-editor select {
+  appearance: none;
+  padding-right: 24px;
+}
+.frontmatter-value-editor:has(> select)::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-secondary);
+  border-bottom: 1.5px solid var(--text-secondary);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.frontmatter-row-editor input:focus,
+.frontmatter-row-editor select:focus,
+.frontmatter-row-editor textarea:focus {
+  outline: none;
+}
+.frontmatter-name-editor,
+.frontmatter-value-editor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+}
+.frontmatter-value-editor textarea {
+  height: auto;
+  min-height: 44px;
+  resize: vertical;
+  overflow-y: auto;
+}
+.frontmatter-null-value {
+  height: 22px;
+  padding: 0 4px;
+  color: var(--text);
+  line-height: 22px;
+}
+.frontmatter-row-error {
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 2px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--danger, #b42318);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.frontmatter-type-menu {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 0;
+  z-index: 20;
+  display: grid;
+  width: 176px;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+/* Height animations temporarily clip the disclosure and its rows. A menu
+   must remain visible and clickable beyond all of those animated bounds. */
+.frontmatter-panel:has(.frontmatter-type-menu),
+.frontmatter-panel:has(.frontmatter-type-menu)::details-content,
+.frontmatter-content:has(.frontmatter-type-menu),
+.frontmatter-property:has(.frontmatter-type-menu) {
+  overflow: visible !important;
+}
+.frontmatter-panel:has(.frontmatter-type-menu) {
+  position: relative;
+  z-index: 3;
+}
+.frontmatter-type-menu button {
+  display: flex;
+  align-items: center;
+  text-align: left;
+}
+.frontmatter-type-menu button:hover,
+.frontmatter-type-menu button[aria-checked="true"] {
+  background: var(--hover);
+}
+.frontmatter-type-menu button[aria-checked="true"] {
+  color: var(--text);
+  font-weight: 500;
+}
+.frontmatter-type-menu .frontmatter-type-delete {
+  margin-top: 5px;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--danger, #b42318);
+}
+.frontmatter-raw {
+  margin: 0 0 8px 25px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: 12px/1.7 var(--font-mono);
+  color: var(--text-secondary);
+}
+.frontmatter-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 5px 3px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.frontmatter-add-property {
+  display: grid;
+  grid-template-columns: 17px auto;
+  column-gap: 12px;
+  width: max-content;
+  min-height: 32px;
+  padding: 5px 4px 5px 0;
+  line-height: 22px;
+}
+.frontmatter-add-property > svg {
+  transform: translateX(-1px);
+}
+.frontmatter-add:hover {
+  color: var(--text-secondary);
+}
+@media (max-width: 640px) {
+  .frontmatter-property {
+    grid-template-columns: 17px minmax(70px, 100px) minmax(0, 1fr);
+  }
+  .frontmatter-row-editor {
+    grid-template-columns: minmax(70px, 100px) minmax(0, 1fr);
+  }
+}
+
+.tano-mermaid {
+  position: relative;
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.tano-mermaid:has(.tano-mermaid-preview-empty) {
+  border: 0;
+  background: transparent;
+}
+.tano-prose .tano-mermaid.tano-empty-block::before {
+  content: none;
+}
+.tano-mermaid:has(.tano-mermaid-editor-panel:not([hidden])) {
+  z-index: 20;
+}
+.tano-mermaid-preview {
+  padding: 16px;
+  overflow: auto;
+  text-align: center;
+}
+.tano-mermaid-click-to-edit .tano-mermaid-preview {
+  cursor: text;
+}
+.tano-mermaid-preview-stale {
+  opacity: 0.6;
+}
+.tano-mermaid-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+.tano-mermaid-preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  box-sizing: border-box;
+  color: color-mix(in srgb, var(--muted) 40%, var(--paper));
+  font-size: 18px;
+}
+
+.tano-mermaid-editor-panel {
+  display: block;
+  padding-right: 4px;
+}
+.tano-mermaid-editor-input {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
+.tano-mermaid-editor-highlight {
+  position: absolute;
+  inset: 0;
+  padding: 3px 0;
+  overflow: hidden;
+  white-space: pre;
+  overflow-wrap: normal;
+  tab-size: 4;
+  pointer-events: none;
+  color: var(--text);
+  font: 14px/1.5 var(--font-mono);
+}
+.tano-mermaid-editor-panel textarea {
+  position: relative;
+  display: block;
+  field-sizing: content;
+  width: auto;
+  min-width: 20ch;
+  max-width: min(538px, calc(100vw - 54px));
+  min-height: 1.5em;
+  max-height: min(240px, calc(100vh - 48px));
+  padding: 3px 0;
+  border: 0;
+  outline: none;
+  overflow: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  tab-size: 4;
+  resize: none;
+  user-select: text;
+  color: transparent;
+  caret-color: var(--text);
+  background: transparent;
+  font: 14px/1.5 var(--font-mono);
+}
+.tano-mermaid-editor-panel textarea:placeholder-shown {
+  min-width: min(28ch, calc(100vw - 54px));
+}
+.tano-mermaid-editor-panel textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+.tano-prose .tano-mermaid-editor-panel textarea::selection {
+  color: HighlightText;
+  background: Highlight;
+}
+.tano-mermaid [hidden] {
+  display: none;
+}
+
+.tano-reference,
+.tano-reference-card {
+  --reference-color: var(--green);
+}
+:is(.tano-reference, .tano-reference-card)[data-reference-type='person'] {
+  --reference-color: var(--syntax-purple);
+}
+:is(.tano-reference, .tano-reference-card)[data-reference-type='event'] {
+  --reference-color: var(--syntax-blue);
+}
+:is(.tano-reference, .tano-reference-card)[data-reference-type='project'] {
+  --reference-color: var(--syntax-orange);
+}
+:is(.tano-reference, .tano-reference-card)[data-reference-type='asset'] {
+  --reference-color: var(--syntax-teal);
+}
+.tano-reference button,
+.tano-reference-card button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--reference-color) 18%, var(--line));
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.tano-reference {
+  display: inline;
+}
+.tano-reference button {
+  vertical-align: baseline;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--reference-color) 6%, var(--paper));
+  line-height: 1.5;
+  font-size: 0.9em;
+}
+.tano-reference-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tano-reference .tano-reference-label {
+  color: var(--reference-color);
+}
+.tano-reference-prefix {
+  /* The @ descender puts its visual center below the adjacent name. */
+  position: relative;
+  top: -0.1em;
+  margin-inline-end: 0.08em;
+}
+.tano-reference-icon,
+.tano-reference-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--reference-color);
+}
+.tano-reference-badge {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.tano-reference-card {
+  margin: 14px 0;
+}
+.tano-reference-card button {
+  display: flex;
+  width: 100%;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--reference-color) 4%, var(--paper)), var(--paper));
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--text) 3%, transparent);
+}
+.tano-reference-card .tano-reference-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--reference-color) 10%, var(--paper));
+}
+.tano-reference-body {
+  flex: 1;
+  min-width: 0;
+}
+.tano-reference-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  line-height: 1.5;
+}
+.tano-reference-card .tano-reference-label {
+  font-weight: 500;
+}
+.tano-reference-card .tano-reference-badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--reference-color) 7%, var(--paper));
+  color: var(--reference-color);
+}
+.tano-reference-detail {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tano-reference-detail[hidden] {
+  display: none;
+}
+.tano-reference-arrow {
+  color: var(--muted);
+}
+:is(.tano-reference, .tano-reference-card) button:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--reference-color) 45%, var(--line));
+  background: color-mix(in srgb, var(--reference-color) 8%, var(--paper));
+}
+:is(.tano-reference, .tano-reference-card) button:focus-visible {
+  outline: 2px solid var(--reference-color);
+  outline-offset: 3px;
+}
+:is(.tano-reference, .tano-reference-card).is-completed .tano-reference-label {
+  color: var(--muted);
+}
+:is(.tano-reference, .tano-reference-card).is-missing {
+  --reference-color: var(--danger);
+}
+:is(.tano-reference, .tano-reference-card).is-missing button {
+  border-style: dashed;
+  opacity: 1;
+}
+:is(.tano-reference, .tano-reference-card).is-disabled button {
+  opacity: 0.65;
+}
+:is(.tano-reference-card.is-missing, .tano-reference-card.is-disabled) .tano-reference-arrow {
+  visibility: hidden;
+}
+@media (max-width: 600px) {
+  .tano-reference-card button {
+    gap: 10px;
+    padding: 12px;
+  }
+  .tano-reference-card .tano-reference-icon {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+.tano-reference-picker {
+  position: fixed;
+  z-index: 100;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(392px, calc(100vw - 16px));
+  max-height: min(420px, calc(100dvh - 16px));
+  padding: 4px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 16px 48px #0002, 0 2px 8px #0000000a;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.tano-reference-picker[hidden],
+.tano-reference-picker input[hidden] { display: none; }
+.tano-reference-picker input {
+  margin: 0 16px 10px;
+  width: calc(100% - 32px);
+}
+.tano-reference-picker-filters {
+  display: flex;
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 4px 12px;
+  border-top: 1px solid var(--line);
+  overflow-x: auto;
+}
+.tano-reference-picker-filters button {
+  flex: 1;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  white-space: nowrap;
+  font-size: 12px;
+}
+.tano-reference-picker-filters button:hover { background: var(--hover); }
+.tano-reference-picker-filters button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--green);
+  font-weight: 600;
+}
+.tano-reference-picker-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 10px 6px;
+}
+.tano-reference-picker-group {
+  padding: 9px 8px 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.tano-reference-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 5px 8px;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+}
+.tano-reference-picker-option:hover { background: var(--hover); }
+.tano-reference-picker-option[aria-selected='true'] {
+  background: var(--accent);
+}
+.tano-reference-picker-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--hover);
+  color: var(--muted);
+}
+.tano-reference-picker-icon[data-type='person'] {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 10%, var(--surface));
+}
+.tano-reference-picker-icon[data-type='document'] {
+  color: light-dark(#486da5, #94b6e6);
+  background: color-mix(in srgb, #7297cc 12%, var(--surface));
+}
+.tano-reference-picker-body { flex: 1; min-width: 0; }
+.tano-reference-picker-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tano-reference-picker-name { font-size: 13px; font-weight: 500; }
+.tano-reference-picker-badge { flex-shrink: 0; color: var(--muted); font-size: 10px; }
+.tano-reference-picker-empty {
+  padding: 22px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}

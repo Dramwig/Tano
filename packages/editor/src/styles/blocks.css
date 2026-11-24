@@ -1,0 +1,1030 @@
+.tano-prose .tano-callout {
+  --callout-color: var(--syntax-blue);
+  border-left: 3px solid var(--callout-color);
+  background: color-mix(in srgb, var(--callout-color) 7%, var(--paper));
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: var(--text-secondary);
+}
+.tano-prose .tano-callout[data-callout-kind='tip'] {
+  --callout-color: var(--green);
+}
+.tano-prose .tano-callout[data-callout-kind='important'] {
+  --callout-color: var(--syntax-purple);
+}
+.tano-prose .tano-callout[data-callout-kind='warning'] {
+  --callout-color: var(--warning);
+}
+.tano-prose .tano-callout[data-callout-kind='caution'] {
+  --callout-color: var(--danger);
+}
+.tano-prose .tano-callout[data-callout-kind='custom'] {
+  --callout-color: var(--text-secondary);
+  border-left: 0;
+  padding: 16px 18px 16px 48px;
+  min-height: 60px;
+  color: var(--text);
+  display: flow-root;
+}
+.tano-prose .tano-custom-callout-icon {
+  float: left;
+  margin: 0 0 0 -33px;
+  width: 26px;
+  height: calc(var(--tano-prose-font-size, 16px) * 1.6);
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+.tano-prose .tano-callout[data-callout-kind='custom'] > .tano-callout-marker-paragraph + * {
+  margin-top: 0;
+}
+.tano-prose .tano-callout > :first-child {
+  margin-top: 0;
+}
+.tano-prose .tano-callout > :last-child {
+  margin-bottom: 0;
+}
+.tano-callout-marker,
+.tano-callout-marker-paragraph {
+  display: none;
+}
+.tano-prose .tano-callout-marker + [data-type='hardbreak'] {
+  display: none;
+}
+.tano-callout-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+  color: var(--callout-color, var(--text));
+}
+.tano-prose .tano-callout-icon {
+  display: block;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  color: color-mix(in srgb, var(--callout-color) 75%, var(--text-secondary));
+  border-radius: 0;
+}
+.tano-prose.ProseMirror-focused .tano-live-callout > .tano-callout-title {
+  display: none;
+}
+.tano-prose.ProseMirror-focused .tano-live-callout > p:first-of-type {
+  margin-top: 0;
+}
+.tano-prose.ProseMirror-focused .tano-live-callout > p:first-of-type > .tano-callout-marker {
+  display: block;
+  /* Match the preview title so revealing Markdown does not move the body. */
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.tano-prose.ProseMirror-focused .tano-live-callout > .tano-callout-marker-paragraph {
+  display: block;
+}
+.tano-prose .tano-enhanced {
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.tano-enhanced-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--accent);
+  font-size: 13px;
+}
+.tano-enhanced-header input {
+  min-width: 60px;
+  width: 140px;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 5px;
+  border-radius: 4px;
+}
+.tano-enhanced-header input:focus {
+  outline: 1px solid var(--green);
+  background: var(--paper);
+}
+.tano-enhanced-header button {
+  border: 0;
+  border-radius: 4px;
+  padding: 5px 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+}
+.tano-enhanced-header button:hover {
+  background: var(--bg);
+}
+.tano-enhanced-header button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tano-enhanced-content {
+  padding: 6px;
+  min-width: 0;
+}
+.tano-panel > .tano-enhanced-content {
+  padding-left: 24px;
+  margin-left: 0;
+}
+.tano-panel > .tano-enhanced-content > :first-child {
+  margin-top: 8px;
+}
+.tano-enhanced-header .tano-add-child {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.tano-prose .tano-toggle {
+  margin: 8px 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.tano-toggle > .tano-enhanced-header {
+  gap: 4px;
+  flex-wrap: nowrap;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+}
+.tano-toggle > .tano-enhanced-header > input {
+  min-width: 0;
+  width: 0;
+  padding: 0;
+  line-height: inherit;
+}
+.tano-toggle > .tano-enhanced-header > input:focus {
+  outline: none;
+  background: transparent;
+}
+.tano-toggle > .tano-enhanced-header > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+.tano-toggle > .tano-enhanced-header > button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.tano-toggle > .tano-enhanced-header > .tano-toggle-trigger {
+  font-size: 18px;
+}
+.tano-toggle-icon {
+  display: inline-block;
+  rotate: 0deg;
+  transition: rotate var(--motion-spring, 380ms) var(--ease-spring-smooth, ease-out);
+}
+.tano-toggle-trigger[aria-expanded='true'] > .tano-toggle-icon {
+  rotate: 90deg;
+}
+.tano-toggle > .tano-enhanced-header > button:focus-visible {
+  outline: 2px solid var(--text-secondary);
+  outline-offset: 2px;
+}
+.tano-toggle > .tano-enhanced-content {
+  padding: 0 0 0 28px;
+}
+.tano-toggle > .tano-enhanced-content > :first-child {
+  margin-top: 6px;
+}
+.tano-toggle > .tano-enhanced-content > :last-child {
+  margin-bottom: 0;
+}
+.tano-enhanced-content[hidden],
+.tano-enhanced[hidden] {
+  display: none !important;
+}
+.tano-prose .tano-panel {
+  margin: 8px 0;
+}
+.tano-panel-menu {
+  width: 100%;
+}
+.tano-panel-menu > summary {
+  display: none;
+}
+.tano-panel-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tano-prose .tano-tabs {
+  --tano-tabs-header-height: 44px;
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.tano-tabs > .tano-enhanced-header {
+  box-sizing: content-box;
+  height: var(--tano-tabs-header-height);
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0 36px 0 0;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.tano-tabs > .tano-enhanced-content {
+  padding: 16px 0 0;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-content {
+  padding: 0;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-content > :first-child {
+  margin-top: 0;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-content > :last-child {
+  margin-bottom: 0;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-header {
+  position: absolute;
+  top: calc((var(--tano-tabs-header-height) - 28px) / 2);
+  right: 0;
+  padding: 0;
+  background: transparent;
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-menu {
+  width: auto;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-header .tano-panel-menu > summary,
+.tano-tabs > .tano-enhanced-header > .tano-add-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-menu > summary:hover,
+.tano-tabs > .tano-enhanced-header > .tano-add-panel:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-menu > summary:focus-visible,
+.tano-tabs > .tano-enhanced-header > .tano-add-panel:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.tano-tabs > .tano-enhanced-header > .tano-add-panel:disabled,
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-menu[hidden] {
+  display: none;
+}
+.tano-tabs > .tano-enhanced-content > .tano-panel > .tano-enhanced-header .tano-panel-menu[open] > .tano-panel-actions {
+  position: absolute;
+  z-index: 20;
+  top: 34px;
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: min(240px, calc(100vw - 48px));
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 6px 24px #00000014;
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-actions > input {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+}
+.tano-panel[data-tab-panel='true'] > .tano-enhanced-header .tano-panel-actions > .tano-add-child {
+  grid-column: 1 / -1;
+  text-align: left;
+}
+.tano-prose .tano-columns {
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.tano-columns > .tano-enhanced-content {
+  display: grid;
+  grid-template-columns: var(--tano-column-tracks);
+  align-items: start;
+  gap: 48px;
+  padding: 0;
+}
+.tano-columns > .tano-enhanced-content > .tano-panel {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.tano-columns > .tano-enhanced-content > .tano-panel > .tano-enhanced-header {
+  display: none;
+}
+.tano-columns > .tano-enhanced-content > .tano-panel > .tano-enhanced-content {
+  padding: 0;
+}
+.tano-columns > .tano-enhanced-content > .tano-panel > .tano-enhanced-content > :first-child {
+  margin-top: 0;
+}
+.tano-columns > .tano-enhanced-content > .tano-panel > .tano-enhanced-content > :last-child {
+  margin-bottom: 0;
+}
+.tano-column-controls[hidden],
+.tano-column-separators[hidden] {
+  display: none;
+}
+.tano-column-resizer {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  transform: translateX(-50%);
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.tano-column-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  opacity: 0;
+}
+.tano-column-resizer:hover::after,
+.tano-column-resizer:focus-visible::after,
+.tano-columns.is-resizing .tano-column-resizer::after {
+  opacity: 1;
+}
+.tano-column-resizer:focus-visible {
+  outline: none;
+}
+.tano-column-resizer:focus-visible::after {
+  background: var(--green);
+}
+.tano-columns.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.tano-tab-list {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: auto;
+}
+.tano-tab-list [role='tab'] {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 10px 0;
+  border-radius: 0;
+  white-space: nowrap;
+  background: transparent;
+  box-shadow: none;
+}
+.tano-tab-list [role='tab']:hover {
+  background: transparent;
+  color: var(--text);
+}
+.tano-tab-list [role='tab'][aria-selected='true'] {
+  background: transparent;
+  color: var(--text);
+}
+.tano-tab-list [role='tab'][aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--green);
+}
+.tano-tab-list [role='tab']:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+.tano-embed-preview {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.tano-embed-preview:empty {
+  display: none;
+}
+.tano-embed-preview img,
+.tano-embed-preview video,
+.tano-embed-preview audio {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+}
+.tano-prose .tano-resource {
+  position: relative;
+  margin: 12px 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.tano-resource [hidden] {
+  display: none !important;
+}
+.tano-resource-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 36px 4px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+.tano-resource-row:hover {
+  background: var(--surface);
+}
+.tano-resource-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.tano-resource-icon svg {
+  display: block;
+}
+.tano-resource-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tano-resource-meta {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tano-resource[data-resource-state='placeholder'] > .tano-resource-row {
+  min-height: 56px;
+  padding: 12px 44px 12px 16px;
+  gap: 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+}
+.tano-resource > .tano-embed-preview {
+  padding: 0;
+}
+.tano-resource > .tano-embed-preview img,
+.tano-resource > .tano-embed-preview video {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: none;
+  border-radius: 4px;
+}
+.tano-resource > .tano-embed-preview img {
+  cursor: pointer;
+}
+.tano-resource > .tano-embed-preview audio {
+  width: min(100%, 480px);
+}
+.tano-resource-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+}
+.tano-resource[data-resource-state='preview'] > .tano-resource-actions {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--paper);
+  box-shadow: 0 2px 6px #0000000a;
+}
+.tano-resource:hover > .tano-resource-actions,
+.tano-resource:focus-within > .tano-resource-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tano-resource-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.tano-resource-actions button:hover {
+  background: var(--hover);
+}
+.tano-resource-row:focus-visible,
+.tano-resource-actions button:focus-visible,
+.tano-resource img:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.tano-resource-editor-panel {
+  display: grid;
+  width: min(360px, var(--tano-panel-available-width, calc(100vw - 16px)));
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.tano-resource-editor-panel label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.tano-resource-editor-panel input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.tano-resource-editor-panel input:focus {
+  outline: none;
+  border-color: var(--green);
+}
+.tano-resource-editor-panel .tano-resource-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+.tano-resource-done {
+  justify-self: end;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+@media (hover: none) {
+  .tano-resource > .tano-resource-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+.tano-file-mention {
+  color: #5f5e5b;
+  background: #e8eaed;
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+@media (max-width: 640px) {
+  .tano-columns > .tano-enhanced-content {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .tano-column-separators {
+    display: none;
+  }
+}
+.tano-prose sup[data-type='footnote_reference'] {
+  color: #5f5e5b;
+  padding: 0 1px;
+}
+.tano-prose sup[data-type='footnote_reference'][data-footnote-number] {
+  font-size: 0;
+}
+.tano-prose sup[data-type='footnote_reference'][data-footnote-number]::before {
+  content: '[' attr(data-footnote-number) ']';
+  font-size: 12px;
+  font-weight: 500;
+}
+.milkdown-host.tano-link-modifier .tano-prose sup[data-type='footnote_reference'][data-footnote-number] {
+  cursor: pointer;
+  text-decoration: underline;
+}
+.tano-prose dl[data-type='footnote_definition'] {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  /* Align the number with the first text line, including paragraph padding. */
+  align-items: baseline;
+  gap: 10px;
+  margin: 22px 0 0;
+  padding-top: 10px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+.tano-prose dl[data-type='footnote_definition'] + dl[data-type='footnote_definition'] {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 4px;
+}
+.tano-prose dl[data-type='footnote_definition'][data-footnote-number]::before {
+  content: attr(data-footnote-number) '.';
+  grid-column: 1;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.tano-prose dl[data-type='footnote_definition'].tano-footnote-label-editing {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tano-prose dl[data-type='footnote_definition'].tano-footnote-label-editing::before {
+  content: none;
+}
+.tano-prose dl[data-type='footnote_definition'] dt {
+  color: var(--muted);
+}
+.tano-prose dl[data-type='footnote_definition'][data-footnote-number] dt {
+  display: none;
+}
+.tano-prose dl[data-type='footnote_definition'].tano-footnote-label-editing dt {
+  display: none;
+}
+.tano-prose dl[data-type='footnote_definition'].tano-footnote-label-editing dd {
+  grid-column: 1;
+}
+.tano-prose dl[data-type='footnote_definition'] dd {
+  margin: 0;
+  min-width: 0;
+  grid-column: 2;
+}
+.tano-prose dl[data-type='footnote_definition'] p {
+  margin: 0;
+}
+
+.tano-prose .tano-empty-block {
+  position: relative;
+}
+.tano-prose.ProseMirror-focused .tano-empty-block::before,
+.tano-prose .tano-empty-block-persistent::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  top: var(--tano-text-padding-block, 0px);
+  left: var(--tano-text-padding-inline, 0px);
+  max-width: calc(100% - 2 * var(--tano-text-padding-inline, 0px));
+  color: color-mix(in srgb, var(--muted) 40%, var(--paper));
+  font-size: inherit;
+  font-weight: inherit;
+  font-style: normal;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tano-prose pre.tano-empty-block::before {
+  top: 19px;
+  left: 22px;
+  max-width: calc(100% - 44px);
+}
+.tano-slash-menu,
+.tano-code-language-menu {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  width: min(326px, calc(100vw - 16px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--text);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+.tano-slash-menu {
+  width: min(280px, calc(100vw - 16px));
+}
+.tano-slash-menu[hidden] {
+  display: none;
+}
+.tano-slash-title {
+  padding: 8px 12px 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tano-slash-title:empty {
+  display: none;
+}
+.tano-slash-results,
+.tano-code-language-results {
+  min-height: 0;
+  max-height: 280px;
+  padding: 4px 5px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.tano-slash-option,
+.tano-code-language-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: 5px;
+  text-align: left;
+}
+.tano-slash-option[aria-selected='true'],
+.tano-code-language-option[aria-selected='true'] {
+  background: var(--surface);
+}
+.tano-slash-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+.tano-slash-label {
+  flex: 1;
+  min-width: 0;
+}
+.tano-slash-marker {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+.tano-slash-empty {
+  padding: 12px 8px;
+  color: var(--muted);
+}
+.tano-slash-form {
+  display: grid;
+  gap: 8px;
+  padding: 4px 6px;
+}
+.tano-slash-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--paper);
+  color: var(--text);
+}
+.tano-slash-form button {
+  padding: 6px;
+  border-radius: 5px;
+  background: var(--hover);
+  color: var(--text);
+}
+.tano-slash-form small {
+  color: var(--danger);
+}
+.tano-block-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.tano-block-handle {
+  position: absolute;
+  left: -28px;
+  width: 28px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--muted) 40%, var(--paper));
+  font-size: 16px;
+  line-height: 1;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 300ms ease-in-out;
+  pointer-events: none;
+  user-select: none;
+  touch-action: none;
+}
+.tano-block-handle-icon {
+  width: 18px;
+  height: 24px;
+  flex: 0 0 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  transition: background-color 120ms ease;
+}
+.tano-block-handle.is-column-child {
+  width: 18px;
+}
+.tano-block-handle.is-columns {
+  left: -52px;
+  width: 18px;
+}
+.tano-block-handle.is-visible,
+.tano-block-handle:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tano-block-handle:focus-visible {
+  outline: none;
+  transition: none;
+}
+.tano-block-handle-icon:hover {
+  background: var(--hover);
+}
+.tano-block-handle:active {
+  cursor: grabbing;
+}
+.tano-block-handle:focus-visible .tano-block-handle-icon {
+  outline: 2px solid var(--green);
+  transition: none;
+}
+.tano-block-handle[hidden] {
+  display: none;
+}
+.tano-fold-toggle {
+  position: absolute;
+  width: 18px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  font-size: 14px;
+  line-height: 1;
+}
+.tano-fold-toggle.is-visible,
+.tano-fold-toggle:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tano-fold-toggle:hover {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.tano-fold-toggle.is-folded {
+  opacity: 1;
+  pointer-events: auto;
+  color: var(--text-secondary);
+}
+.tano-fold-toggle[hidden] {
+  display: none;
+}
+.tano-folded-heading-content {
+  display: none !important;
+}
+.tano-folded-list-content {
+  display: none !important;
+}
+.tano-block-drop-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--green);
+  pointer-events: none;
+}
+.tano-block-drop-line[hidden] {
+  display: none;
+}
+.tano-prose,
+.source-editor {
+  font-family: var(--tano-prose-font-family, var(--font-ui));
+  font-variant-numeric: tabular-nums;
+  /* Keep Markdown punctuation stable beside digits in every preset font. */
+  font-variant-ligatures: no-contextual;
+}
+.tano-prose {
+  /* Block spacing contract
+     - text blocks use padding to place their text on the document rail;
+     - framed blocks use an inline margin to place their visible frame on the
+       same rail, then keep their own internal padding;
+     - nested blocks own their local spacing and must not inherit the outer
+       rail a second time.
+     TableViewport applies the same frame inset within its dynamic horizontal
+     layout, including the extra scrollable width of wide tables. */
+  --tano-block-padding-block: 2px;
+  --tano-block-frame-inset: var(--tano-block-padding-inline);
+  outline: none;
+  white-space: pre-wrap;
+  color: var(--text);
+  font-size: var(--tano-prose-font-size, 16px);
+  /* Notion reads at 1.5; CJK glyphs fill the em box, so 1.6 keeps the same
+     visual density for mixed Chinese/Latin paragraphs. */
+  line-height: 1.6;
+  min-height: 350px;
+  overflow-wrap: anywhere;
+  padding-bottom: 8px;
+}
+.tano-prose .tano-assistant-selection {
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  border-radius: 2px;
+}
+.tano-prose h1,
+.tano-prose h2,
+.tano-prose h3,
+.tano-prose h4,
+.tano-prose h5,
+.tano-prose h6 {
+  color: var(--text);
+  /* One heading weight everywhere (prose, live source, title); UI emphasis uses 500. */
+  font-weight: 600;
+  scroll-margin-top: 69px;
+}
+.tano-prose h1 {
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.875);
+  /* YaHei bold renders heavy at display sizes; 600 matches Notion's blocks. */
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin-top: 32px;
+  margin-bottom: 8px;
+}
+.tano-prose h2 {
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.5);
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 28px;
+  margin-bottom: 6px;
+  letter-spacing: -0.005em;
+}
+.tano-prose h3 {
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.25);
+  line-height: 1.35;
+  margin-top: 20px;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.tano-prose h4 {
+  font-size: calc(var(--tano-prose-font-size, 16px) * 1.125);
+  line-height: 1.4;
+  margin-top: 16px;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+/* Keep related text together; heading margins separate sections. */
+.tano-prose p {
+  margin: 4px 0;
+}

@@ -1,5 +1,5 @@
 
-import { isElement, ownerWindow } from './dom-realm';
+import { isElement, ownerWindow } from './primitives/dom-realm';
 import type { EditorView } from '@milkdown/kit/prose/view';
 
 /** Browser-maintained visibility, shared by drag and fold controls. No scroll-time

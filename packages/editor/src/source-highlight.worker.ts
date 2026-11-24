@@ -1,4 +1,4 @@
-import { IncrementalSourceHighlighter } from '@tano/editor/source-highlight';
+import { IncrementalSourceHighlighter } from './source-highlight';
 import type { SourceHighlightWorkerRequest } from './source-highlight-parser';
 
 const worker = globalThis as unknown as {

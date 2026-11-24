@@ -1,5 +1,5 @@
 
-import { isElement, isNode, ownerWindow } from './dom-realm';
+import { isElement, isNode, ownerWindow } from './primitives/dom-realm';
 import { NodeSelection, Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
 import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';

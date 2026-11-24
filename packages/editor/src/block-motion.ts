@@ -1,11 +1,11 @@
-import { ownerWindow } from './dom-realm';
+import { ownerWindow } from './primitives/dom-realm';
 
-import { isHTMLElement } from './dom-realm';
+import { isHTMLElement } from './primitives/dom-realm';
 import { Plugin, PluginKey, type Transaction } from '@milkdown/kit/prose/state';
 import { Mapping, ReplaceAroundStep, ReplaceStep } from '@milkdown/kit/prose/transform';
 import type { Node } from '@milkdown/kit/prose/model';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import { canAnimate, flipFrom, foldClip, ghostExit, riseIn, spring, FOLD_EXIT_DELAY, MOTION_DURATION, type Edge } from './motion';
+import { canAnimate, flipFrom, foldClip, ghostExit, riseIn, spring, FOLD_EXIT_DELAY, MOTION_DURATION, type Edge } from './primitives/motion';
 
 /* Paragraph-level motion for the editor.
  *

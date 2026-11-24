@@ -1,8 +1,13 @@
+import json
+from pathlib import Path
 import unittest
 
 from tano_page import (
+    OBJECT_DIRECTORY,
     WORKSPACE_CAPABILITY_PATH,
+    WORKSPACE_DATA_DIRECTORY,
     WORKSPACE_RELATION_PATH,
+    WORKSPACE_SETTINGS_PATH,
     content_hash,
     is_short_id,
     is_workspace_data_path,
@@ -31,6 +36,7 @@ class ProtocolTests(unittest.TestCase):
     def test_identity_and_caches_are_excluded_from_portable_data(self):
         for path in (
             WORKSPACE_CAPABILITY_PATH,
+            WORKSPACE_SETTINGS_PATH,
             WORKSPACE_RELATION_PATH,
             ".tano/objects/a1b2c3.tano.json",
             ".tano/conflicts/conflict.json",
@@ -43,6 +49,31 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(is_workspace_internal_path(".tano"))
         self.assertFalse(is_workspace_internal_path(".tano-backup/config.json"))
         self.assertFalse(is_workspace_internal_path("notes/.tano/config.json"))
+
+    def test_shared_protocol_vectors(self):
+        vectors_path = Path(__file__).resolve().parents[2] / "protocol" / "protocol-vectors.json"
+        if not vectors_path.exists():
+            return
+        vectors = json.loads(vectors_path.read_text(encoding="utf-8"))
+        self.assertEqual(WORKSPACE_DATA_DIRECTORY, vectors["constants"]["WORKSPACE_DATA_DIRECTORY"])
+        self.assertEqual(OBJECT_DIRECTORY, vectors["constants"]["OBJECT_DIRECTORY"])
+        self.assertEqual(WORKSPACE_CAPABILITY_PATH, vectors["constants"]["WORKSPACE_CAPABILITY_PATH"])
+        self.assertEqual(WORKSPACE_SETTINGS_PATH, vectors["constants"]["WORKSPACE_SETTINGS_PATH"])
+        self.assertEqual(WORKSPACE_RELATION_PATH, vectors["constants"]["WORKSPACE_RELATION_PATH"])
+        for item in vectors["hashes"]:
+            self.assertEqual(content_hash(item["input"].encode("utf-8")), item["sha256"])
+        for value in vectors["shortIds"]["valid"]:
+            self.assertTrue(is_short_id(value))
+        for value in vectors["shortIds"]["invalid"]:
+            self.assertFalse(is_short_id(value))
+        for value in vectors["workspaceInternalPaths"]["valid"]:
+            self.assertTrue(is_workspace_internal_path(value))
+        for value in vectors["workspaceInternalPaths"]["invalid"]:
+            self.assertFalse(is_workspace_internal_path(value))
+        for value in vectors["workspaceDataPaths"]["valid"]:
+            self.assertTrue(is_workspace_data_path(value))
+        for value in vectors["workspaceDataPaths"]["invalid"]:
+            self.assertFalse(is_workspace_data_path(value))
 
 
 if __name__ == "__main__":

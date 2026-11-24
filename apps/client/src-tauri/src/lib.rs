@@ -1,6 +1,4 @@
 #[cfg(desktop)]
-mod auxiliary_windows;
-#[cfg(desktop)]
 mod shell_open;
 
 #[cfg(desktop)]

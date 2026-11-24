@@ -52,7 +52,7 @@ pub enum WriteResult {
 }
 
 pub fn hash(content: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(content))
+    tano_page::content_hash(content)
 }
 
 /// Unlike recycling a directory, this never removes hidden or concurrently added children.
@@ -433,10 +433,87 @@ pub(crate) fn display_path(path: &Path) -> String {
 }
 
 pub fn is_short_id(id: &str) -> bool {
-    id.len() == 6
-        && id
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    tano_page::is_short_id(id)
+}
+
+#[cfg(test)]
+mod protocol_vector_tests {
+    use super::*;
+
+    #[test]
+    fn matches_shared_protocol_vectors() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../packages/protocol/protocol-vectors.json");
+        if !path.exists() {
+            return;
+        }
+        let vectors: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(
+            tano_page::WORKSPACE_DATA_DIRECTORY,
+            vectors["constants"]["WORKSPACE_DATA_DIRECTORY"]
+                .as_str()
+                .unwrap()
+        );
+        assert_eq!(
+            tano_page::OBJECT_DIRECTORY,
+            vectors["constants"]["OBJECT_DIRECTORY"].as_str().unwrap()
+        );
+        assert_eq!(
+            tano_page::WORKSPACE_CAPABILITY_PATH,
+            vectors["constants"]["WORKSPACE_CAPABILITY_PATH"]
+                .as_str()
+                .unwrap()
+        );
+        assert_eq!(
+            tano_page::WORKSPACE_SETTINGS_PATH,
+            vectors["constants"]["WORKSPACE_SETTINGS_PATH"]
+                .as_str()
+                .unwrap()
+        );
+        assert_eq!(
+            tano_page::WORKSPACE_RELATION_PATH,
+            vectors["constants"]["WORKSPACE_RELATION_PATH"]
+                .as_str()
+                .unwrap()
+        );
+        for item in vectors["hashes"].as_array().unwrap() {
+            let input = item["input"].as_str().unwrap().as_bytes();
+            let expected = item["sha256"].as_str().unwrap();
+            assert_eq!(hash(input), expected);
+            assert_eq!(tano_page::content_hash(input), expected);
+        }
+        for id in vectors["shortIds"]["valid"].as_array().unwrap() {
+            let s = id.as_str().unwrap();
+            assert!(is_short_id(s), "{s}");
+        }
+        for id in vectors["shortIds"]["invalid"].as_array().unwrap() {
+            let s = id.as_str().unwrap();
+            assert!(!is_short_id(s), "{s}");
+        }
+        for p in vectors["workspaceInternalPaths"]["valid"]
+            .as_array()
+            .unwrap()
+        {
+            let s = p.as_str().unwrap();
+            assert!(tano_page::is_workspace_internal_path(s), "{s}");
+        }
+        for p in vectors["workspaceInternalPaths"]["invalid"]
+            .as_array()
+            .unwrap()
+        {
+            let s = p.as_str().unwrap();
+            assert!(!tano_page::is_workspace_internal_path(s), "{s}");
+        }
+        for p in vectors["workspaceDataPaths"]["valid"].as_array().unwrap() {
+            let s = p.as_str().unwrap();
+            assert!(tano_page::is_workspace_data_path(s), "{s}");
+        }
+        for p in vectors["workspaceDataPaths"]["invalid"].as_array().unwrap() {
+            let s = p.as_str().unwrap();
+            assert!(!tano_page::is_workspace_data_path(s), "{s}");
+        }
+    }
 }
 
 pub(crate) fn claim_reference_id(
