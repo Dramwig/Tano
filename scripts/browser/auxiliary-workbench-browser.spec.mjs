@@ -430,10 +430,48 @@ test('liquid glass islands use the same single rim on the sidebar and tabbed pag
       const id = await surface.getAttribute('data-liquid-glass');
       const lens = page.locator(`.liquid-lens[style*="url(#tano-liquid-${id})"]`);
       await expect(lens).toHaveCSS('box-shadow', 'none');
-      await expect(lens).toHaveCSS('backdrop-filter', /tano-liquid-/);
+      await expect(lens).toHaveCSS('backdrop-filter', 'none');
+      await expect(lens.locator(':scope > svg > rect')).toHaveAttribute('filter', `url(#tano-liquid-${id})`);
     }
     await page.screenshot({ path: testInfo.outputPath(`island-rims-${mode}.png`) });
+    const reused = await settings.locator('.settings-main').evaluate(async scroller => {
+      const lenses = [...document.querySelectorAll('.liquid-lens[data-static-desk]')];
+      const paints = lenses.map(lens => lens.firstElementChild);
+      const initial = scroller.scrollTop;
+      scroller.scrollTop = initial > 100 ? initial - 100 : initial + 100;
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return scroller.scrollTop !== initial && lenses.every((lens, i) => lens.firstElementChild === paints[i]);
+    });
+    expect(reused).toBe(true);
   }
+});
+
+test('stationary glass paints the current theme gradient when no wallpaper is selected', async ({ page }) => {
+  await prepare(page);
+  await page.evaluate(() => {
+    const { appearance, appearanceController, openSettingsTab } = window.workbench;
+    appearanceController.select({ workspaceId: appearance.workspaceId, kind: 'preset', id: 'builtin:liquid' });
+    openSettingsTab('appearance');
+  });
+  await page.getByRole('button', { name: '光斑', exact: true }).click();
+  const gradient = color => page.evaluate(color =>
+    document.documentElement.style.setProperty('--workbench-back-paint',
+      `repeating-linear-gradient(to right, ${color} 0 20px, white 20px 24px)`), color);
+  const pane = page.locator('.workspace-card[data-liquid-joined-card]');
+  const id = await pane.getAttribute('data-liquid-glass');
+  const field = page.locator(`#tano-liquid-crop-${id} image`);
+  await gradient('tomato');
+  await expect(field).toHaveAttribute('href', /tomato|255%2C%2099%2C%2071/);
+  const box = await pane.boundingBox();
+  const clip = { x: Math.round(box.x + box.width - 250), y: Math.round(box.y + 3), width: 160, height: 24 };
+  const capture = async () => sharp(await page.screenshot({ clip })).removeAlpha().raw().toBuffer();
+  const bent = await capture();
+  await page.locator(`#tano-liquid-${id} feDisplacementMap`).evaluateAll(nodes =>
+    nodes.forEach(node => node.setAttribute('scale', '0')));
+  const flat = await capture();
+  expect(bent.reduce((sum, value, i) => sum + Math.abs(value - flat[i]), 0) / bent.length).toBeGreaterThan(2);
+  await gradient('teal');
+  await expect(field).toHaveAttribute('href', /teal|0%2C%20128%2C%20128/);
 });
 
 test('the selected liquid glass tab and its page share one surface', async ({ page }) => {

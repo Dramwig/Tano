@@ -1,3 +1,5 @@
+import { glassSamplePadding, paintGlassDesk, readGlassDesk, svgNode, type GlassDesk } from './liquid-desk';
+
 export const liquidGlassMaterialId = 'builtin:liquid';
 
 /** Edges along which the rectangular tint fades. */
@@ -114,6 +116,7 @@ interface Surface {
   id: number; refract: boolean;
   filter?: SVGFilterElement;
   lens?: HTMLDivElement;
+  deskKey?: string;
   join?: { tab: HTMLElement; veil: HTMLDivElement; outline: SVGSVGElement; path: SVGPathElement };
   /** Computed-style reads, refreshed when the root changes (theme, layout) or the element is new. */
   look?: { radius: number; corners: string; bezel: number };
@@ -129,6 +132,8 @@ export class LiquidGlassController {
   private active = false;
   /** Set when <html> changed: computed styles (theme, radii, wallpaper) must be read again. */
   private stylesDirty = true;
+  private desk?: GlassDesk;
+  private deskRevision = 0;
   private readonly rootObserver: MutationObserver;
   private readonly treeObserver: MutationObserver;
   private readonly resizeObserver?: ResizeObserver;
@@ -189,6 +194,13 @@ export class LiquidGlassController {
     const restyle = this.stylesDirty;
     this.stylesDirty = false;
     const origin = host.getBoundingClientRect();
+    if (restyle && this.supported) {
+      const desk = readGlassDesk(host, origin);
+      if (desk?.href !== this.desk?.href || desk?.width !== this.desk?.width || desk?.height !== this.desk?.height) {
+        this.desk = desk;
+        this.deskRevision++;
+      }
+    }
     const seen = new Map<HTMLElement, { rect: DOMRect; join?: TabJoin }>();
     for (const kind of kinds) {
       if (!kind.when(root)) continue;
@@ -287,9 +299,20 @@ export class LiquidGlassController {
     if (join?.tab.closest('.desktop-tab-list-animating, .desktop-tab-list-slotting') &&
       join.tab.parentElement?.getAnimations?.({ subtree: true }).some(animation => animation.playState === 'running')) this.schedule();
     if (!surface.refract) return;
+    const desk = this.desk;
+    const sampleX = desk?.wallpaper ? left + origin.left : left;
+    const sampleY = (desk?.wallpaper ? top + origin.top : top) - tabHeight;
+    const deskKey = [this.deskRevision, sampleX, sampleY, lensWidth, opticalHeight].join('|');
+    if (surface.deskKey !== deskKey) {
+      surface.deskKey = deskKey;
+      const lens = surface.lens!;
+      if (desk) paintGlassDesk(lens, surface.id, desk, sampleX, sampleY, lensWidth, opticalHeight);
+      else lens.replaceChildren();
+      lens.toggleAttribute('data-static-desk', !!desk);
+    }
     const { radius } = surface.look;
     const bezel = Math.min(surface.look.bezel, w / 2, h / 2);
-    const shapeKey = [w, h, lensWidth, opticalHeight, radius, bezel, contour].join('|');
+    const shapeKey = [w, h, lensWidth, opticalHeight, radius, bezel, contour, !!desk].join('|');
     if (shapeKey === surface.shapeKey) return;
     surface.shapeKey = shapeKey;
     surface.bezel = bezel; surface.width = w; surface.height = h;
@@ -358,6 +381,7 @@ export class LiquidGlassController {
     for (const element of [...this.surfaces.keys()]) this.untrack(element);
     this.doc.documentElement.removeAttribute('data-liquid-refraction');
     this.svg?.remove(); this.svg = undefined;
+    this.desk = undefined;
     this.style?.remove(); this.style = undefined;
   }
 
@@ -377,20 +401,20 @@ export class LiquidGlassController {
     seam?: { right: number; bottom: number; bezel: number }) {
     const map = glassMap(width, height, radius, contour);
     const seamKey = seam ? [seam.right, seam.bottom, seam.bezel].join('|') : '';
-    if (surface.filter?.getAttribute('width') === String(width) && surface.filter.getAttribute('height') === String(height)
+    const pad = target.hasAttribute('data-static-desk') ? glassSamplePadding : 0;
+    const filterWidth = width + 2 * pad, filterHeight = height + 2 * pad;
+    if (surface.filter?.getAttribute('width') === String(filterWidth) && surface.filter.getAttribute('height') === String(filterHeight)
       && surface.filter.dataset.seam === seamKey) {
       surface.filter.querySelector('feImage')!.setAttribute('href', map);
       return;
     }
     surface.filter?.remove();
     const id = `tano-liquid-${surface.id}`;
-    const make = <K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) => {
-      const element = this.doc.createElementNS(svgNamespace, tag);
-      for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value);
-      return element;
-    };
+    const make = <K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) =>
+      svgNode(this.doc, tag, attributes);
     const size = { x: '0', y: '0', width: String(width), height: String(height) };
-    const filter = make('filter', { id, ...size, filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' });
+    const filter = make('filter', { id, x: String(-pad), y: String(-pad), width: String(filterWidth), height: String(filterHeight),
+      filterUnits: 'userSpaceOnUse', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' });
     filter.dataset.seam = seamKey;
     const image = make('feImage', { ...size, preserveAspectRatio: 'none', result: 'map' });
     filter.append(image);
