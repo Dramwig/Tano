@@ -263,7 +263,7 @@ mod tests {
             }
         }
         let directory =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/fixtures/plugin-tls");
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/plugin-tls");
         let mut command = Command::new("node");
         command
             .arg(directory.join("server.cjs"))

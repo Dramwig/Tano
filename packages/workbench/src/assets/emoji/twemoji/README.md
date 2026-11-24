@@ -21,4 +21,4 @@ Regenerate the catalog subset from the pinned release with
 To rebuild offline from retained SVGs, run `npm run emoji:generate`.
 `npm run emoji:check` verifies source hashes, catalog coordinates, and the
 generated image. Source archive and per-file SHA-256 hashes are recorded in
-[manifest.json](manifest.json). No SVG source artwork is changed.
+[manifest.json](../../../../assets-src/twemoji/manifest.json). No SVG source artwork is changed.
