@@ -92,7 +92,7 @@ it('uses only explicitly configured presets from the injected catalog without in
 it('treats frosted glass as a material that combines freely with every layout and palette', () => {
   const root = document.documentElement;
   const controller = new AppearanceController(new FileIconRegistry(), 'device', undefined, applyAppearance); controller.sync('one', []);
-  expect(controller.state.value.layouts.map(layout => layout.id)).toEqual(['builtin:islands', 'builtin:paper']);
+  expect(controller.state.value.layouts.map(layout => layout.id)).toEqual(['builtin:inset', 'builtin:islands', 'builtin:paper']);
   expect(controller.state.value.materials).toEqual([{ id: 'builtin:frost', label: '磨砂玻璃' }, { id: 'builtin:liquid', label: '液态玻璃' }]);
   const preset = controller.state.value.presets.find(p => p.id === 'builtin:frost');
   expect(preset).toMatchObject({ unavailable: false, structure: 'islands', material: 'frost',

@@ -531,7 +531,7 @@ test('the settings tab meets the breadcrumb without a rounded dialog frame', asy
   const settings = page.locator('.settings-tabbed .settings-dialog');
   const header = page.locator('.topbar:visible').filter({ has: page.locator('.breadcrumb-current', { hasText: '设置' }) });
   await expect(header.locator('.breadcrumb-menu-trigger + svg + .breadcrumb-current')).toHaveText('设置');
-  for (const layout of ['builtin:tano', 'builtin:islands', 'builtin:paper']) {
+  for (const layout of ['builtin:tano', 'builtin:inset', 'builtin:islands', 'builtin:paper']) {
     await settings.getByRole('combobox', { name: '布局风格', exact: true }).selectOption(layout);
     await expect(settings).toHaveCSS('border-top-left-radius', '0px');
     await expect(settings).toHaveCSS('box-shadow', 'none');
@@ -592,15 +592,17 @@ test('switching glass material preserves the layout’s cards and docked tabs', 
 
   for (const [id, structure] of [
     ['builtin:islands', 'islands'],
+    ['builtin:inset', 'islands'],
     ['builtin:tano', 'continuous'],
     ['builtin:paper', 'document'],
   ]) {
     await layout.selectOption(id);
     await expect(root).toHaveAttribute('data-layout', structure);
+    await expect(root).toHaveAttribute('data-layout-theme', id);
     await material.selectOption('builtin:frost');
     await expect(root).toHaveAttribute('data-material', 'builtin:frost');
     const frostedSidebar = await sidebarBounds();
-    if (structure === 'islands') {
+    if (id === 'builtin:islands') {
       expect(parseFloat(frostedSidebar.top)).toBeGreaterThan(0);
     } else {
       expect(frostedSidebar.display).toBe('none');
@@ -610,15 +612,86 @@ test('switching glass material preserves the layout’s cards and docked tabs', 
     await expect(root).toHaveAttribute('data-material', 'builtin:liquid');
     await expect(root).toHaveAttribute('data-layout', structure);
     expect(await sidebarBounds()).toEqual(frostedSidebar);
-    if (structure === 'islands') {
+    if (id === 'builtin:islands') {
       await expect(sidebarSurface).toHaveAttribute('data-liquid-glass', /\d+/);
     } else {
       await expect(sidebarSurface).not.toHaveAttribute('data-liquid-glass', /.+/);
-      await expect(page.locator('.workspace-pane-surface:visible')).toHaveAttribute('data-liquid-glass', /\d+/);
+      const content = structure === 'islands' ? '.workspace-page-content.workspace-card' : '.workspace-pane-surface';
+      await expect(page.locator(`${content}:visible`)).toHaveAttribute('data-liquid-glass', /\d+/);
     }
     await expect(inactiveTab).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     expect(await inactiveTab.evaluate(tab => getComputedStyle(tab, '::after').content)).toBe('none');
   }
+});
+
+test('inset layout keeps the island content bounds and puts the sidebar on the desk', async ({ page }) => {
+  await prepare(page);
+  await page.evaluate(() => window.workbench.openSettingsTab('appearance'));
+  const layout = page.getByRole('combobox', { name: '布局风格', exact: true });
+  const sidebar = page.locator('.app-shell > .sidebar');
+  const sidebarSurface = sidebar.locator('.sidebar-surface');
+  const card = page.locator('.workspace-page-content.workspace-card:visible');
+  await layout.selectOption('builtin:islands');
+  await expect(sidebarSurface).toBeVisible();
+  await expect(card).toHaveCSS('border-top-left-radius', '10px');
+  const islandBounds = await card.boundingBox();
+
+  await layout.selectOption({ label: '留边布局' });
+  await expect(sidebar).toBeVisible();
+  await expect(sidebar).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(sidebarSurface).toBeHidden();
+  await expect(card).toHaveCSS('border-top-left-radius', '10px');
+  expect(await card.boundingBox()).toEqual(islandBounds);
+  const preview = page.locator('.theme-preset-quick-row [aria-pressed="true"] .theme-preview');
+  await expect(preview).toHaveAttribute('data-preview-structure', 'islands');
+  await expect(preview.locator('.theme-preview-sidebar').first()).toHaveCSS('border-right-width', '0px');
+});
+
+test('inset layout preserves the edge-to-edge background in light and dark mode', async ({ page }) => {
+  await prepare(page);
+  await page.evaluate(() => window.workbench.openSettingsTab('appearance'));
+  const root = page.locator('html');
+  const shell = page.locator('.app-shell');
+  const sidebar = shell.locator('> .sidebar');
+  const layout = page.getByRole('combobox', { name: '布局风格', exact: true });
+  const mode = page.getByRole('combobox', { name: '显示模式', exact: true });
+
+  for (const colorMode of ['light', 'dark']) {
+    await mode.selectOption(colorMode);
+    await expect(root).toHaveAttribute('data-theme', colorMode);
+    await layout.selectOption('builtin:tano');
+    const background = await sidebar.evaluate(element => getComputedStyle(element).backgroundColor);
+    await expect(shell).toHaveCSS('background-color', background);
+
+    await layout.selectOption('builtin:inset');
+    await expect(shell).toHaveCSS('background-color', background);
+    await expect(sidebar).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  }
+});
+
+test('liquid glass and its default wallpaper become visible together', async ({ page }) => {
+  await prepare(page);
+  await page.evaluate(() => {
+    window.workbench.openSettingsTab('appearance');
+    const encode = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
+      if (type !== 'image/webp' || Math.max(this.width, this.height) < 1000) {
+        return encode.call(this, callback, type, quality);
+      }
+      window.releaseWallpaperEncode = () => encode.call(this, callback, type, quality);
+    };
+  });
+  const root = page.locator('html');
+  const shell = page.locator('.app-shell');
+  const background = await shell.evaluate(element => getComputedStyle(element).backgroundColor);
+  await page.getByRole('combobox', { name: '材质', exact: true }).selectOption('builtin:liquid');
+  await page.waitForFunction(() => typeof window.releaseWallpaperEncode === 'function');
+  await expect(root).not.toHaveAttribute('data-material', 'builtin:liquid');
+  await expect(shell).toHaveCSS('background-color', background);
+  await page.evaluate(() => window.releaseWallpaperEncode());
+  await expect(root).toHaveAttribute('data-material', 'builtin:liquid');
+  await expect(root).toHaveAttribute('data-glass-wallpaper', '');
+  await expect(shell).toHaveCSS('background-image', /blob:/);
 });
 
 for (const [layout, id] of [['continuous', 'builtin:tano'], ['document', 'builtin:paper']]) {

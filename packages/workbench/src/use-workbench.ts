@@ -385,7 +385,7 @@ import { isBlankPageTarget } from './page-context-menu';
 
 import { pageRoutePath, pageRouteUrl, parsePageRoute } from './web-navigation';
 
-import { applyTheme } from './theme';
+import { applyAppearance, applyTheme, resolveThemeMode } from './theme';
 
 import { AppearanceController } from './appearance';
 import { GlassWallpaperController, indexedDbWallpaperStore, setGlassWallpaper } from './glass-wallpaper';
@@ -961,11 +961,17 @@ watch(sidebar, (open) => {
 });
 const appearanceIcons = new FileIconRegistry();
 provide(fileIconRegistryKey, appearanceIcons);
+const glassWallpaperController = new GlassWallpaperController(useWorkbenchRuntime().plugins?.principal ?? 'device', {
+  getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value),
+}, indexedDbWallpaperStore(), { normalizeImport, decode: decodeImage, builtin: paintBuiltin, thumbnail: builtinThumbnail, customThumbnail, render: renderWallpaper });
 const appearanceController = new AppearanceController(appearanceIcons, useWorkbenchRuntime().plugins?.principal ?? 'device', {
   getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value),
   get length() { return window.localStorage.length; },
   key: index => window.localStorage.key(index),
   removeItem: key => window.localStorage.removeItem(key),
+}, (color, layout, shape, mode, material) => {
+  glassWallpaperController.applyWithWallpaper(material, () => resolveThemeMode(mode ?? 'system', color),
+    () => applyAppearance(color, layout, shape, mode, material));
 });
 const appearance = appearanceController.state;
 watch([() => store.workspace?.id ?? '', () => store.installedPlugins, () => store.installedPluginWorkspace], ([id, installed, loadedFor]) => {
@@ -974,10 +980,6 @@ watch([() => store.workspace?.id ?? '', () => store.installedPlugins, () => stor
 onBeforeUnmount(() => appearanceController.dispose());
 const theme = computed<ThemePreference>({ get: () => appearance.value.mode,
   set: mode => appearanceController.select({ workspaceId: appearance.value.workspaceId, kind: 'mode', id: mode }) });
-// The frosted-glass background image is a device preference; it publishes CSS variables on <html>.
-const glassWallpaperController = new GlassWallpaperController(useWorkbenchRuntime().plugins?.principal ?? 'device', {
-  getItem: key => window.localStorage.getItem(key), setItem: (key, value) => window.localStorage.setItem(key, value),
-}, indexedDbWallpaperStore(), { normalizeImport, decode: decodeImage, builtin: paintBuiltin, thumbnail: builtinThumbnail, customThumbnail, render: renderWallpaper });
 setGlassWallpaper(glassWallpaperController);
 onMounted(() => { void glassWallpaperController.load(); });
 onBeforeUnmount(() => { glassWallpaperController.dispose(); setGlassWallpaper(undefined); });

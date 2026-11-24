@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { AppearancePreset } from '../appearance';
+import { insetLayout, type AppearancePreset } from '../appearance';
 
 const props = defineProps<{ preset: AppearancePreset }>();
 const previews = computed(() => props.preset.previews?.length ? props.preset.previews : [{ mode: 'light' as const, colors: {} }]);
@@ -8,7 +8,8 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 
 <template>
   <span class="theme-preview" :class="{ 'theme-preview-dual': previews.length === 2 }"
-    :data-preview-structure="preset.structure ?? 'continuous'" :data-preview-surface="preset.material" aria-hidden="true">
+    :data-preview-structure="preset.structure ?? 'continuous'" :data-preview-surface="preset.material"
+    :data-preview-flat-sidebar="preset.selected.layout === insetLayout ? '' : undefined" aria-hidden="true">
     <span v-for="preview in previews" :key="preview.mode" class="theme-preview-scene"
       :data-preview-mode="preview.mode" :style="preview.colors">
       <span class="theme-preview-window">
@@ -84,10 +85,11 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 .theme-preview-callout > i { width: 85%; height: 2px; border-radius: 1px; background: var(--preview-green); opacity: .45; }
 .theme-preview-callout > i:last-child { width: 60%; }
 .theme-preview-paragraph-short { display: none; }
-/* Two floating cards under a top bar that sits directly on the desk. */
+/* Inset content under a top bar that sits directly on the desk. */
 [data-preview-structure='islands'] .theme-preview-toolbar { border-bottom: 0; background: var(--preview-sidebar); }
 [data-preview-structure='islands'] .theme-preview-workspace { gap: 5px; padding: 0 5px 5px; background: var(--preview-sidebar); }
-[data-preview-structure='islands'] .theme-preview-sidebar { padding: 6px 4px; border: 1px solid var(--preview-line); border-radius: 4px; background: var(--preview-paper); }
+[data-preview-structure='islands'] .theme-preview-sidebar { padding: 6px 4px; border: 0; background: transparent; }
+[data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar { border: 1px solid var(--preview-line); border-radius: 4px; background: var(--preview-paper); }
 [data-preview-structure='islands'] .theme-preview-main { padding: 7px 9px; border: 1px solid var(--preview-line); border-radius: 4px; }
 [data-preview-structure='islands'] .theme-preview-document { gap: 6px; }
 [data-preview-structure='islands'] .theme-preview-nav:last-child { display: none; }
@@ -128,8 +130,8 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 .theme-preview[data-preview-surface] .theme-preview-toolbar,
 .theme-preview[data-preview-surface] .theme-preview-workspace { background: transparent; }
 .theme-preview[data-preview-surface] .theme-preview-window { border-color: transparent; box-shadow: none; }
-.theme-preview[data-preview-surface='frost'] .theme-preview-sidebar,
-.theme-preview[data-preview-surface='liquid'][data-preview-structure='islands'] .theme-preview-sidebar,
+.theme-preview[data-preview-surface='frost']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
+.theme-preview[data-preview-surface='liquid'][data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
 .theme-preview[data-preview-surface] .theme-preview-main {
   border-color: var(--preview-rim);
   border-radius: 6px;
@@ -142,7 +144,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 .theme-preview[data-preview-surface='liquid'] .theme-preview-scene { --preview-glass: 10%; --preview-rim: #ffffff80; --preview-edge: #ffffff80; --preview-outline: #1c24301f; }
 .theme-preview[data-preview-surface='liquid'] .theme-preview-scene[data-preview-mode='dark'] { --preview-glass: 16%; --preview-rim: #ffffff42; --preview-edge: #ffffff1a; --preview-outline: #00000073; }
 .theme-preview[data-preview-surface='liquid']:not([data-preview-structure='islands']) .theme-preview-sidebar { background: transparent; }
-.theme-preview[data-preview-surface='liquid'][data-preview-structure='islands'] .theme-preview-sidebar,
+.theme-preview[data-preview-surface='liquid'][data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
 .theme-preview[data-preview-surface='liquid'] .theme-preview-main {
   border-color: transparent;
   background: color-mix(in srgb, var(--preview-paper) var(--preview-glass), transparent);

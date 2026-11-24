@@ -992,11 +992,15 @@ it('selects colors and icons independently and explains unavailable selections',
   const color = root.querySelector<HTMLSelectElement>('[aria-label="配色主题"]')!;
   const icons = root.querySelector<HTMLSelectElement>('[aria-label="文件与目录图标"]')!;
   expect(icons.value).toBe('missing');
-  expect(root.textContent).toContain('原主题当前不可用');
+  expect(root.textContent).toContain('原主题当前不可用，已使用「同页线框」。');
+  expect(color.selectedOptions[0]?.textContent).toBe('中性灰');
+  expect(icons.options[0]?.textContent).toBe('同页线框');
+  expect(root.querySelector('[aria-label="形态与密度"] option')?.textContent).toBe('标准圆角');
   color.value = 'paper:paper'; color.dispatchEvent(new Event('change')); await nextTick();
   icons.value = 'lines:lines'; icons.dispatchEvent(new Event('change')); await nextTick();
   expect(appearanceSelections).toEqual([{ workspaceId: 'one', kind: 'color', id: 'paper:paper' }, { workspaceId: 'one', kind: 'icons', id: 'lines:lines' }]);
   const layout = root.querySelector<HTMLSelectElement>('[aria-label="布局风格"]')!;
+  expect(layout.selectedOptions[0]?.textContent).toBe('贴边布局');
   layout.value = 'builtin:paper'; layout.dispatchEvent(new Event('change')); await nextTick();
   expect(appearanceSelections.at(-1)).toEqual({ workspaceId: 'one', kind: 'layout', id: 'builtin:paper' });
 });

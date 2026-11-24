@@ -199,5 +199,13 @@ export async function renderWallpaper(source: Source, softness: number): Promise
   const samples: Rgb[] = [];
   for (let index = 0; index < data.length; index += 4) samples.push([data[index]!, data[index + 1]!, data[index + 2]!]);
   const url = URL.createObjectURL(await toBlob(element, 'image/webp', 0.9));
+  const bitmap = new Image();
+  bitmap.src = url;
+  try {
+    await bitmap.decode();
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
   return { url, samples };
 }

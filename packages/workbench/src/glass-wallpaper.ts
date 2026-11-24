@@ -207,6 +207,7 @@ export class GlassWallpaperController {
   private render?: WallpaperRender;
   private customSource?: { revision?: number; image: Promise<WallpaperSource> };
   private generation = 0;
+  private appearanceChange = 0;
   private softnessTimer?: ReturnType<typeof setTimeout>;
   private liquidMaterial = false;
   private thumbnailMode?: ResolvedTheme['mode'];
@@ -217,11 +218,14 @@ export class GlassWallpaperController {
     const mode = this.mode();
     const modeChanged = this.thumbnailMode !== undefined && mode !== this.thumbnailMode;
     if (modeChanged) this.updateThumbnails(mode);
-    const materialChanged = this.liquidMaterial !== this.isLiquid();
-    if (materialChanged && this.useMaterialDefault && !this.wallpaperBeforeStripes) this.patch({ source: this.defaultSource() });
+    const liquid = this.isLiquid();
+    const sourceChanged = this.liquidMaterial !== liquid && this.useMaterialDefault
+      && !this.wallpaperBeforeStripes && this.state.value.source !== this.defaultSource();
+    this.liquidMaterial = liquid;
+    if (sourceChanged) this.patch({ source: this.defaultSource() });
     const { source } = this.state.value;
     this.publish(); // Repaint the current bitmap immediately while a replacement is being prepared.
-    if (materialChanged || (modeChanged && source !== 'none' && source !== 'custom')) {
+    if (sourceChanged || (modeChanged && source !== 'none' && source !== 'custom')) {
       clearTimeout(this.softnessTimer);
       void this.refresh();
     }
@@ -235,7 +239,47 @@ export class GlassWallpaperController {
     private readonly target: Pick<Window, 'addEventListener' | 'removeEventListener'> = window,
   ) {
     this.key = `tano.glass-wallpaper.v1.${encodeURIComponent(principal)}`;
+    this.patch(this.read());
     this.target.addEventListener(themeChangedEvent, this.onTheme);
+  }
+  /** Keep the previous appearance visible until the implicit cloud wallpaper is ready. */
+  applyWithWallpaper(material: string | undefined, mode: () => ResolvedTheme['mode'], apply: () => void) {
+    const change = ++this.appearanceChange;
+    if (material !== 'builtin:liquid' || this.isLiquid() || !this.useMaterialDefault || this.wallpaperBeforeStripes) {
+      apply();
+      return;
+    }
+    const prepare = async () => {
+      const targetMode = mode();
+      const softness = this.state.value.softness;
+      let render: WallpaperRender | undefined;
+      let error: string | undefined;
+      try {
+        const image = await this.renderer.builtin('builtin:clouds', targetMode);
+        render = await this.renderer.render(image, softness);
+      } catch (failure) {
+        error = failure instanceof Error ? failure.message : String(failure);
+      }
+      if (change !== this.appearanceChange || !this.useMaterialDefault || this.wallpaperBeforeStripes) {
+        if (render) URL.revokeObjectURL(render.url);
+        if (change === this.appearanceChange) apply();
+        return;
+      }
+      if (targetMode !== mode() || softness !== this.state.value.softness) {
+        if (render) URL.revokeObjectURL(render.url);
+        await prepare();
+        return;
+      }
+      ++this.generation;
+      clearTimeout(this.softnessTimer);
+      if (this.render) URL.revokeObjectURL(this.render.url);
+      this.render = render;
+      this.liquidMaterial = true;
+      if (this.thumbnailMode !== targetMode) this.updateThumbnails(targetMode);
+      this.patch({ source: 'builtin:clouds', busy: false, url: render?.url, error });
+      apply();
+    };
+    void prepare();
   }
   private defaultSource() { return this.isLiquid() ? 'builtin:clouds' : defaultWallpaper.source; }
   private read(): WallpaperPreference {
@@ -440,6 +484,7 @@ export class GlassWallpaperController {
     root.style.setProperty('--glass-wallpaper-glow', style.glow);
   }
   dispose() {
+    this.appearanceChange++;
     this.generation++;
     this.clearCustomSource();
     clearTimeout(this.softnessTimer);

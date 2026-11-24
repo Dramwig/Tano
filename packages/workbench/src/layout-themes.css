@@ -24,6 +24,8 @@
     --island-lift: 0 0 0 1px var(--layout-hairline), 0 1px 2px #0000000f;
   }
   :root[data-theme='dark'][data-layout='islands'] { --island-desk: var(--layout-desk); --island-lift: 0 0 0 1px var(--layout-hairline); }
+  /* Inset content uses the same desk color as the edge-to-edge layout. */
+  :root[data-layout='islands'][data-layout-theme='builtin:inset'] { --island-desk: var(--sidebar); }
   /* The desk is the back panel: bars sitting on it (sidebar header, tab strips) match it, and the sidebar
      itself is clear because its card is drawn by .sidebar-surface. */
   :root[data-layout='islands'] { --workbench-back: var(--island-desk); --workbench-sidebar: transparent; }
@@ -35,9 +37,9 @@
   @media (pointer: fine) and (min-width: 701px) { :root[data-layout='islands'] .app-shell { --island-top: 36px; } }
   :root[data-layout='islands'] .app-shell:has(.workspace-native-tabs) { --island-top: var(--workbench-tabbar-height); }
 
-  /* Sidebar: the header row stays on the desk; everything below is drawn on one card behind the content. */
+  /* The sidebar controls sit on the desk. Card islands add a sheet behind them. */
   :root[data-layout='islands'] .app-shell > .sidebar { padding: 0 8px; }
-  :root[data-layout='islands'] .sidebar-surface {
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-surface {
     display: block; inset: var(--island-top) 0 0;
     background: var(--workbench-front); border-radius: var(--radius-card); box-shadow: var(--island-lift);
   }
@@ -324,14 +326,14 @@
   :root[data-theme='dark'][data-material='builtin:liquid'] { --liquid-panel-strength: 16%; }
   :root[data-material='builtin:liquid'][data-glass-wallpaper][data-layout] { --liquid-panel-strength: var(--glass-wallpaper-fill, 40%); }
   /* Only the islands layout gives the sidebar its own sheet. */
-  :root[data-material='builtin:liquid'][data-layout='islands'] .sidebar-surface {
+  :root[data-material='builtin:liquid'][data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-surface {
     background: var(--liquid-panel);
     -webkit-backdrop-filter: none; backdrop-filter: none;
   }
   /* A drawer sidebar (compact layout) floats over the page. The
      sidebar already forms a stacking context (z-index 4), so the pseudo-element layer is safe. */
-  :root.compact-layout[data-material='builtin:frost'] .sidebar-surface,
-  :root.compact-layout[data-material='builtin:liquid'][data-layout='islands'] .sidebar-surface {
+  :root.compact-layout[data-material='builtin:frost']:not([data-layout-theme='builtin:inset']) .sidebar-surface,
+  :root.compact-layout[data-material='builtin:liquid'][data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-surface {
     display: block; inset: 0;
   }
   :root.compact-layout[data-material='builtin:frost'] .sidebar-surface {
@@ -377,6 +379,7 @@
     box-shadow: 0 0 0 .5px var(--glass-outline), var(--glass-specular), var(--glass-drop);
   }
   /* In compact mode the drawer covers the editor, so paint the desk behind its controls. */
+  :root.compact-layout[data-layout-theme='builtin:inset'] .app-shell > .sidebar,
   :root.compact-layout[data-material='builtin:liquid']:not([data-layout='islands']) .app-shell > .sidebar {
     background: var(--workbench-back-paint);
   }
