@@ -101,7 +101,7 @@ mod tests {
         command
             .args([
                 "--exact",
-                "workspace_lock::tests::child_lock_owner",
+                "workspace::lock::tests::child_lock_owner",
                 "--ignored",
             ])
             .env("TANO_LOCK_TEST_DIR", directory.path())

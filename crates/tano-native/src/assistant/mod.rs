@@ -14,15 +14,12 @@ use tokio::sync::watch;
 static CONNECTION_LOCK: Mutex<()> = Mutex::new(());
 static SESSION_LOCK: Mutex<()> = Mutex::new(());
 
-#[path = "assistant_inbox.rs"]
 pub(crate) mod inbox;
 
-#[path = "assistant_cc_switch.rs"]
 pub(crate) mod cc_switch;
 
-#[path = "assistant_api.rs"]
 mod api;
-#[path = "assistant_quota.rs"]
+pub(crate) mod cli;
 pub(crate) mod quota;
 
 #[derive(Default)]

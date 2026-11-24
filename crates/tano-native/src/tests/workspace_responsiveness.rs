@@ -1,5 +1,5 @@
 //! Exercise real IPC dispatch while a workspace scan owns the session mutex.
-use super::*;
+use crate::*;
 use std::{sync::mpsc, time::Duration};
 
 #[test]

@@ -694,7 +694,7 @@ mod tests {
             // PowerShell startup can consume the entire timeout on CI before
             // the helper starts; cmd does not load that runtime.
             let mut fixture = Command::new("cmd.exe");
-            fixture.raw_arg("/D /S /C \"\"%TANO_CLI_TEST_EXE%\" --exact assistant_cli::tests::fixture_process --ignored --nocapture >nul 2>&1\"")
+            fixture.raw_arg("/D /S /C \"\"%TANO_CLI_TEST_EXE%\" --exact assistant::cli::tests::fixture_process --ignored --nocapture >nul 2>&1\"")
                 .env("TANO_CLI_TEST_EXE", std::env::current_exe().unwrap())
                 .env("TANO_CLI_FIXTURE_MODE", "wait")
                 .env("TANO_CLI_FIXTURE_DIR", directory.path())

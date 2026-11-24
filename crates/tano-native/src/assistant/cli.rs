@@ -22,11 +22,11 @@ pub enum Kind {
     ClaudeCli,
 }
 
-#[path = "assistant_cli_models.rs"]
+#[path = "cli_models.rs"]
 mod model_catalog;
 pub use model_catalog::models;
 
-#[path = "assistant_cli_stream.rs"]
+#[path = "cli_stream.rs"]
 mod streaming;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -850,7 +850,7 @@ mod tests {
         command
             .args([
                 "--exact",
-                "assistant_cli::tests::fixture_process",
+                "assistant::cli::tests::fixture_process",
                 "--ignored",
                 "--nocapture",
             ])
