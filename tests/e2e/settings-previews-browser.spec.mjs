@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { capabilityTargets, settingTargets } from '../build/preview-renderer-targets.mjs';
+import { capabilityTargets, settingTargets } from '../../scripts/build/preview-renderer-targets.mjs';
 
 const pages = {
   editing: ['编辑器', 'Editor'], appearance: ['外观', 'Appearance'], documents: ['Markdown 与格式', 'Markdown & formatting'],

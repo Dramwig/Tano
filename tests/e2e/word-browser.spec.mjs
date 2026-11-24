@@ -29,7 +29,7 @@ test('system Word viewer renders source layout offline and keeps controls in the
   });
   mkdirSync(resolve('artifacts/word-preview'), { recursive: true });
   for (const extension of ['doc', 'docx']) {
-    await choose(resolve(`scripts/fixtures/word-preview/fixture.${extension}`));
+    await choose(resolve(`tests/fixtures/word-preview/fixture.${extension}`));
     const headingText = extension === 'docx' ? 'Original Word layout' : 'This is a simple file created with Word 97-SR2.';
     await expect(ui.locator('#paper')).toContainText(headingText);
     await expect(ui.locator('#status')).toBeHidden({ timeout: 30000 });
@@ -92,7 +92,7 @@ test('system Word viewer renders source layout offline and keeps controls in the
     runtime.attachments = { readAttachment: () => new Promise(resolve => { window.releasePreviewRead = () => resolve(new Uint8Array(bytes)); }) };
     await runtime.adapter.create('workspace.docx', 'fixture'); await store.refresh();
     void store.openAttachmentInNewTab(store.workspace.files.find(file => file.path === 'workspace.docx'));
-  }, { bytes: [...readFileSync(resolve('scripts/fixtures/word-preview/fixture.docx'))], runtimePath: `/@fs/${resolve('packages/workbench/src/runtime.ts').replaceAll('\\', '/')}` });
+  }, { bytes: [...readFileSync(resolve('tests/fixtures/word-preview/fixture.docx'))], runtimePath: `/@fs/${resolve('packages/workbench/src/runtime.ts').replaceAll('\\', '/')}` });
   await expect(ui.locator('.preview-loading')).toBeVisible();
   await expect(ui.locator('#app')).toHaveAttribute('aria-busy', 'true');
   await expect(ui.locator('#paper')).toBeEmpty();

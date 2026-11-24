@@ -44,9 +44,9 @@ Set `JAVA_HOME`, `ANDROID_HOME` and `NDK_HOME`. On Windows, the existing helper
 locates Android Studio's JDK and the SDK under `%LOCALAPPDATA%`:
 
 ```powershell
-powershell -File scripts/android.ps1 check
-powershell -File scripts/android.ps1 dev
-powershell -File scripts/android.ps1 build -DebugBuild -Target x86_64
+powershell -File scripts/android/android.ps1 check
+powershell -File scripts/android/android.ps1 dev
+powershell -File scripts/android/android.ps1 build -DebugBuild -Target x86_64
 ```
 
 The generated Android project is already checked in. Run `android:init` only when

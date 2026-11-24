@@ -5,10 +5,10 @@ import { resolve, sep } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, writeFile, readFile, copyFile, rm } from 'node:fs/promises';
-import { startPluginWatch } from './plugin-watch.mjs';
-import { buildPlugin } from './plugin-build.mjs';
-import { createPlugin } from './plugin-create.mjs';
-import { preparePluginRelease, buildPluginCatalog } from './plugin-catalog.mjs';
+import { startPluginWatch } from '../../scripts/plugin/plugin-watch.mjs';
+import { buildPlugin } from '../../scripts/plugin/plugin-build.mjs';
+import { createPlugin } from '../../scripts/plugin/plugin-create.mjs';
+import { preparePluginRelease, buildPluginCatalog } from '../../scripts/plugin/plugin-catalog.mjs';
 import { acceptTaskInsights } from '../fixtures/task-insights-acceptance.mjs';
 
 const origin = process.env.TANO_PLUGIN_TEST_URL ?? 'http://127.0.0.1:43845';
@@ -115,7 +115,7 @@ test('manages owner-authorized background tasks in the plugin center without act
   });
   await page.goto(origin);
   await page.evaluate(async ({ url, pkg }) => { window.automationsFixture = await (await import(url)).mountAutomations(pkg); },
-    { url: `/@fs/${resolve('scripts/fixtures/plugin-automations-browser.ts').replaceAll('\\', '/')}`, pkg });
+    { url: `/@fs/${resolve('tests/fixtures/plugin-automations-browser.ts').replaceAll('\\', '/')}`, pkg });
   const center = page.locator('#automations-fixture');
   await center.getByText('后台自动化', { exact: true }).click();
   const panel = center.getByRole('group', { name: '后台自动化', exact: true });
@@ -174,10 +174,10 @@ test('runs the Git inspector through its real isolated UI, Worker and named nati
     expect(request.command).toBe('git.diff');
     return route.fulfill({ json: { path: request.args.path, staged: request.args.staged, patch: request.args.staged ? '+已暂存内容' : '+工作区内容' } });
   });
-  const { pkg } = await buildPlugin(resolve('scripts/fixtures/native-query-plugin'));
+  const { pkg } = await buildPlugin(resolve('tests/fixtures/native-query-plugin'));
   await page.goto(origin);
   await page.evaluate(async ({ url, pkg }) => { window.nativeFixture = await (await import(url)).mountNative(pkg); },
-    { url: `/@fs/${resolve('scripts/fixtures/plugin-native-browser.ts').replaceAll('\\', '/')}`, pkg });
+    { url: `/@fs/${resolve('tests/fixtures/plugin-native-browser.ts').replaceAll('\\', '/')}`, pkg });
   const view = page.frameLocator('#native-fixture iframe').frameLocator('iframe');
   await expect(view.getByRole('heading', { name: '2 项变更' })).toBeVisible();
   await expect(view.getByText('当前分支 · main')).toBeVisible();
@@ -213,7 +213,7 @@ test('configures a personal credential through the host and uses the real Worker
     return route.fulfill({ json: { status: 200, body: '已通过宿主连接读取服务', contentType: 'text/plain' } });
   });
   await page.goto(origin);
-  await page.evaluate(async url => { const fixture = await import(url); window.connectionsFixture = await fixture.mountConnections(); }, `/@fs/${resolve('scripts/fixtures/plugin-connections-browser.ts').replaceAll('\\', '/')}`);
+  await page.evaluate(async url => { const fixture = await import(url); window.connectionsFixture = await fixture.mountConnections(); }, `/@fs/${resolve('tests/fixtures/plugin-connections-browser.ts').replaceAll('\\', '/')}`);
   const center = page.locator('#connections-fixture');
   await center.getByRole('button', { name: /^已安装/ }).click();
   await center.getByRole('button', { name: '查看服务连接示例详情' }).click();
@@ -261,7 +261,7 @@ test('connects an OAuth account through host UI and polls the result without exp
     return route.fulfill({ json: { status: 200, body: '通过账号连接读取成功', contentType: 'text/plain' } });
   });
   await page.goto(origin);
-  await page.evaluate(async url => { window.connectionsFixture = await (await import(url)).mountConnections(true); }, `/@fs/${resolve('scripts/fixtures/plugin-connections-browser.ts').replaceAll('\\', '/')}`);
+  await page.evaluate(async url => { window.connectionsFixture = await (await import(url)).mountConnections(true); }, `/@fs/${resolve('tests/fixtures/plugin-connections-browser.ts').replaceAll('\\', '/')}`);
   const center = page.locator('#connections-fixture');
   await center.getByRole('button', { name: /^已安装/ }).click();
   await center.getByRole('button', { name: '查看服务连接示例详情' }).click();
@@ -309,7 +309,7 @@ test('discovers reviewed releases, installs exact bytes without implicit trust, 
         body: path === '/index.json' ? indexContent : await readFile(resolve(output, path.slice(1)), 'utf8') });
     });
     await page.goto(origin);
-    await page.evaluate(async url => { const fixture = await import(url); window.catalogFixture = await fixture.mountCatalog('https://catalog.example.com/index.json'); }, `/@fs/${resolve('scripts/fixtures/plugin-catalog-browser.ts').replaceAll('\\', '/')}`);
+    await page.evaluate(async url => { const fixture = await import(url); window.catalogFixture = await fixture.mountCatalog('https://catalog.example.com/index.json'); }, `/@fs/${resolve('tests/fixtures/plugin-catalog-browser.ts').replaceAll('\\', '/')}`);
     const center = page.locator('#catalog-fixture');
     await center.getByRole('button', { name: '社区目录', exact: true }).click();
     await center.getByRole('button', { name: '查看社区插件 社区示例' }).click();
@@ -361,7 +361,7 @@ test('manages orphan cloud packages, protects pinned versions and surfaces concu
     return route.fulfill({ json: { used: entries.length * 1200, limit: 64 * 1024 * 1024, entryLimit: 1024, entries } });
   });
   await page.goto(origin);
-  await page.evaluate(async url => { const fixture = await import(url); window.disposeRepository = await fixture.mountRepository(); }, `/@fs/${resolve('scripts/fixtures/plugin-repository-browser.ts').replaceAll('\\', '/')}`);
+  await page.evaluate(async url => { const fixture = await import(url); window.disposeRepository = await fixture.mountRepository(); }, `/@fs/${resolve('tests/fixtures/plugin-repository-browser.ts').replaceAll('\\', '/')}`);
   const panel = page.locator('#repository-fixture');
   await panel.getByText('工作区云端包存储', { exact: true }).click();
   await expect(panel.getByRole('button', { name: '回收 installed 1.0.0 aaaaaaaa' })).toBeDisabled();

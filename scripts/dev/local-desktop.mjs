@@ -20,7 +20,7 @@ try {
       '-ExecutionPolicy',
       'Bypass',
       '-File',
-      resolve(root, 'scripts/check-desktop.ps1'),
+      resolve(root, 'scripts/check/check-desktop.ps1'),
     ],
     '桌面开发工具链检查失败，请根据上方提示安装所需组件。',
   );

@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import run from '../../examples/plugins/daily-report/automation';
+import run from './automation';
 import type { PluginAutomationExecution, TanoAutomationApi } from '@tano/workbench/plugin-sdk';
 
 it('paginates report tasks, stores identity-only references and creates a distinct file for each run', async () => {

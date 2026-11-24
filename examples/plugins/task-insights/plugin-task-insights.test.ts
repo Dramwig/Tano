@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
-import { summarize } from '../../examples/plugins/task-insights/model';
-import activate from '../../examples/plugins/task-insights/main';
+import { summarize } from './model';
+import activate from './main';
 import type { PluginEvent, PluginJson, PluginObjectSnapshot, TanoPluginApi } from '@tano/workbench/plugin-sdk';
 
 const task = (id: number, status = id % 3): PluginObjectSnapshot => ({ id: String(id), hash: `hash-${id}`,

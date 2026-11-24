@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import LZString from 'lz-string';
-import { createMarkdown, emptyScene, parseScene, replaceScene, sceneInMarkdown, sceneLimit } from '../../examples/plugins/excalidraw/model';
+import { createMarkdown, emptyScene, parseScene, replaceScene, sceneInMarkdown, sceneLimit } from './model';
 
 it('round trips standard Excalidraw data and preserves upstream extension fields', () => {
   const scene = { ...emptyScene(), elements: [{ id: 'rectangle', type: 'rectangle', x: 12, y: 14 }], customField: { retained: true } };

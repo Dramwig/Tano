@@ -1,4 +1,4 @@
-import { buildPlugin } from '../plugin/plugin-build.mjs';
+import { buildPlugin } from '../../scripts/plugin/plugin-build.mjs';
 import { test, expect } from '@playwright/test';
 
 test.use({ locale: 'zh-CN' });

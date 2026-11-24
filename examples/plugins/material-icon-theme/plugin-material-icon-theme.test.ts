@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
-import { parsePluginPackage, parsePluginPolicy, canonicalPluginJson } from '../../packages/protocol/src/extensions';
-import { FileIconRegistry } from '../../packages/workbench/src/file-icons/registry';
+import { parsePluginPackage, parsePluginPolicy, canonicalPluginJson } from '../../../packages/protocol/src/extensions';
+import { FileIconRegistry } from '../../../packages/workbench/src/file-icons/registry';
 
 const content = readFileSync('examples/plugins/material-icon-theme/material-icon-theme-1.0.0.tano-plugin.json', 'utf8');
 

@@ -1,7 +1,7 @@
 param([string]$Serial, [string]$ApkPath, [string]$EvidencePath)
 
 $ErrorActionPreference = 'Stop'
-$project = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$project = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
 $adb = Join-Path $sdk 'platform-tools\adb.exe'
 if (-not $ApkPath) {

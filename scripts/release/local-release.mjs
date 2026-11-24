@@ -43,7 +43,7 @@ function source() {
 }
 function verifySignature(file, thumbprint, unsignedPreview = false) {
   if (!unsignedPreview && !/^[A-Fa-f0-9]{40}$/.test(thumbprint ?? '')) throw new Error('Missing Windows code signing certificate thumbprint');
-  run('pwsh', ['-NoProfile', '-File', join(root, 'scripts/verify-local-signature.ps1'), '-Path', file, ...(unsignedPreview ? ['-AllowUnsignedPreview'] : ['-Thumbprint', thumbprint])]);
+  run('pwsh', ['-NoProfile', '-File', join(root, 'scripts/release/verify-local-signature.ps1'), '-Path', file, ...(unsignedPreview ? ['-AllowUnsignedPreview'] : ['-Thumbprint', thumbprint])]);
 }
 function prepare(evidenceFile, unsignedPreview = false) {
   if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('Local release requires Windows x64');

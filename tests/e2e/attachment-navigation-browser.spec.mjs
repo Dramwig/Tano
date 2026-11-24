@@ -17,9 +17,9 @@ test('file tree switches between Markdown and Office previews in the current tab
     ._s.get('workspace').pluginRuntime.filter(plugin =>
       ['word-preview', 'presentation-preview'].includes(plugin.id) && plugin.status === 'running').length)).toBe(2);
   const fixtures = {
-    'report.docx': [...readFileSync(resolve('scripts/fixtures/word-preview/fixture.docx'))],
-    'legacy.doc': [...readFileSync(resolve('scripts/fixtures/word-preview/fixture.doc'))],
-    'slides.pptx': [...readFileSync(resolve('scripts/fixtures/presentation-preview/fixture.pptx'))],
+    'report.docx': [...readFileSync(resolve('tests/fixtures/word-preview/fixture.docx'))],
+    'legacy.doc': [...readFileSync(resolve('tests/fixtures/word-preview/fixture.doc'))],
+    'slides.pptx': [...readFileSync(resolve('tests/fixtures/presentation-preview/fixture.pptx'))],
   };
   const ids = await page.evaluate(async ({ fixtures, runtimePath }) => {
     const app = document.querySelector('#app').__vue_app__;

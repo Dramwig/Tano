@@ -4,7 +4,7 @@
 
 第三方帳號匯入所需的 OAuth 應用程式設定，請參閱[第三方帳號匯入](../zh/account-import.md)。行動裝置和平板的建置與驗證方式請參閱[行動裝置開發](../mobile.md)（英文）。
 
-請安裝 Node.js 24.12 以上的版本、npm 和 Rust 穩定版。桌面開發也需要符合目前平台的 [Tauri 2 系統需求](https://v2.tauri.app/start/prerequisites/)。Windows 需要 C++ Build Tools、Windows SDK 和 WebView2，可執行 `powershell -File scripts/check-desktop.ps1` 檢查本機環境。
+請安裝 Node.js 24.12 以上的版本、npm 和 Rust 穩定版。桌面開發也需要符合目前平台的 [Tauri 2 系統需求](https://v2.tauri.app/start/prerequisites/)。Windows 需要 C++ Build Tools、Windows SDK 和 WebView2，可執行 `powershell -File scripts/check/check-desktop.ps1` 檢查本機環境。
 
 在儲存庫根目錄執行以下命令。
 

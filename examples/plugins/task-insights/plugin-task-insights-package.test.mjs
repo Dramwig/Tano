@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { buildPlugin, verifyPlugin } from './plugin-build.mjs';
+import { buildPlugin, verifyPlugin } from '../../../scripts/plugin/plugin-build.mjs';
 
 it('ships an installable React/Chart.js package with bundled styles, licenses and read-only permissions', async () => {
   const result = await buildPlugin(resolve('examples/plugins/task-insights'));

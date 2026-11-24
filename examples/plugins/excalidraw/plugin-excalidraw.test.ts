@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
-import activate from '../../examples/plugins/excalidraw/main';
-import { chunkSize, createMarkdown, emptyScene, sceneInMarkdown, type BoardState } from '../../examples/plugins/excalidraw/model';
+import activate from './main';
+import { chunkSize, createMarkdown, emptyScene, sceneInMarkdown, type BoardState } from './model';
 import type { PluginDocument, PluginJson, TanoPluginApi } from '@tano/workbench/plugin-sdk';
 
 async function fixture() {

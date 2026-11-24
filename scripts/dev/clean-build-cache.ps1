@@ -4,10 +4,10 @@ param([switch]$Apply)
 
 $ErrorActionPreference = 'Stop'
 if (!$IsWindows) { throw 'This cleanup command requires Windows and its Recycle Bin.' }
-$repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $gitRoot = & git -C $repoRoot rev-parse --show-toplevel
 if ($LASTEXITCODE -ne 0 -or [IO.Path]::GetFullPath($gitRoot) -ne $repoRoot) {
-    throw 'The script must live in scripts/ at the Git repository root.'
+    throw 'The script must live in scripts/dev/ at the Git repository root.'
 }
 
 function Assert-NoBuild {

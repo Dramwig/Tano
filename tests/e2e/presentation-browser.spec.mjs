@@ -39,7 +39,7 @@ test('offline presentation plugin renders PPT and PPTX in the real sandbox and h
   });
   mkdirSync(resolve('artifacts/presentation-preview'), { recursive: true });
   for (const extension of ['ppt', 'pptx']) {
-    await choose(resolve(`scripts/fixtures/presentation-preview/fixture.${extension}`));
+    await choose(resolve(`tests/fixtures/presentation-preview/fixture.${extension}`));
     await expect(ui.locator('#paper')).toContainText('Original layout test');
     await expect(ui.locator('#paper > svg')).toHaveAttribute('viewBox', '0 0 1280 720');
     await expect(toolbar.locator('.plugin-view-position')).toHaveText('1 / 1');
@@ -92,7 +92,7 @@ test('offline presentation plugin renders PPT and PPTX in the real sandbox and h
     await runtime.adapter.create('plugin-workspace.pptx', 'fixture');
     await store.refresh();
     void store.openAttachmentInNewTab(store.workspace.files.find(file => file.path === 'plugin-workspace.pptx'));
-  }, { bytes: [...readFileSync(resolve('scripts/fixtures/presentation-preview/fixture.pptx'))], runtimePath: `/@fs/${resolve('packages/workbench/src/runtime.ts').replaceAll('\\', '/')}` });
+  }, { bytes: [...readFileSync(resolve('tests/fixtures/presentation-preview/fixture.pptx'))], runtimePath: `/@fs/${resolve('packages/workbench/src/runtime.ts').replaceAll('\\', '/')}` });
   await expect(ui.locator('.preview-loading')).toBeVisible();
   await expect(ui.locator('#app')).toHaveAttribute('aria-busy', 'true');
   await expect(ui.locator('#paper')).toBeEmpty();
@@ -121,7 +121,7 @@ test('offline presentation plugin renders PPT and PPTX in the real sandbox and h
   await expect(page.locator('.breadcrumb-current').filter({ hasText: 'plugin-workspace.pptx' })).toBeVisible();
   await expect(ui.getByRole('status')).toBeHidden();
   await expect(ui.locator('#paper')).toContainText('Original layout test');
-  await choose(resolve('scripts/fixtures/presentation-preview/two-slides.pptx'));
+  await choose(resolve('tests/fixtures/presentation-preview/two-slides.pptx'));
   await expect(toolbar.locator('.plugin-view-position')).toHaveText('1 / 2');
   await toolbar.getByRole('button', { name: '下一页' }).click();
   await expect(ui.locator('#paper')).toContainText('Second slide');

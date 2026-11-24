@@ -13,7 +13,7 @@ test('short QA document keeps table controls aligned while scrolling and preserv
   await page.setViewportSize({ width: 1440, height: 1080 });
   await page.goto('http://127.0.0.1:43845');
   await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.get('workspace')?.workspace);
-  const markdown = await readFile(new URL('../../tests/markdown-test-workspace/en-US/00-getting-started.md', import.meta.url), 'utf8');
+  const markdown = await readFile(new URL('../markdown-test-workspace/en-US/00-getting-started.md', import.meta.url), 'utf8');
   await page.evaluate(async markdown => {
     const store = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace');
     await store.create('short-table-scroll.md', false, markdown);

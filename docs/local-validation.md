@@ -70,7 +70,7 @@ Git operations, local development builds and remote-only releases do not
 trigger local cleanup.
 
 On Windows with PowerShell 7, preview with `npm run cache:clean`, then apply with
-`npm run cache:clean -- -Apply`. The [cleanup script](../scripts/clean-build-cache.ps1)
+`npm run cache:clean -- -Apply`. The [cleanup script](../scripts/dev/clean-build-cache.ps1)
 moves only allowlisted Rust `incremental`, `deps`, `build` and `.fingerprint`
 directories and Android `app/build/intermediates` to the Recycle Bin. It checks
 the repository boundary, tracked files, directory links and active build

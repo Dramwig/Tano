@@ -5,7 +5,7 @@ param(
     [switch]$DebugBuild
 )
 $ErrorActionPreference = 'Stop'
-$tanoProject = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$tanoProject = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 Set-Location -LiteralPath $tanoProject
 if (-not $env:JAVA_HOME) {
     $tanoJbr = Join-Path $env:ProgramFiles 'Android\Android Studio\jbr'

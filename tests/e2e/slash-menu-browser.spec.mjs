@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { blockTarget } from '../build/preview-renderer-targets.mjs';
+import { blockTarget } from '../../scripts/build/preview-renderer-targets.mjs';
 
 for (const locale of ['zh-CN', 'en-US']) {
   for (const width of [1280, 390]) {
