@@ -1,0 +1,193 @@
+@media (min-width: 1600px) {
+  :root {
+    --sidebar-width: 264px;
+  }
+  .inspector {
+    --inspector-width: 250px;
+  }
+  .editor-scroll {
+    padding-top: 55px;
+  }
+  .tano-prose {
+    font-size: var(--tano-prose-font-size, 16px);
+  }
+}
+@media (max-width: 1180px) {
+  :root {
+    --sidebar-width: 232px;
+  }
+  .version-pill {
+    font-size: 12px;
+  }
+  .inspector {
+    --inspector-width: 200px;
+  }
+  .editor-toolbar {
+    padding: 0 16px 0 8px;
+  }
+  .format-actions,
+  .document-actions {
+    gap: 4px;
+  }
+  .editor-scroll {
+    --document-inset-start: 35px;
+    --document-inset-end: 64px;
+    padding-block: 32px;
+  }
+  .tano-prose h1,
+  .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='1'] {
+    font-size: calc(var(--tano-prose-font-size, 16px) * 1.8125);
+  }
+  .breadcrumb {
+    gap: 8px;
+  }
+  .topbar {
+    padding: 0 19px;
+  }
+}
+@media (max-width: 1000px) {
+  .editor-scroll {
+    --document-inset-start: 45px;
+    padding-block: 35px;
+  }
+  .brand .version-pill {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .search-input-wrap {
+    border-radius: 14px;
+  }
+  .search-results {
+    padding-inline: 10px;
+  }
+  .sidebar-dismiss {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 39;
+    background: #0f0f0f20;
+  }
+  .sidebar-dismiss-enter-active,
+  .sidebar-dismiss-leave-active {
+    transition: opacity var(--motion-base) var(--ease-standard);
+  }
+  .sidebar-dismiss-enter-from,
+  .sidebar-dismiss-leave-to {
+    opacity: 0;
+  }
+  .sidebar-dismiss-leave-active {
+    pointer-events: none;
+  }
+  .sidebar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 40;
+    box-shadow: 15px 0 40px #0f0f0f15;
+  }
+  .main-column {
+    width: 100%;
+  }
+  .app-shell:not(.sidebar-hidden) .main-column {
+    margin-left: 0;
+    min-width: 0;
+  }
+  .topbar {
+    padding: 0 16px;
+  }
+  .breadcrumb-workspace {
+    display: none;
+  }
+  .breadcrumb > svg:first-of-type {
+    display: none;
+  }
+  .topbar-right {
+    gap: 3px;
+  }
+  .editor-scroll {
+    --document-inset-start: 24px;
+    padding-block: 27px;
+  }
+  .tano-block-handle {
+    left: -24px;
+    width: 24px;
+  }
+  /* Fit both controls in the narrow gutter plus the block's text inset. */
+  .tano-block-handle-icon {
+    width: 16px;
+    flex-basis: 16px;
+  }
+  .tano-fold-toggle {
+    width: 16px;
+  }
+  .editor-toolbar {
+    padding: 0 12px 0 8px;
+  }
+  .document-type {
+    display: none;
+  }
+  .toolbar-divider {
+    display: none;
+  }
+  .format-actions {
+    gap: 2px;
+  }
+  .tano-prose h1,
+  .tano-prose pre.tano-live-source-block[data-source-kind='heading'][data-source-level='1'] {
+    font-size: calc(var(--tano-prose-font-size, 16px) * 1.625);
+  }
+  .tano-prose {
+    font-size: var(--tano-prose-font-size, 16px);
+  }
+  .modal-backdrop {
+    padding-top: 10vh;
+  }
+  .welcome h1 {
+    font-size: 24px;
+  }
+  .error-toast {
+    max-width: calc(100vw - 30px);
+  }
+}
+
+/* Keep the full scroll track visible when the browser viewport is shorter
+   than the shell's usual minimum height. */
+@media (max-height: 450px) {
+  .app-shell {
+    min-height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+
+@media (max-width: 700px) {
+  .app-shell:not(.sidebar-hidden) .main-column {
+    margin-left: 0;
+    min-width: 0;
+  }
+  .sidebar {
+    width: var(--sidebar-width);
+  }
+  .breadcrumb-current {
+    max-width: 170px;
+  }
+  .demo-badge,
+  .local-badge {
+    font-size: 12px;
+  }
+  .topbar-right {
+    gap: 3px;
+  }
+  .document-actions {
+    gap: 2px;
+  }
+}
