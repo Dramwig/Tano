@@ -2,7 +2,7 @@
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { uiLocale, t } from '../i18n';
 import { onMounted, onBeforeUnmount, ref } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
+import { nativeInvoke as invoke } from '../platform/native-bridge';
 import { Trash2, X, RotateCcw } from 'lucide-vue-next';
 import { useWorkspaceStore } from '../stores/workspace';
 const props = defineProps<{ workspaceId: string }>();

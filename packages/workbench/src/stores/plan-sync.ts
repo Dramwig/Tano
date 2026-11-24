@@ -1,6 +1,6 @@
 import { computed, onScopeDispose, ref } from 'vue';
 import { defineStore } from 'pinia';
-import { invoke } from '@tauri-apps/api/core';
+import { nativeInvoke as invoke } from '../platform/native-bridge';
 import type { WorkspaceObject } from '@tano/protocol';
 import { useWorkbenchRuntime } from '../runtime';
 import { useWorkspaceStore } from './workspace';

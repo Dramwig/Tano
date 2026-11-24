@@ -9,8 +9,10 @@ import { springEasing } from '@tano/editor/motion';
 import { ArrowLeft, ArrowRight, Bot, CalendarDays, GitFork, Puzzle, Plus, X, XCircle, PanelRightClose, PanelBottomClose, ExternalLink, Bug } from 'lucide-vue-next';
 import { basename, isMarkdown, isDataTableFilePath, entryReferenceDragType } from '@tano/protocol';
 import { documentTabLabel } from '../tab-label';
-import { invoke } from '@tauri-apps/api/core';
-import { cursorPosition } from '@tauri-apps/api/window';
+import {
+  nativeCursorPosition as cursorPosition,
+  nativeInvoke as invoke,
+} from '../platform/native-bridge';
 import { isHTMLElement, isNode } from '@tano/editor/dom-realm';
 import type { DetachedDropPoint } from '../windows/position';
 import { finishedTabDrag, parseTabDragMeta, tabDockIndex, tabDragMetaType, type TabDragMeta } from '../tab-docking';

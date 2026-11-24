@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { nativeInvoke as invoke } from './platform/native-bridge';
 import { newShortId, parseObject, validateObjectProperties } from '@tano/protocol';
 import type { FileSnapshot, Workspace, WriteResult } from '@tano/protocol';
 import { sha256 } from './adapter';

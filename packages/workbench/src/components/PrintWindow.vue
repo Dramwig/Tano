@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { emitTo, listen } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import {
+  getNativeCurrentWindow as getCurrentWindow,
+  nativeEmitTo as emitTo,
+  nativeInvoke as invoke,
+  nativeListen as listen,
+} from '../platform/native-bridge';
 import { Printer, X } from 'lucide-vue-next';
 import { PRINT_CONTENT, PRINT_LOADED, PRINT_READY, printWindowRequest, type PrintWindowContent } from '../print-window';
 import { defaultPrintSettings, printPageCss, printPapers, validPrintRanges } from '../print-settings';

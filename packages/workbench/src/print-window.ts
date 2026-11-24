@@ -1,7 +1,11 @@
-import { isTauri } from '@tauri-apps/api/core';
-import { emitTo, listen } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import {
+  createNativeWebviewWindow,
+  getNativeCurrentWindow as getCurrentWindow,
+  isNativeRuntime as isTauri,
+  nativeEmitTo as emitTo,
+  nativeListen as listen,
+  type WebviewWindow,
+} from './platform/native-bridge';
 import { t } from './i18n';
 
 export const PRINT_READY = 'tano-print-ready';
@@ -75,7 +79,7 @@ export async function openDocumentPrintWindow(snapshot: HTMLElement, title: stri
       if (event.payload.label === label) settle(event.payload.error ? new Error(event.payload.error) : undefined);
     });
     const query = new URLSearchParams({ tanoPrint: label, printOpener: getCurrentWindow().label });
-    printWindow = new WebviewWindow(label, {
+    printWindow = createNativeWebviewWindow(label, {
       url: `index.html?${query}`, title: `${t('打印')} · ${title} — Tano`,
       width: 1100, height: 800, minWidth: 680, minHeight: 520,
       center: true, visible: true, decorations: false, resizable: true,

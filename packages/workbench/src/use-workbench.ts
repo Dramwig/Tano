@@ -404,7 +404,11 @@ import { useEditorFontFamily } from './use-editor-font';
 
 import type { VisualFontChoice } from './editor-font';
 
-import { emitTo, listen } from '@tauri-apps/api/event';
+import {
+  nativeEmitTo as emitTo,
+  nativeListen as listen,
+  nativeMonitorFromPoint as monitorFromPoint,
+} from './platform/native-bridge';
 
 export interface WorkbenchProps {
   initialWorkspace?: string;
@@ -3667,7 +3671,6 @@ async function detachTab(id: string, drop?: DetachedDropPoint, settled?: () => v
     await editing.flush();
     let position: { x: number; y: number } | undefined;
     if (drop) {
-      const { monitorFromPoint } = await import('@tauri-apps/api/window');
       const monitor = await monitorFromPoint(drop.x, drop.y);
       const scale = monitor?.scaleFactor ?? await activeWindow.value.native!.scaleFactor();
       position = detachedWindowPosition(drop, scale, 1100, 760, monitor?.workArea);

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { nativeInvoke as invoke } from '../platform/native-bridge';
 import type { Account, Collection, ItemValue, RemoteAdapter, RemoteItem, SyncKind } from './types';
 export interface Response { status: number; body: string; etag: string; url: string }
 export type Transport = (path: string, method?: string, body?: string, headers?: Record<string, string>) => Promise<Response>;

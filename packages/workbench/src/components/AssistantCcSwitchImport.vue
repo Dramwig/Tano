@@ -5,7 +5,7 @@ const { window, document } = useWindowContext();
 import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion';
 import { computed, nextTick, ref } from 'vue';
 import { Download, LoaderCircle } from 'lucide-vue-next';
-import { open } from '@tauri-apps/plugin-dialog';
+import { nativeOpenDialog as open } from '../platform/native-bridge';
 import type { AssistantImportCandidate } from '@tano/protocol';
 import { useAssistantStore } from '../assistant/store';
 import { t } from '../i18n';

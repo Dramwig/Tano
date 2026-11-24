@@ -1,5 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
-import { save } from '@tauri-apps/plugin-dialog';
+import { nativeInvoke as invoke, nativeSaveDialog as save } from './platform/native-bridge';
 import type { DocumentExportFormat } from './document-export';
 
 export async function saveDocumentExport(blob: Blob, filename: string, format: DocumentExportFormat | 'zip' | 'csv') {

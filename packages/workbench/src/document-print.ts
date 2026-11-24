@@ -1,7 +1,7 @@
 import { basename } from '@tano/protocol';
 import { withDocumentSnapshot, type DocumentExportOptions } from './document-export';
 import { t } from './i18n';
-import { isTauri } from '@tauri-apps/api/core';
+import { isNativeRuntime as isTauri } from './platform/native-bridge';
 
 let printing = false;
 
