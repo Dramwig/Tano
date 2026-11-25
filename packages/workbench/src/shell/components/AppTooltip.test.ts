@@ -67,7 +67,11 @@ it('shows only rendered capability examples using the shared hover and focus hin
   await flush();
   expect(hint()?.querySelector('.capability-example')).toBeNull();
 });
-async function flush() { await nextTick(); await nextTick(); }
+async function flush() {
+  await nextTick();
+  await vi.dynamicImportSettled();
+  await nextTick();
+}
 beforeEach(() => {
   vi.useFakeTimers();
   root = document.createElement('div');

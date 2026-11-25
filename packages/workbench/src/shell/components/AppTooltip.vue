@@ -4,15 +4,16 @@ const { window, document } = useWindowContext();
 
 import { isElement, isNode } from '@tano/editor/dom-realm';
 import ShortcutHint from '@tano/editor/shortcut-hint';
-import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import { defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { shortcutLabel } from '../shortcuts';
 import { featureDefinitions } from '@tano/editor/runtime';
 import type { DocumentFeature } from '@tano/editor/runtime';
-import CapabilityExample from '../../workspace/components/CapabilityExample.vue';
-import BlockExample from '../../settings/components/BlockExample.vue';
-import SettingExample from '../../settings/components/SettingExample.vue';
 import { isSettingExample, type SettingExampleKey } from '../../settings/setting-examples';
 import { blockTypes } from '@tano/editor/selection-context';
+
+const CapabilityExample = defineAsyncComponent(() => import('../../workspace/components/CapabilityExample.vue'));
+const BlockExample = defineAsyncComponent(() => import('../../settings/components/BlockExample.vue'));
+const SettingExample = defineAsyncComponent(() => import('../../settings/components/SettingExample.vue'));
 
 // Mount once per workbench. Delegation also covers menus teleported to body.
 // Controls opt in with data-tooltip and optional data-tooltip-shortcut (Mod+I).
@@ -117,9 +118,9 @@ async function place() {
   hint.style.top = `${Math.max(top, Math.min(y, bottom - hint.offsetHeight))}px`;
   ready.value = true;
 }
-watch([tooltip, settingExample], ([element, setting], _, onCleanup) => {
+watch([tooltip, example, blockExample, settingExample], ([element, capability, block, setting], _, onCleanup) => {
   const { ResizeObserver } = window as Window & typeof globalThis;
-  if (!element || !setting || !ResizeObserver) return;
+  if (!element || !(capability || block || setting) || !ResizeObserver) return;
   const resize = new ResizeObserver(() => { void place(); });
   resize.observe(element);
   onCleanup(() => resize.disconnect());

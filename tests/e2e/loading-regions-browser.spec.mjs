@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+test.use({ locale: 'zh-CN' });
+
 test('real shell stays interactive while the editor module is still downloading', async ({ page }) => {
   let release;
   const pending = new Promise(resolve => { release = resolve; });
@@ -11,7 +13,7 @@ test('real shell stays interactive while the editor module is still downloading'
     await page.goto('http://127.0.0.1:43845/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.markdown-editor-skeleton')).toBeVisible();
     await expect(page.locator('.tree-row').first()).toBeVisible();
-    await expect(page.locator('#tano-first-paint')).toHaveCount(0);
+    await expect(page.locator('#tano-startup')).toHaveCount(0);
     const menu = page.getByRole('button', { name: '文档操作', exact: true });
     const mountedControl = await menu.elementHandle();
     await menu.click();
@@ -28,7 +30,7 @@ test('real shell stays interactive while the editor module is still downloading'
 for (const desktopTabs of [false, true]) {
 test(`workspace recovery retains chrome and content origin (desktop tabs: ${desktopTabs})`, async ({ page }) => {
   // Exercise desktop layout with browser storage, without emulating native IPC.
-  if (desktopTabs) await page.route('**/packages/workbench/src/App.vue', async route => {
+  if (desktopTabs) await page.route('**/packages/workbench/src/shell/use-workbench.ts*', async route => {
     const response = await route.fetch();
     const body = (await response.text()).replace('const tabsEnabled = native && !mobile;', 'const tabsEnabled = true;');
     await route.fulfill({ response, body });
