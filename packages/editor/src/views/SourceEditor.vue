@@ -676,6 +676,33 @@ defineExpose({
     if (!view || props.readonly || view.state.doc.toString() !== before) throw new Error(t('编辑器内容已变化，请重新读取文档'));
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: after }, annotations: isolateHistory.of('full') });
   },
+  pluginSelection: () => {
+    if (!view) return null;
+    const { anchor, head } = view.state.selection.main;
+    const from = Math.min(anchor, head);
+    const to = Math.max(anchor, head);
+    return {
+      from,
+      to,
+      empty: from === to,
+      selectedText: view.state.sliceDoc(from, to),
+      blockType: 'source',
+    };
+  },
+  applyPluginSelectionEdit: (text: string, mode: 'insert' | 'replace') => {
+    if (!view || props.readonly) throw new Error(t('当前编辑器不可编辑'));
+    const { anchor, head } = view.state.selection.main;
+    const from = Math.min(anchor, head);
+    const to = Math.max(anchor, head);
+    const start = mode === 'insert' ? to : from;
+    const nextPos = start + text.length;
+    view.dispatch({
+      changes: { from: start, to, insert: text },
+      selection: { anchor: nextPos, head: nextPos },
+      annotations: isolateHistory.of('full'),
+    });
+    return true;
+  },
   search,
   replaceSearch,
   searchSelection: () => view ? view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to) : '',

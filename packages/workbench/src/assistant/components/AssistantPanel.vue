@@ -716,6 +716,24 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           <template v-if="addView === 'main'">
             <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked" @click="openSources"><Paperclip :size="18" /><span class="assistant-menu-label">{{ t('添加参考文档') }}</span><ChevronRight :size="15" /></button>
             <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked || !workspace.active" @click="addCurrentNote"><FileText :size="18" /><span class="assistant-menu-label">{{ t('引用当前笔记') }}</span><Check v-if="workspace.active && assistant.files.includes(workspace.active.id)" :size="16" class="assistant-menu-check" /></button>
+            <template v-if="workspace.pluginContextProviders.length">
+              <div class="assistant-menu-divider" />
+              <button
+                v-for="entry in workspace.pluginContextProviders"
+                :key="entry.key"
+                class="assistant-menu-item"
+                :class="{ selected: assistant.pluginContextKeys.includes(entry.key) }"
+                :aria-pressed="assistant.pluginContextKeys.includes(entry.key)"
+                :data-tooltip="`${entry.pluginName} · ${entry.provider.description}`"
+                :disabled="controlsLocked"
+                data-menu-item
+                @click="assistant.togglePluginContext(entry.key)"
+              >
+                <Plug :size="16" />
+                <span class="assistant-menu-label">@{{ entry.provider.id }} · {{ entry.provider.label }}</span>
+                <Check v-if="assistant.pluginContextKeys.includes(entry.key)" :size="16" class="assistant-menu-check" />
+              </button>
+            </template>
             <div class="assistant-menu-divider" />
             <button class="assistant-menu-item" :disabled="assistant.demo || assistant.canConfigure === false || controlsLocked" data-menu-item @click="closePopover(); emit('openSettings')"><Plug :size="18" /><span class="assistant-menu-label">{{ t('添加模型连接') }}</span><span v-if="assistant.demo" class="assistant-menu-badge">{{ t('桌面版') }}</span></button>
           </template>
@@ -746,7 +764,20 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
         </div>
       <AssistantQuestionCard v-if="assistant.pendingUserInput" :key="assistant.pendingUserInput.request.id" :request="assistant.pendingUserInput.request" />
       <form v-else class="assistant-composer" @submit.prevent="closePopover(); assistant.send()">
-        <div v-if="assistant.files.length || assistant.selection || assistant.attachments.length" class="assistant-contexts">
+        <div v-if="assistant.files.length || assistant.selection || assistant.attachments.length || assistant.pluginContextKeys.length" class="assistant-contexts">
+          <button
+            v-for="key in assistant.pluginContextKeys"
+            :key="`plugin-ctx-${key}`"
+            type="button"
+            class="assistant-context"
+            :disabled="controlsLocked"
+            :data-tooltip="t('移除插件上下文：{0}', [workspace.pluginContextProviders.find(item => item.key === key)?.provider.label ?? key])"
+            @click="assistant.togglePluginContext(key)"
+          >
+            <Plug :size="13" />
+            <span>@{{ workspace.pluginContextProviders.find(item => item.key === key)?.provider.id ?? key }}</span>
+            <X :size="12" />
+          </button>
           <button v-for="id in assistant.files.filter(id => id !== assistant.selection?.fileId)" :key="id" type="button" class="assistant-context" :disabled="assistant.busy" :data-tooltip="t('移除参考：{0}', [workspace.workspace?.files.find(file => file.id === id)?.path ?? id])" @click="toggleSource(id)"><FileText :size="13" /><span>{{ workspace.workspace?.files.find(file => file.id === id)?.name ?? t('已移除文档') }}</span><X :size="12" /></button>
           <div v-if="assistant.selection" class="assistant-context assistant-selection" :title="`${workspace.workspace?.files.find(file => file.id === assistant.selection?.fileId)?.path ?? assistant.selection.fileId}\n${assistant.selection.text}`" :aria-label="t('引用文字：{0}', [assistant.selection.text])"><Quote :size="13" /><span>{{ assistant.selection.text }}</span><button type="button" class="icon-button" :aria-label="t('清除助手选区')" :data-tooltip="t('清除选区')" :disabled="assistant.busy" @click="assistant.selection = null"><X :size="13" /></button></div>
           <button v-for="attachment in assistant.attachments" :key="attachment.id" type="button" class="assistant-context"
@@ -917,6 +948,9 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-message-user .assistant-message-text { max-width: 88%; padding: 10px 16px; border-radius: 22px; background: var(--surface); color: var(--text); }
 .assistant-message-assistant { padding-top: 24px; }
 .assistant-answer { min-width: 0; font-size: 14px; line-height: 1.75; overflow-wrap: anywhere; }
+/* Answers fill the message column; the document reading measure and block rail would center and indent them. */
+.assistant-answer :deep(.milkdown-host) { max-width: none; margin: 0; }
+.assistant-answer :deep(.tano-prose) { --tano-block-padding-inline: 0px; }
 .assistant-answer :deep(.ProseMirror) { padding: 0; min-height: 0; font-size: 14px; line-height: 1.75; }
 .assistant-answer :deep(.frontmatter-panel) { display: none; }
 .assistant-answer :deep(h1), .assistant-answer :deep(h2), .assistant-answer :deep(h3) { font-size: 16px; line-height: 1.5; margin: 12px 0 6px; }

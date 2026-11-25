@@ -34,7 +34,7 @@ import {
   proseRangesForCommentSpans,
   type CommentGeometry,
 } from '../core/comment-projection';
-import { commandEnabled } from '../core/document-model';
+import { blockType, commandEnabled } from '../core/document-model';
 import { safeResourceUrl } from '../markdown/enhanced-markdown';
 import type { EditorExtension } from '../core/extension';
 import { inlineMath } from '../markdown/math';
@@ -63,6 +63,7 @@ export interface EditorCommandsOptions {
   getModelValue: () => string;
   getLastValue: () => string;
   getFrontmatterPrefix: () => string;
+  publishFrontmatter?: (markdown: string) => void;
   getCommentAnchors: () => readonly { id: string; anchor: CommentAnchor }[] | undefined;
   getLocalSource: () => LocalSourceState | undefined;
   toggleSourceSyntax: (view: EditorView, name: 'bold' | 'italic' | 'code') => boolean;
@@ -92,6 +93,7 @@ export function createEditorCommandsApi(options: EditorCommandsOptions) {
     getModelValue,
     getLastValue,
     getFrontmatterPrefix,
+    publishFrontmatter,
     getCommentAnchors,
     getLocalSource,
     toggleSourceSyntax,
@@ -587,9 +589,17 @@ export function createEditorCommandsApi(options: EditorCommandsOptions) {
     if (!editor || readonly() || getModelValue() !== before) {
       throw new Error('编辑器内容已变化，请重新读取文档');
     }
+    const previous = splitFrontmatter(before);
     const next = splitFrontmatter(after);
-    if (next.prefix !== splitFrontmatter(before).prefix) {
-      throw new Error('当前编辑器的插件事务暂不支持修改文档属性');
+    if (next.prefix !== previous.prefix) {
+      if (!publishFrontmatter) {
+        throw new Error('当前编辑器的插件事务暂不支持修改文档属性');
+      }
+      if (next.body === previous.body) {
+        publishFrontmatter(after);
+        return;
+      }
+      publishFrontmatter(next.prefix + previous.body);
     }
     editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
@@ -606,6 +616,43 @@ export function createEditorCommandsApi(options: EditorCommandsOptions) {
       view.dispatch(closeHistory(view.state.tr).replace(from, end.a, parsed.slice(from, end.b)));
       view.dispatch(closeHistory(view.state.tr));
     });
+  }
+
+  function pluginSelection() {
+    const bridgeView = getView();
+    if (!bridgeView || isDisposed()) return null;
+    const modeSel = captureModeSelection();
+    if (!modeSel) return null;
+    const source = getLastValue();
+    const from = Math.max(0, Math.min(modeSel.anchor, modeSel.head, source.length));
+    const to = Math.max(from, Math.min(Math.max(modeSel.anchor, modeSel.head), source.length));
+    const { selection } = bridgeView.state;
+    const parent = selection.$from.parent;
+    return {
+      from,
+      to,
+      empty: from === to,
+      selectedText: source.slice(from, to),
+      blockType: blockType(parent) ?? parent.type.name,
+    };
+  }
+
+  function applyPluginSelectionEdit(text: string, mode: 'insert' | 'replace') {
+    const bridgeView = getView();
+    if (!bridgeView || isDisposed() || readonly()) {
+      throw new Error('当前编辑器不可编辑');
+    }
+    const before = getModelValue();
+    const modeSel = captureModeSelection();
+    if (!modeSel) throw new Error('无法定位当前编辑器选区');
+    const from = Math.max(0, Math.min(modeSel.anchor, modeSel.head, before.length));
+    const to = Math.max(from, Math.min(Math.max(modeSel.anchor, modeSel.head), before.length));
+    const start = mode === 'insert' ? to : from;
+    const after = before.slice(0, start) + text + before.slice(to);
+    applyPluginEdit(before, after);
+    const nextPos = start + text.length;
+    restoreModeSelection({ anchor: nextPos, head: nextPos }, true);
+    return true;
   }
 
   function captureModeSelection(): ModeSelection | null {
@@ -794,6 +841,8 @@ export function createEditorCommandsApi(options: EditorCommandsOptions) {
     searchSelection,
     replaceSearch,
     applyPluginEdit,
+    pluginSelection,
+    applyPluginSelectionEdit,
     captureModeSelection,
     restoreModeSelection,
     modeCursorTop,

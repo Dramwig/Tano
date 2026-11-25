@@ -54,10 +54,17 @@ export interface FileIconTheme {
   folderNames?: Readonly<Record<string, string>>;
   folderNamesExpanded?: Readonly<Record<string, string>>;
 }
+export interface FileIconThemeRef {
+  id: string;
+  label: string;
+  notice?: string;
+}
 export interface PluginAppearance {
   version: typeof appearanceVersion;
   colors?: ColorThemeDefinition[];
   icons?: FileIconTheme[];
+  /** Lightweight metadata for heavy raster icon themes stored in PluginPackage.assets.icons. */
+  iconRefs?: FileIconThemeRef[];
   layouts?: LayoutThemeDefinition[];
   shapes?: ShapeThemeDefinition[];
   presets?: ThemePresetDefinition[];
@@ -184,7 +191,7 @@ export function parseFileIconTheme(value: unknown): FileIconTheme {
   return result as unknown as FileIconTheme;
 }
 export function parsePluginAppearance(value: unknown): PluginAppearance {
-  keys(value, ['version', 'colors', 'icons', 'layouts', 'shapes', 'presets']);
+  keys(value, ['version', 'colors', 'icons', 'iconRefs', 'layouts', 'shapes', 'presets']);
   if (value.version !== appearanceVersion) throw new Error('不支持此主题契约版本');
   const parseList = <T extends { id: string }>(input: unknown, parse: (value: unknown) => T): T[] => {
     if (!Array.isArray(input) || input.length > 12) throw new Error('主题列表无效');
@@ -211,6 +218,14 @@ export function parsePluginAppearance(value: unknown): PluginAppearance {
     return { id: item.id, label: item.label, tokens: parseThemeTokens(item.tokens) };
   });
   const icons = value.icons === undefined ? undefined : parseList(value.icons, parseFileIconTheme);
+  const iconRefs = value.iconRefs === undefined ? undefined : parseList<FileIconThemeRef>(value.iconRefs, item => {
+    keys(item, ['id', 'label', 'notice']); id(item.id); label(item.label);
+    if (item.notice !== undefined && (typeof item.notice !== 'string' || item.notice.length > 4096 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(item.notice)))
+      throw new Error('图标许可声明无效');
+    return { id: item.id, label: item.label, ...(item.notice === undefined ? {} : { notice: item.notice }) };
+  });
+  const allIconChoices = [...(icons ?? []), ...(iconRefs ?? [])];
+  if (new Set(allIconChoices.map(item => item.id)).size !== allIconChoices.length) throw new Error('主题 ID 重复');
   const layouts = value.layouts === undefined ? undefined : parseList(value.layouts, item => {
     keys(item, ['id', 'label', 'structure', 'surface', 'gap', 'pageWidth']); id(item.id); label(item.label);
     // The skeuomorphic notebook structure was retired in favour of the calmer paper document.
@@ -232,8 +247,8 @@ export function parsePluginAppearance(value: unknown): PluginAppearance {
       return { [key]: target };
     };
     if (['color', 'icons', 'layout', 'shape'].every(key => item[key] === undefined)) throw new Error('主题预设至少需要指定一项');
-    return { id: item.id, label: item.label, ...reference('color', colors), ...reference('icons', icons), ...reference('layout', layouts), ...reference('shape', shapes) };
+    return { id: item.id, label: item.label, ...reference('color', colors), ...reference('icons', allIconChoices.length ? allIconChoices : undefined), ...reference('layout', layouts), ...reference('shape', shapes) };
   });
-  if (!colors?.length && !icons?.length && !layouts?.length && !shapes?.length && !presets?.length) throw new Error('主题包至少需要一套配色、图标、布局、形态或预设');
-  return { version: value.version, ...(colors ? { colors } : {}), ...(icons ? { icons } : {}), ...(layouts ? { layouts } : {}), ...(shapes ? { shapes } : {}), ...(presets ? { presets } : {}) };
+  if (!colors?.length && !icons?.length && !iconRefs?.length && !layouts?.length && !shapes?.length && !presets?.length) throw new Error('主题包至少需要一套配色、图标、布局、形态或预设');
+  return { version: value.version, ...(colors ? { colors } : {}), ...(icons ? { icons } : {}), ...(iconRefs ? { iconRefs } : {}), ...(layouts ? { layouts } : {}), ...(shapes ? { shapes } : {}), ...(presets ? { presets } : {}) };
 }

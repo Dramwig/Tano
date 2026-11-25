@@ -23,7 +23,19 @@
     {
       "id": "document",
       "label": "Word 文档预览",
-      "location": "tab"
+      "location": "tab",
+      "layout": "fill"
+    }
+  ],
+  "fileHandlers": [
+    {
+      "extensions": [
+        ".doc",
+        ".docx"
+      ],
+      "mode": "preview",
+      "view": "document",
+      "command": "open"
     }
   ]
 }

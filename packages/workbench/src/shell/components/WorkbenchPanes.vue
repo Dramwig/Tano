@@ -39,7 +39,14 @@ import {
   X,
 } from 'lucide-vue-next';
 import ShortcutHint from '@tano/editor/shortcut-hint';
+import type { ExternalSlashCommand } from '@tano/editor/slash-commands';
+import type {
+  ExternalCodeBlockRenderer,
+  ExternalEditorDecoration,
+} from '@tano/editor/external-decorations';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
+import { pluginRecord } from '@tano/protocol';
+import { createPluginUiSandbox } from '../../plugins/ui-sandbox';
 import { isFeatureEnabled } from '../../features';
 import { vOutlineMotion } from '../../documents/outline-motion';
 import { layoutPanes } from '../pane-layout';
@@ -81,9 +88,12 @@ import MarkdownRevealToggle from '../../documents/components/MarkdownRevealToggl
 import PageDisplayOptions from './PageDisplayOptions.vue';
 import PageSearch from './PageSearch.vue';
 import PluginDetailPage from '../../plugins/components/PluginDetailPage.vue';
+import PluginDocumentSlot from '../../plugins/components/PluginDocumentSlot.vue';
 import PluginMenu from '../../plugins/components/PluginMenu.vue';
+import PluginSurface from '../../plugins/components/PluginSurface.vue';
 import PluginView from '../../plugins/components/PluginView.vue';
 import PluginViewHeader from '../../plugins/components/PluginViewHeader.vue';
+import { resolveOverlayTabView } from '../../plugins/overlay-mapping';
 import SourceCodeIcon from '../../documents/components/SourceCodeIcon.vue';
 import WorkbenchSettings from '../../settings/components/WorkbenchSettings.vue';
 import WorkspaceBreadcrumb from './WorkspaceBreadcrumb.vue';
@@ -304,12 +314,178 @@ const {
 const documentEditorPreferences = computed(() => isFeatureEnabled('markdownSpacingAutocomplete')
   ? editorPreferences.value
   : { ...editorPreferences.value, completeTextSpacing: false });
+
+function activeOverlayTabView(activeTabId: string) {
+  if (!workspace.value) return null;
+  return resolveOverlayTabView(activeTabId, {
+    safeMode: store.value.overlaySnapshot?.safeMode,
+    homeTabView: store.value.pluginHomeTabView,
+    newTabView: store.value.pluginNewTabView,
+  });
+}
 const compactPanes = computed(() => !isAuxiliaryWindow && mainCompactPanes.value);
 // The fullscreen host is shared across windows; only its owner may mount the panel.
 const ownsFullscreenAssistant = computed(() => {
   const layout = store.value.windowLayouts[windowContext.id]?.layout;
   return !!layout && layoutPanes(layout).some(pane => pane.id === assistant.value.fullscreenPaneId);
 });
+const documentSidebarViews = computed(() =>
+  store.value.pluginViews.filter((view) => view.location === 'documentSidebar'),
+);
+const activeDocumentSidebarView = computed(() =>
+  documentSidebarViews.value.find((view) => view.key === store.value.activeDocumentPluginSidebar),
+);
+function selectDocumentPluginSidebar(key: string) {
+  store.value.activeDocumentPluginSidebar = key;
+  const view = documentSidebarViews.value.find((item) => item.key === key);
+  if (view) {
+    try {
+      store.value.openPluginView(view.pluginId, view.id);
+    } catch {
+      /* Ignore if workspace is switching. */
+    }
+  }
+}
+function editorPluginSlashCommands(fileId: string): ExternalSlashCommand[] {
+  const ws = workspace.value;
+  if (!ws) return [];
+  return store.value.pluginSlashCommands.map((cmd) => ({
+    id: cmd.key,
+    label: cmd.label,
+    marker: cmd.pluginName,
+    keywords: [...(cmd.keywords ?? []), cmd.pluginName, cmd.id].join(' '),
+    description: cmd.description,
+    execute: () => {
+      void store.value
+        .interactWithPlugin({
+          workspaceId: ws.id,
+          pluginId: cmd.pluginId,
+          instanceId: cmd.instanceId,
+          kind: 'command',
+          name: cmd.command,
+          payload: { workspaceId: ws.id, fileId, source: 'slash' },
+        })
+        .catch((error) => store.value.report(String(error)));
+    },
+  }));
+}
+function editorPluginDecorations(fileId: string): ExternalEditorDecoration[] {
+  const ws = workspace.value;
+  if (!ws) return [];
+  return store.value.pluginDecorationsFor(fileId).map((item) => ({
+    key: item.key,
+    from: item.from,
+    to: item.to,
+    tone: item.tone,
+    badge: item.badge,
+    tooltip: item.tooltip,
+    ...(item.command
+      ? {
+          onClick: () => {
+            void store.value
+              .interactWithPlugin({
+                workspaceId: ws.id,
+                pluginId: item.pluginId,
+                instanceId: item.instanceId,
+                kind: 'command',
+                name: item.command!,
+                payload: {
+                  workspaceId: ws.id,
+                  fileId,
+                  source: 'decoration',
+                  decorationId: item.id,
+                  from: item.from,
+                  to: item.to,
+                },
+              })
+              .catch((error) => store.value.report(String(error)));
+          },
+        }
+      : {}),
+  }));
+}
+const codeBlockRendererCache = new Map<
+  string,
+  { source: readonly unknown[]; list: ExternalCodeBlockRenderer[] }
+>();
+function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRenderer[] {
+  const ws = workspace.value;
+  const source = store.value.pluginCodeBlockRenderers;
+  if (!ws || !source.length) return [];
+  const cacheKey = `${ws.id}:${fileId}`;
+  const cached = codeBlockRendererCache.get(cacheKey);
+  if (cached && cached.source === source) return cached.list;
+  const list: ExternalCodeBlockRenderer[] = source.map((renderer) => ({
+    id: `${renderer.key}:${renderer.instanceId}`,
+    languages: renderer.languages,
+    label: renderer.label ?? renderer.pluginName,
+    height: renderer.height,
+    mount(container, context) {
+      const workspaceId = ws.id;
+      const diagnostic = (level: string, message: string) => {
+        void store.value
+          .interactWithPlugin({
+            workspaceId,
+            pluginId: renderer.pluginId,
+            instanceId: renderer.instanceId,
+            name: renderer.view,
+            kind: 'diagnostic',
+            payload: { level, message },
+          })
+          .catch(() => {});
+      };
+      const buildState = (ctx: { language: string; source: string; readonly: boolean }) => ({
+        kind: 'codeBlock',
+        fileId,
+        language: ctx.language,
+        source: ctx.source,
+        readonly: ctx.readonly,
+      });
+      const sandbox = createPluginUiSandbox(
+        container,
+        renderer.bundle,
+        buildState(context),
+        async (payload) => {
+          if (
+            pluginRecord(payload) &&
+            payload.type === 'codeBlock.updateSource' &&
+            typeof payload.source === 'string' &&
+            payload.source.length <= 200 * 1024 &&
+            !context.readonly
+          ) {
+            context.updateSource(payload.source);
+            return;
+          }
+          await store.value.interactWithPlugin({
+            workspaceId,
+            pluginId: renderer.pluginId,
+            instanceId: renderer.instanceId,
+            name: renderer.view,
+            kind: 'message',
+            payload: { fileId, language: context.language, payload },
+          });
+        },
+        (cause) => {
+          diagnostic('error', cause);
+        },
+        diagnostic,
+      );
+      return {
+        update(nextContext) {
+          sandbox.update(buildState(nextContext));
+        },
+        dispose() {
+          sandbox.dispose();
+        },
+      };
+    },
+  }));
+  codeBlockRendererCache.set(cacheKey, { source, list });
+  if (codeBlockRendererCache.size > 32) {
+    codeBlockRendererCache.delete(codeBlockRendererCache.keys().next().value!);
+  }
+  return list;
+}
 </script>
 
 <template>
@@ -947,6 +1123,14 @@ const ownsFullscreenAssistant = computed(() => {
                   {{ t('此工作区为只读，无法修改对象和关系。') }}
                 </p>
                 <PluginInstaller @objects="showObjects()">
+                  <template v-if="extensions.regions['plugin-forge']" #forge="{ canPublish, openPublishing }">
+                    <component
+                      :is="extensions.regions['plugin-forge']"
+                      :actions="extensionActions"
+                      :can-publish="canPublish"
+                      @open-publishing="openPublishing"
+                    />
+                  </template>
                   <template v-if="extensions.regions['plugin-publishing']" #publishing>
                     <component :is="extensions.regions['plugin-publishing']" :actions="extensionActions" />
                   </template>
@@ -1132,6 +1316,14 @@ const ownsFullscreenAssistant = computed(() => {
                       <DocumentSuggestions v-slot="suggestions" :document="active" :readonly="paneReadonly(active!)"
                         :source="paneSource(pane.activeId)"
                         :managed="!!editing.active" :author="extensions.commentAuthor?.() ?? { id: 'local', name: t('本机用户') }">
+                      <PluginDocumentSlot
+                        v-if="workspace && pane.id === store.activePaneId"
+                        location="documentHeader"
+                        :views="store.pluginViews"
+                        :runtimes="store.pluginRuntime"
+                        :workspace-id="workspace.id"
+                        :execute="store.interactWithPlugin"
+                      />
                       <DocumentTitle
                         v-if="workspace && showPageTitle"
                         :key="`${workspace.id}:${active.id}`"
@@ -1178,6 +1370,9 @@ const ownsFullscreenAssistant = computed(() => {
                       <MarkdownEditor :shortcut-hints="{ delete: shortcutHint('deleteBlock'), 'move-up': shortcutHint('moveBlockUp'), 'move-down': shortcutHint('moveBlockDown'), indent: shortcutHint('indentBlock'), outdent: shortcutHint('outdentBlock') }" :suggestion-marks="suggestions.richMarks" :transform-change="suggestions.transformChange"
                         v-else
                         :custom-callout-icon="CalloutIconPicker"
+                        :slash-commands="editorPluginSlashCommands(active.id)"
+                        :decorations="editorPluginDecorations(active.id)"
+                        :code-block-renderers="editorPluginCodeBlockRenderers(active.id)"
                         :content-revision="suggestions.viewKey"
                         :key="`${active.id}:${active.id === store.active?.id ? (editing.active?.key ?? 'local') : 'local'}`"
                         :ref="(el) => setPaneEditor(pane.id, el)"
@@ -1229,6 +1424,14 @@ const ownsFullscreenAssistant = computed(() => {
                             @template="chooseInitialTemplate(pane.id, active!.id)" />
                         </template>
                       </MarkdownEditor>
+                      <PluginDocumentSlot
+                        v-if="workspace && pane.id === store.activePaneId"
+                        location="documentFooter"
+                        :views="store.pluginViews"
+                        :runtimes="store.pluginRuntime"
+                        :workspace-id="workspace.id"
+                        :execute="store.interactWithPlugin"
+                      />
                       <DocumentComments
                         v-if="workspace"
                         v-model:discussion-visible="showDocumentDiscussion"
@@ -1298,6 +1501,18 @@ const ownsFullscreenAssistant = computed(() => {
               :class="{ 'workspace-no-tabs-loading': sessionPending }"
             >
               <DocumentLoading v-if="sessionPending" :unlimited="!limitPageWidth" :touch="touchLayout" :style="{ '--tano-prose-font-family': selectedVisualFontFamily, '--tano-prose-font-size': `${visualFontSize}px` }" />
+              <div
+                v-else-if="workspace && activeOverlayTabView(pane.activeId)"
+                class="plugin-overlay-tab-host"
+              >
+                <PluginSurface
+                  :key="`${workspace.id}:${activeOverlayTabView(pane.activeId)!.key}`"
+                  :view="activeOverlayTabView(pane.activeId)!"
+                  :workspace-id="workspace.id"
+                  :runtime="store.pluginRuntime.find((runtime) => runtime.id === activeOverlayTabView(pane.activeId)!.pluginId)"
+                  :execute="store.interactWithPlugin"
+                />
+              </div>
               <EmptyEditor v-else
                 :create-disabled="busy || !workspace || workspace.readOnly || updateLock"
                 @create="createNewDocument"
@@ -1312,29 +1527,60 @@ const ownsFullscreenAssistant = computed(() => {
                 !(assistant.opened && assistant.displayMode === 'sidebar') &&
                 !isAuxiliaryWindow &&
                 pane.id === store.activePaneId &&
-                (panel !== 'outline' || (showOutline && (!touchLayout || touchOutlineOpen)))
+                (activeDocumentSidebarView || panel !== 'outline' || (showOutline && (!touchLayout || touchOutlineOpen)))
               "
               v-outline-motion
               class="inspector"
-              :style="panel === 'outline' ? outlinePosition : undefined"
+              :style="!activeDocumentSidebarView && panel === 'outline' ? outlinePosition : undefined"
               :class="{
-                'inspector-outline': panel === 'outline',
-                'inspector-outline-left': panel === 'outline' && outlineOnLeft,
+                'inspector-outline': !activeDocumentSidebarView && panel === 'outline',
+                'inspector-outline-left': !activeDocumentSidebarView && panel === 'outline' && outlineOnLeft,
                 'inspector-hover-outline':
-                  panel === 'outline' && !touchLayout && hoverOutline && !outlinePinned,
-                'inspector-activity': panel === 'activity',
+                  !activeDocumentSidebarView && panel === 'outline' && !touchLayout && hoverOutline && !outlinePinned,
+                'inspector-activity': !!activeDocumentSidebarView || panel === 'activity',
               }"
-              :aria-label="panel === 'outline' ? t('文档目录') : t('文档动态')"
+              :aria-label="
+                activeDocumentSidebarView
+                  ? `${activeDocumentSidebarView.pluginName} · ${activeDocumentSidebarView.label}`
+                  : panel === 'outline'
+                    ? t('文档目录')
+                    : t('文档动态')
+              "
               @contextmenu="openOutlineContextMenu"
               @pointerleave="releaseOutlinePointerFocus"
             >
               <div class="inspector-surface">
-                <div v-if="panel === 'activity'" class="inspector-tabs">
-                  <button @click="panel = 'outline'"><List :size="14" />{{ t('大纲') }}</button
-                  ><button class="active" @click="panel = 'activity'">
+                <div v-if="activeDocumentSidebarView || panel === 'activity' || documentSidebarViews.length" class="inspector-tabs">
+                  <button
+                    :class="{ active: !activeDocumentSidebarView && panel === 'outline' }"
+                    @click="store.activeDocumentPluginSidebar = ''; panel = 'outline'"
+                  ><List :size="14" />{{ t('大纲') }}</button
+                  ><button
+                    v-if="panel === 'activity' || activeDocumentSidebarView"
+                    :class="{ active: !activeDocumentSidebarView && panel === 'activity' }"
+                    @click="store.activeDocumentPluginSidebar = ''; panel = 'activity'"
+                  >
                     <History :size="14" />{{ t('动态') }}
                   </button>
+                  <button
+                    v-for="docView in documentSidebarViews"
+                    :key="docView.key"
+                    :class="{ active: activeDocumentSidebarView?.key === docView.key }"
+                    @click="selectDocumentPluginSidebar(docView.key)"
+                  >
+                    <Puzzle :size="14" />{{ docView.label }}
+                  </button>
                 </div>
+                <PluginSurface
+                  v-if="activeDocumentSidebarView && workspace"
+                  :key="`${workspace.id}:${activeDocumentSidebarView.key}`"
+                  :view="activeDocumentSidebarView"
+                  :workspace-id="workspace.id"
+                  :runtime="store.pluginRuntime.find((rt) => rt.id === activeDocumentSidebarView!.pluginId)"
+                  :execute="store.interactWithPlugin"
+                  compact
+                />
+                <template v-else>
                 <div v-if="panel === 'outline'" class="outline-controls">
                   <span>{{ t('文档大纲') }}</span>
                   <button v-if="touchLayout" type="button" class="outline-control" :aria-label="t('关闭文档大纲')"
@@ -1435,6 +1681,7 @@ const ownsFullscreenAssistant = computed(() => {
                         : t('正在监听工作文件夹')
                   }}
                 </div>
+                </template>
               </div>
             </aside>
             </div>

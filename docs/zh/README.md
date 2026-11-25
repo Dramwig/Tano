@@ -21,6 +21,7 @@ Tano 是一个以真实文件为内容源、让人与 Agent 在同一页工作�
 | [插件开发与工作区管理](plugins.md) | 跨端插件、管理员规则、SDK 与开发工具 |
 | [插件 API 参考](plugin-api.md) | SDK 方法、Vue/React 模板、兼容性与迁移 |
 | [插件目录与发布](plugin-catalog.md) | 在线投稿审核、自托管目录、版本与撤回 |
+| [插件系统与 AI 可塑软件蓝图](plugin-ecosystem-blueprint.md) | 分层信任、双层作用域、七大扩展面、助手双向协议与 Plugin Forge 路线图 |
 | [日历与 Todo 同步](planning-sync.md) | 独立连接、账号配置与文件导入 |
 | [Agent 工作流](agent-workflow.md) | 本地 MCP 与条件写入 |
 | [Tano 助手](assistant.md) | BYOK 连接、参考文档、修改审阅与外部提案 |

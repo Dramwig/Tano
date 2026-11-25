@@ -790,6 +790,7 @@ export function useFileTreeController(deps: FileTreeControllerDeps) {
     action:
       | 'open'
       | 'open-new-tab'
+      | 'open-markdown-source'
       | 'document'
       | 'folder'
       | 'rename'
@@ -841,6 +842,10 @@ export function useFileTreeController(deps: FileTreeControllerDeps) {
     }
     if (action === 'open' || action === 'open-new-tab') {
       await openEntry(file, action === 'open-new-tab');
+      return;
+    }
+    if (action === 'open-markdown-source') {
+      await store.openFile(file, { rawSource: true });
       return;
     }
     if (action === 'object') {

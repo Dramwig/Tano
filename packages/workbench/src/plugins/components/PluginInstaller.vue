@@ -3,6 +3,7 @@ import { recordHelpCompleted } from '../../help/help-checklist';
 import { usePluginActions, matchesPlugin } from '../use-plugin-actions';
 import LoadingSkeleton from '../../shell/components/LoadingSkeleton.vue';
 import { retiredSystemPlugin } from '../workspace-plugins';
+import { isAppearanceOnlyPlugin, userScopeUnsupportedReason } from '../user-plugins';
 import { t } from '../../i18n/i18n';
 import { computed, nextTick, ref, watch } from 'vue';
 import {
@@ -17,7 +18,14 @@ import {
   Upload,
   X,
 } from 'lucide-vue-next';
-import { parsePluginPackage, pluginPackageLimit } from '@tano/protocol';
+import {
+  checkPluginCompatibility,
+  isPluginArchiveV2Bytes,
+  parsePluginPackage,
+  PLUGIN_ARCHIVE_V2_LIMIT,
+  pluginPackageLimit,
+  unpackPluginArchiveV2,
+} from '@tano/protocol';
 import type { PluginManifest, PluginPackage } from '@tano/protocol';
 import PluginRuntimePanel from './PluginRuntimePanel.vue';
 
@@ -49,7 +57,13 @@ const search = ref<HTMLInputElement>();
 const manifestText = ref('');
 const preview = ref<PluginManifest>();
 const previewPackage = ref<PluginPackage>();
-type View = 'discover' | 'installed' | 'community' | 'publishing';
+const previewBinaryAssets = ref<Record<string, Uint8Array>>();
+const importScope = ref<'workspace' | 'user'>('workspace');
+const importUserReason = computed(() => (preview.value ? userScopeUnsupportedReason(preview.value) : undefined));
+const importCompat = computed(() =>
+  preview.value ? checkPluginCompatibility(preview.value, store.pluginHostEnvironment) : { compatible: true },
+);
+type View = 'discover' | 'installed' | 'community' | 'forge' | 'publishing';
 const view = ref<View>('discover');
 const publishingOpened = ref(false);
 const query = ref('');
@@ -143,6 +157,7 @@ function closeDialog() {
   importing.value = false;
   manifestText.value = '';
   preview.value = undefined;
+  previewBinaryAssets.value = undefined;
   error.value = '';
 }
 watch(
@@ -153,6 +168,7 @@ watch(
 
     manifestText.value = '';
     preview.value = undefined;
+    previewBinaryAssets.value = undefined;
     error.value = '';
     status.value = '';
     chooseView('discover');
@@ -161,6 +177,7 @@ watch(
 watch(manifestText, () => {
   preview.value = undefined;
   previewPackage.value = undefined;
+  previewBinaryAssets.value = undefined;
 });
 function inspect() {
   error.value = '';
@@ -169,6 +186,10 @@ function inspect() {
   try {
     previewPackage.value = parsePluginPackage(manifestText.value);
     preview.value = previewPackage.value.manifest;
+    importScope.value =
+      isAppearanceOnlyPlugin(preview.value) && !userScopeUnsupportedReason(preview.value)
+        ? 'user'
+        : 'workspace';
   } catch (cause) {
     error.value =
       cause instanceof SyntaxError
@@ -186,20 +207,42 @@ async function importFile(event: Event) {
   const workspace = store.workspace?.id;
   const sequence = ++importSequence;
   try {
-    if (file.size > pluginPackageLimit) throw new Error(t('插件包不能超过 4 MiB'));
-    const content = await file.text();
+    const lowerName = typeof file.name === 'string' ? file.name.toLowerCase() : '';
+    const isZip = lowerName.endsWith('.zip') || lowerName.endsWith('.tano-plugin');
+    if (file.size > (isZip ? PLUGIN_ARCHIVE_V2_LIMIT : pluginPackageLimit)) {
+      throw new Error(t('插件包不能超过 4 MiB'));
+    }
+    let content: string;
+    let unpackedBinaryAssets: Record<string, Uint8Array> | undefined;
+    if (typeof file.arrayBuffer === 'function') {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (isPluginArchiveV2Bytes(bytes)) {
+        const archive = unpackPluginArchiveV2(bytes);
+        content = JSON.stringify(archive.pkg);
+        if (Object.keys(archive.binaryAssets).length) {
+          unpackedBinaryAssets = archive.binaryAssets;
+        }
+      } else {
+        content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      }
+    } else {
+      content = await file.text();
+    }
     if (store.workspace?.id !== workspace || sequence !== importSequence) return;
     manifestText.value = content;
     // Watch invalidation must finish before publishing the inspected preview.
     await nextTick();
-    if (store.workspace?.id === workspace && sequence === importSequence) inspect();
+    if (store.workspace?.id === workspace && sequence === importSequence) {
+      previewBinaryAssets.value = unpackedBinaryAssets;
+      inspect();
+    }
   } catch (cause) {
     if (store.workspace?.id === workspace && sequence === importSequence)
       error.value = String(cause);
   }
 }
 async function importCachedPackage() {
-  try { await store.cachePluginPackage(manifestText.value); status.value = t('插件包已保存到此设备，请在详情中授权运行'); await store.refresh(); }
+  try { await store.cachePluginPackage(manifestText.value, previewBinaryAssets.value); status.value = t('插件包已保存到此设备，请在详情中授权运行'); await store.refresh(); }
   catch (cause) { error.value = String(cause); }
 }
 </script>
@@ -260,6 +303,14 @@ async function importCachedPackage() {
           >
             {{ t('已安装') }} <span class="nav-count">{{ store.installedPlugins.length }}</span>
           </button>
+          <button
+            v-if="$slots.forge"
+            :class="{ active: view === 'forge' }"
+            :aria-pressed="view === 'forge'"
+            @click="chooseView('forge')"
+          >
+            {{ t('工坊与微调') }}
+          </button>
           <button v-if="$slots.publishing" :class="{ active: view === 'publishing' }" :aria-pressed="view === 'publishing'" @click="chooseView('publishing')">{{ t('我的投稿') }}</button>
         </nav>
         <label v-if="view === 'discover' || view === 'installed'" class="catalog-filter">
@@ -287,6 +338,12 @@ async function importCachedPackage() {
     </template>
 
     <PluginCatalogBrowser v-if="view === 'community'" />
+    <slot
+      v-else-if="view === 'forge' && $slots.forge"
+      name="forge"
+      :can-publish="!!$slots.publishing"
+      :open-publishing="() => chooseView('publishing')"
+    />
     <section v-else-if="view !== 'publishing'"
       class="catalog-results"
       :aria-label="view === 'discover' ? t('可安装插件') : t('已安装插件')"
@@ -304,6 +361,7 @@ async function importCachedPackage() {
           :plugin="plugin"
           :installed="installedById.has(plugin.id)"
           :enabled="installedById.get(plugin.id)?.enabled"
+          :scope="installedById.get(plugin.id)?.scope"
           :show-state="view === 'installed'"
           :busy="busy || !store.canManagePlugins"
           :pending="pending === plugin.id"
@@ -329,7 +387,7 @@ async function importCachedPackage() {
         ><span>{{ t('已显示') }} {{ visiblePlugins.length }} / {{ resultCount }}</span>
       </div>
       <p v-if="view === 'installed' && visiblePlugins.length" class="installed-note">
-        {{ t('插件版本与共享设置跟随工作区；个人启用和代码授权保存在此设备。卸载后保留已有内容。') }}
+        {{ t('工作区插件与共享设置跟随工作区；全局插件、个人启用和代码授权保存在此设备，跨工作区生效。卸载后保留已有内容。') }}
       </p>
     </section>
 
@@ -362,13 +420,13 @@ async function importCachedPackage() {
         <input
           ref="input"
           type="file"
-          accept=".json,application/json"
+          accept=".json,.zip,.tano-plugin,application/json,application/zip"
           hidden
           @change="importFile"
         />
         <button class="import-file" :disabled="busy" @click="input?.click()">
-          <Upload :size="25" /><strong>{{ t('选择 JSON 文件') }}</strong
-          ><span>{{ t('支持 .json 文件，最大 4 MiB') }}</span>
+          <Upload :size="25" /><strong>{{ t('选择插件包文件') }}</strong
+          ><span>{{ t('支持 .json 或 .tano-plugin.zip 文件') }}</span>
         </button>
         <label class="manifest-label" for="plugin-manifest">{{ t('或粘贴插件清单') }}</label>
         <textarea
@@ -401,10 +459,19 @@ async function importCachedPackage() {
             {{ preview.objectTypes.map((item) => item.label).join('、') || t('无新增对象类型') }} ·
             {{ preview.relationTypes.length }} {{ t('种关系') }}
           </p>
+          <label class="import-scope">
+            {{ t('安装范围') }}
+            <select v-model="importScope" :aria-label="t('插件安装范围')" :disabled="busy">
+              <option value="workspace">{{ t('当前工作区（随工作区同步）') }}</option>
+              <option value="user" :disabled="!!importUserReason">{{ t('全局插件（跨工作区生效）') }}</option>
+            </select>
+          </label>
+          <p v-if="!importCompat.compatible" class="pc-feedback error" role="alert">{{ importCompat.reason }}</p>
+          <p v-if="importUserReason" class="dialog-intro">{{ importUserReason }}</p>
           <button
             class="pc-button pc-primary"
-            :disabled="busy || !store.canManagePlugins"
-            @click="change({ install: preview, package: previewPackage })"
+            :disabled="busy || (importScope === 'workspace' ? !store.canManagePlugins : !!importUserReason)"
+            @click="change({ install: preview, package: previewPackage, binaryAssets: previewBinaryAssets, scope: importScope })"
           >
             <Download :size="15" />{{
               installedById.has(preview.id) ? t('更新并启用插件') : t('安装此插件')

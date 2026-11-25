@@ -7,11 +7,13 @@
     ".": "./src/index.ts",
     "./features": "./src/features.ts",
     "./frontmatter": "./src/frontmatter.ts",
-    "./markdown-file-metadata": "./src/markdown-file-metadata.ts"
+    "./markdown-file-metadata": "./src/markdown-file-metadata.ts",
+    "./manifest.schema.json": "./manifest.schema.json"
   },
   "license": "MIT",
   "files": [
     "src",
+    "manifest.schema.json",
     "LICENSE"
   ],
   "dependencies": {

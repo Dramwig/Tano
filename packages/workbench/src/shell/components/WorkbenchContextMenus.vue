@@ -219,6 +219,13 @@ const {
           >
             <PanelsTopLeft :size="15" />{{ t('在新标签页中打开') }}
           </button>
+          <button
+            v-if="store.hasMarkdownFileHandler(fileContextMenu.file)"
+            role="menuitem"
+            @click="fileContextAction('open-markdown-source')"
+          >
+            <FileText :size="15" />{{ t('用 Markdown 源码打开') }}
+          </button>
           <div
             v-if="
               isMarkdown(fileContextMenu.file.path) ||

@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { ArrowUpRight, Download, LoaderCircle, ShieldCheck } from 'lucide-vue-next';
-import type { PluginMode, PluginPermission } from '@tano/protocol';
+import { checkPluginCompatibility, type PluginMode, type PluginPermission } from '@tano/protocol';
 import { t } from '../../i18n/i18n';
 import { useWorkspaceStore } from '../../stores/workspace';
 import { bundledPluginCatalog } from '../plugin-catalog';
+import { userScopeUnsupportedReason } from '../user-plugins';
 import { usePluginActions } from '../use-plugin-actions';
 import PluginIcon from './PluginIcon.vue';
 import PluginMaintenance from './PluginMaintenance.vue';
+import PluginSettingsForm from './PluginSettingsForm.vue';
 const props = defineProps<{ pluginId: string }>();
 const store = useWorkspaceStore();
 const detail = computed(
@@ -23,11 +25,20 @@ const {
   policyMode,
   settingsText,
   sourceUrl,
+  pathScopesText,
   change,
   authorize,
   savePolicy,
+  saveUserSettings,
   installFromCatalog,
 } = usePluginActions(detail);
+const userScopeBlocked = computed(() => (detail.value ? userScopeUnsupportedReason(detail.value) : undefined));
+const compatibility = computed(() =>
+  detail.value ? checkPluginCompatibility(detail.value, store.pluginHostEnvironment) : { compatible: true },
+);
+const settingsSchema = computed(() =>
+  detail.value?.manifestVersion === 2 ? detail.value.settingsSchema : undefined,
+);
 const detailViews = computed(() =>
   detail.value?.manifestVersion === 2
     ? detail.value.views.map((view) => ({
@@ -38,10 +49,11 @@ const detailViews = computed(() =>
     : [],
 );
 const commands = computed(() => (detail.value?.manifestVersion === 2 ? detail.value.commands : []));
+const fileHandlers = computed(() => (detail.value?.manifestVersion === 2 ? (detail.value.fileHandlers ?? []) : []));
 const tabKeys = { details: '详细信息', features: '功能', permissions: '权限', settings: '设置' };
 const tabs = computed(() => [
   '详细信息',
-  ...(detailViews.value.length || commands.value.length ? ['功能'] : []),
+  ...(detailViews.value.length || commands.value.length || fileHandlers.value.length ? ['功能'] : []),
   ...(detail.value?.manifestVersion === 2 ? ['权限'] : []),
   ...(selectedInstallation.value && !selectedInstallation.value.system ? ['设置'] : []),
 ]);
@@ -53,11 +65,20 @@ const permissionLabels: Record<PluginPermission, string> = {
   get 'attachments.read'() {
     return t('只读访问工作区附件');
   },
+  get 'attachments.write'() {
+    return t('受限写入工作区附件');
+  },
   get 'documents.read'() {
     return t('读取与打开文档');
   },
   get 'documents.write'() {
     return t('创建与修改文档');
+  },
+  get 'documents.move'() {
+    return t('移动与重命名文档');
+  },
+  get 'documents.trash'() {
+    return t('将文档移入回收站');
   },
   get 'objects.read'() {
     return t('读取对象');
@@ -85,6 +106,9 @@ const permissionLabels: Record<PluginPermission, string> = {
   },
   get ui() {
     return t('运行隔离的自定义界面');
+  },
+  get 'ai.invoke'() {
+    return t('调用同页助手模型推理（不接触密钥）');
   },
 };
 const modeLabels: Record<PluginMode, string> = {
@@ -114,6 +138,8 @@ const modeLabels: Record<PluginMode, string> = {
         <p>
           v{{ detail.version }} · {{ detail.id
           }}<span v-if="selectedInstallation?.system"> · {{ t('系统插件') }}</span>
+          <span v-else-if="selectedInstallation?.scope === 'user'"> · {{ t('全局插件') }}</span>
+          <span v-else-if="selectedInstallation"> · {{ t('工作区插件') }}</span>
         </p>
       </div>
       <span
@@ -123,12 +149,18 @@ const modeLabels: Record<PluginMode, string> = {
         >{{ selectedInstallation.enabled ? t('已启用') : t('已停用') }}</span
       >
     </div>
+    <p v-if="!compatibility.compatible" role="alert" class="dialog-intro">
+      {{ compatibility.reason }}
+    </p>
+    <p v-if="selectedInstallation?.shadowedUserPlugin" role="status" class="dialog-intro">
+      {{ t('当前工作区已锁定此插件版本，正在优先使用工作区版本；切换到其他工作区后恢复你的全局版本。') }}
+    </p>
     <footer class="detail-footer">
       <template v-if="selectedInstallation"
         ><button
           v-if="!selectedInstallation.system"
           class="pc-button pc-text uninstall"
-          :disabled="busy || !store.canManagePlugins"
+          :disabled="busy || (selectedInstallation.scope !== 'user' && !store.canManagePlugins)"
           @click="change({ uninstall: detail.id })"
         >
           {{ t('卸载插件') }}</button
@@ -143,16 +175,25 @@ const modeLabels: Record<PluginMode, string> = {
         >
           {{ selectedInstallation.enabled ? t('停用插件') : t('启用插件') }}
         </button></template
-      ><button
-        v-else
-        class="pc-button pc-primary"
-        :disabled="busy || !store.canManagePlugins"
-        @click="installFromCatalog(detail)"
-      >
-        <Download v-if="!busy" :size="15" /><LoaderCircle v-else class="pc-spin" :size="15" />{{
-          busy ? t('正在安装…') : t('安装插件')
-        }}
-      </button>
+      ><template v-else>
+        <button
+          class="pc-button pc-primary"
+          :disabled="busy || !store.canManagePlugins"
+          @click="installFromCatalog(detail, 'workspace')"
+        >
+          <Download v-if="!busy" :size="15" /><LoaderCircle v-else class="pc-spin" :size="15" />{{
+            busy ? t('正在安装…') : t('安装插件')
+          }}
+        </button>
+        <button
+          v-if="!userScopeBlocked"
+          class="pc-button pc-secondary"
+          :disabled="busy"
+          @click="installFromCatalog(detail, 'user')"
+        >
+          {{ t('安装为全局插件') }}
+        </button>
+      </template>
     </footer>
     <nav class="center-nav" :aria-label="t('插件详情')">
       <button
@@ -176,6 +217,12 @@ const modeLabels: Record<PluginMode, string> = {
         </p>
         <p v-for="icons in detail.appearance.icons" :key="icons.id">
           {{ t('文件与目录图标') }}：{{ icons.label }}
+        </p>
+        <p
+          v-for="iconRef in (detail.appearance.iconRefs ?? []).filter((ref) => !detail?.appearance?.icons?.some((item) => item.id === ref.id))"
+          :key="iconRef.id"
+        >
+          {{ t('文件与目录图标') }}：{{ iconRef.label }}
         </p>
         <p v-for="layout in detail.appearance.layouts" :key="layout.id">
           {{ t('布局风格') }}：{{ layout.label }}
@@ -245,11 +292,69 @@ const modeLabels: Record<PluginMode, string> = {
         >
           {{ selectedInstallation.authorized ? t('撤销此设备授权') : t('授权此版本运行') }}
         </button>
+        <button
+          v-if="
+            selectedInstallation?.scope === 'user' &&
+            !selectedInstallation.globallyAuthorized &&
+            store.canManagePlugins
+          "
+          class="pc-button pc-secondary"
+          @click="authorize(true, { allWorkspaces: true })"
+        >
+          {{ t('在我的全部个人工作区授权此版本') }}
+        </button>
+        <p v-if="selectedInstallation?.globallyAuthorized" class="dialog-intro">
+          {{ t('此精确版本已授权在你可管理的个人工作区自动运行；非管理员的团队工作区仍需单独授权。') }}
+        </p>
+        <p
+          v-if="selectedInstallation?.scope === 'user' && selectedInstallation.personalCodePolicy === 'block'"
+          role="alert"
+          class="dialog-intro"
+        >
+          {{ t('当前工作区管理员策略禁止个人代码插件运行。') }}
+        </p>
+        <p
+          v-else-if="selectedInstallation?.scope === 'user' && selectedInstallation.personalCodePolicy === 'read-only'"
+          role="status"
+          class="dialog-intro"
+        >
+          {{ t('当前工作区管理员策略仅允许个人代码插件只读访问，所有写入操作将被拦截。') }}
+        </p>
       </section>
     </section>
     <section v-if="active === tabKeys.settings">
       <section
-        v-if="selectedInstallation?.rule && !selectedInstallation.system && store.canManagePlugins"
+        v-if="selectedInstallation?.scope === 'user'"
+        class="detail-section plugin-policy"
+      >
+        <h4>{{ t('全局插件设置') }}</h4>
+        <p>{{ t('此插件为全局安装，跨工作区生效；设置保存在当前设备的应用数据中，不写入工作区文件。') }}</p>
+        <PluginSettingsForm v-if="settingsSchema?.length" v-model="settingsText" :schema="settingsSchema" :disabled="busy" />
+        <label v-else
+          >{{ t('个人设置')
+          }}<textarea
+            v-model="settingsText"
+            :aria-label="t('插件个人设置')"
+            rows="4"
+            spellcheck="false"
+          />
+        </label>
+        <label v-if="detail.manifestVersion === 2"
+          >{{ t('限制可访问目录（可选，每行一个目录前缀）')
+          }}<textarea
+            v-model="pathScopesText"
+            :aria-label="t('插件目录权限范围')"
+            :placeholder="t('例如：日报/')"
+            rows="2"
+            spellcheck="false"
+          />
+        </label>
+        <button class="pc-button pc-secondary" :disabled="busy" @click="saveUserSettings">
+          {{ t('保存全局设置') }}
+        </button>
+      </section>
+      <section
+        v-else-if="selectedInstallation?.rule && !selectedInstallation.system && store.canManagePlugins"
         class="detail-section plugin-policy"
       >
         <h4>{{ t('工作区规则') }}</h4>
@@ -269,12 +374,23 @@ const modeLabels: Record<PluginMode, string> = {
             <option value="disabled">{{ t('禁止') }}</option>
           </select></label
         >
-        <label
+        <PluginSettingsForm v-if="settingsSchema?.length" v-model="settingsText" :schema="settingsSchema" :disabled="busy" />
+        <label v-else
           >{{ t('共享设置')
           }}<textarea
             v-model="settingsText"
             :aria-label="t('插件共享设置')"
             rows="4"
+            spellcheck="false"
+          />
+        </label>
+        <label v-if="detail.manifestVersion === 2"
+          >{{ t('限制可访问目录（可选，每行一个目录前缀）')
+          }}<textarea
+            v-model="pathScopesText"
+            :aria-label="t('插件目录权限范围')"
+            :placeholder="t('例如：日报/')"
+            rows="2"
             spellcheck="false"
           />
         </label>
@@ -301,7 +417,9 @@ const modeLabels: Record<PluginMode, string> = {
           >{{
             selectedInstallation?.system
               ? t('系统插件随应用提供；启用偏好仅保存在此设备。')
-              : t('版本与共享设置保存在工作区；代码和缓存保存在应用数据中。')
+              : selectedInstallation?.scope === 'user'
+                ? t('全局插件保存在此设备的应用数据中，跨工作区生效，不写入工作区文件。')
+                : t('版本与共享设置保存在工作区；代码和缓存保存在应用数据中。')
           }}<br />{{ t('插件操作遵循你的文档权限。') }}</span
         >
       </p>
@@ -320,6 +438,12 @@ const modeLabels: Record<PluginMode, string> = {
       <p v-for="command in commands" :key="command.id">
         {{ command.label }} {{ command.shortcut }}
       </p>
+      <section v-if="fileHandlers.length" class="detail-section">
+        <h4>{{ t('文件打开器') }}</h4>
+        <p v-for="(handler, index) in fileHandlers" :key="index">
+          {{ handler.extensions.join('、') }} · {{ handler.mode === 'editor' ? t('编辑') : t('预览') }}
+        </p>
+      </section>
     </section>
   </article>
 </template>

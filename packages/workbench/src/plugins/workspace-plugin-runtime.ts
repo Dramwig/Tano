@@ -71,10 +71,15 @@ export class WorkspacePluginRuntime {
     signal.throwIfAborted();
     return parsePluginCatalog(JSON.stringify(value));
   }
-  installCatalogRelease = async (release: PluginCatalogRelease, expectedWorkspace: string, signal: AbortSignal) => {
+  installCatalogRelease = async (
+    release: PluginCatalogRelease,
+    expectedWorkspace: string,
+    signal: AbortSignal,
+    scope: 'workspace' | 'user' = 'workspace',
+  ) => {
     const assertCurrent = () => {
       signal.throwIfAborted();
-      this.assertWorkspace(expectedWorkspace, true);
+      this.assertWorkspace(expectedWorkspace, scope === 'workspace');
     };
     assertCurrent();
     if (!this.host.services?.catalog || release.status !== 'published') throw new Error('此目录版本不可安装');
@@ -84,21 +89,32 @@ export class WorkspacePluginRuntime {
     await verifyCatalogPackage(release, pkg); assertCurrent();
     return this.host.serial(async () => {
       assertCurrent(); await this.refresh(); assertCurrent();
-      await this.policy.changeWorkspace(this.host.adapter, this.host.workspace()!, { install: pkg.manifest, package: pkg, sourceUrl: downloaded.sourceUrl }, assertCurrent, this.host.services?.repository);
+      await this.policy.changeWorkspace(
+        this.host.adapter,
+        this.host.workspace()!,
+        { install: pkg.manifest, package: pkg, sourceUrl: downloaded.sourceUrl, scope },
+        assertCurrent,
+        scope === 'workspace' ? this.host.services?.repository : undefined,
+      );
       assertCurrent(); await this.refresh();
     });
   }
-  authorizePlugin = async (id: string, integrity: string | undefined, expectedWorkspace: string) => {
+  authorizePlugin = async (
+    id: string,
+    integrity: string | undefined,
+    expectedWorkspace: string,
+    options?: { allWorkspaces?: boolean },
+  ) => {
     if (!integrity && this.host.workspace()?.id === expectedWorkspace && this.developmentState.pluginId === id) this.developer.stop();
     return this.host.serial(async () => {
       this.assertWorkspace(expectedWorkspace);
-      this.policy.authorize(expectedWorkspace, id, integrity);
+      this.policy.authorize(expectedWorkspace, id, integrity, undefined, options);
       await this.host.refresh();
     });
   }
-  cachePluginPackage = async (content: string) => {
+  cachePluginPackage = async (content: string, binaryAssets?: Record<string, Uint8Array>) => {
     const pkg = parsePluginPackage(content);
-    const integrity = await new PluginPackageCache().put(pkg);
+    const integrity = await new PluginPackageCache().put(pkg, binaryAssets);
     this.executor.invalidate(pkg.manifest.id);
     return integrity;
   }

@@ -352,14 +352,43 @@ export function useDocumentActions(deps: DocumentActionsDeps) {
     () => pendingTransfers.clear(),
   );
 
-  store.setPluginEditor(async (fileId, before, after) => {
-    const pane = store.panes.find((item) => item.activeId === fileId);
-    if (!pane) return false;
-    const target = paneSource(fileId) ? paneSourceEditors.get(pane.id) : paneEditors.get(pane.id);
-    if (!target) return false;
-    target.applyPluginEdit(before, after);
-    await nextTick();
-    return true;
+  store.setPluginEditor({
+    applyEdit: async (fileId, before, after) => {
+      const pane = store.panes.find((item) => item.activeId === fileId);
+      if (!pane) return false;
+      const target = paneSource(fileId) ? paneSourceEditors.get(pane.id) : paneEditors.get(pane.id);
+      if (!target) return false;
+      target.applyPluginEdit(before, after);
+      await nextTick();
+      return true;
+    },
+    activeEditor: () => {
+      const pane = store.panes.find((item) => item.id === store.activePaneId);
+      if (!pane) return null;
+      const doc = store.documentForTab(pane.activeId);
+      if (!doc) return null;
+      const isSource = paneSource(doc.id);
+      const target = isSource ? paneSourceEditors.get(pane.id) : paneEditors.get(pane.id);
+      const sel = target?.pluginSelection?.();
+      if (!sel) return null;
+      return {
+        fileId: doc.id,
+        mode: isSource ? 'source' : 'rich',
+        readOnly: paneReadonly(doc),
+        selection: { from: sel.from, to: sel.to, empty: sel.empty },
+        selectedText: sel.selectedText,
+        blockType: sel.blockType,
+      };
+    },
+    applySelectionEdit: async (fileId, text, mode) => {
+      const pane = store.panes.find((item) => item.activeId === fileId);
+      if (!pane) return false;
+      const target = paneSource(fileId) ? paneSourceEditors.get(pane.id) : paneEditors.get(pane.id);
+      if (!target?.applyPluginSelectionEdit) return false;
+      const ok = target.applyPluginSelectionEdit(text, mode);
+      await nextTick();
+      return ok;
+    },
   });
   onBeforeUnmount(() => store.setPluginEditor());
 

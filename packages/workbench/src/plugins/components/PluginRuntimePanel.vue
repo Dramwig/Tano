@@ -38,12 +38,12 @@ async function invoke(plugin: PluginRuntimeState, kind: 'command' | 'action', na
     <h2>{{ t('插件工具') }}</h2>
     <p v-if="error" role="alert">{{ error }}</p>
     <article v-for="plugin in store.pluginRuntime" :key="plugin.id">
-      <header><strong>{{ plugin.name }}</strong><span>{{ { loading: t('加载中'), running: t('运行中'), blocked: t('等待授权或运行环境'), error: t('已停止') }[plugin.status] }}</span></header>
+      <header><strong>{{ plugin.name }}</strong><span>{{ { idle: t('待唤醒'), loading: t('加载中'), running: t('运行中'), blocked: t('等待授权或运行环境'), error: t('已停止') }[plugin.status] }}</span></header>
       <p v-if="plugin.message" :role="plugin.status === 'error' ? 'alert' : 'status'">{{ plugin.message }}</p>
       <button v-if="plugin.status === 'error'" @click="store.restartPlugin(plugin.id, store.workspace!.id).catch(cause => error = String(cause))">{{ t('重新加载') }}</button>
-      <div class="plugin-commands"><button v-for="command in plugin.commands" :key="command.id" :disabled="!!pending || plugin.status !== 'running'" @click="invoke(plugin, 'command', command.id)">{{ command.label }}</button></div>
+      <div class="plugin-commands"><button v-for="command in plugin.commands" :key="command.id" :disabled="!!pending || (plugin.status !== 'running' && plugin.status !== 'idle')" @click="invoke(plugin, 'command', command.id)">{{ command.label }}</button></div>
       <details v-for="view in plugin.views" :key="view.id" open><summary>{{ view.label }}</summary>
-        <button v-if="view.location && view.location !== 'panel'" @click="store.openPluginView(plugin.id, view.id)">{{ t('打开') }}{{ { tab: t('标签页'), sidebar: t('侧栏'), settings: t('设置页') }[view.location] }}</button>
+        <button v-if="view.location === 'tab' || view.location === 'sidebar' || view.location === 'settings' || view.location === 'documentSidebar'" @click="store.openPluginView(plugin.id, view.id)">{{ t('打开') }}{{ { tab: t('标签页'), sidebar: t('侧栏'), settings: t('设置页'), documentSidebar: t('文档侧栏') }[view.location] }}</button>
         <PluginCustomView v-if="view.custom && (!view.location || view.location === 'panel') && plugin.status === 'running' && store.workspace" :bundle="view.custom.bundle" :state="view.custom.state" :workspace-id="store.workspace.id" :plugin-id="plugin.id" :instance-id="plugin.instanceId" :view-id="view.id" :execute="store.interactWithPlugin" />
         <PluginViewNode v-else-if="view.tree && (!view.location || view.location === 'panel')" :node="view.tree" :values="inputs(plugin.id, view.id, view.tree)" :disabled="!!pending || plugin.status !== 'running'"
           @input="(key, value) => { values[`${plugin.id}:${view.id}`][key] = value; }"

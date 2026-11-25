@@ -72,6 +72,54 @@ export interface WorkbenchObjectDetailsProps {
   object: WorkspaceObject;
   disabled: boolean;
 }
+export interface WorkbenchPinnedCommand {
+  id: string;
+  label: string;
+  command: string;
+  description?: string;
+}
+export interface WorkbenchOverlaySnapshot {
+  readonly safeMode: boolean;
+  readonly hiddenSidebarItems?: readonly string[];
+  readonly sidebarOrder?: readonly string[];
+  readonly pinnedCommands?: readonly WorkbenchPinnedCommand[];
+  readonly homeTabViewKey?: string;
+  readonly newTabViewKey?: string;
+}
+export interface WorkbenchOverlayExtension {
+  readonly snapshot: WorkbenchOverlaySnapshot;
+  setSafeMode(enabled: boolean): void;
+  syncContext?(workspaceId: string, activeDocumentPath?: string): void;
+  dispose?(): void;
+}
+export interface WorkbenchAssistantToolExecutionContext {
+  workspaceId: string;
+  workspacePath: string;
+  runId: string;
+  activeDocumentId?: string;
+  signal: AbortSignal;
+}
+export type WorkbenchAssistantToolExecutionResult =
+  | { kind: 'result'; data: unknown }
+  | { kind: 'proposal'; proposal: import('@tano/protocol').AssistantProposal };
+export interface WorkbenchAssistantExtension {
+  listTools(context: {
+    workspaceReadOnly: boolean;
+    inline: boolean;
+    background: boolean;
+  }): NonNullable<import('@tano/protocol').AssistantRequest['tools']>;
+  toolLabel?(name: string): string | undefined;
+  promptHints?(context: { workspaceReadOnly: boolean }): string[];
+  executeTool(
+    name: string,
+    args: Record<string, unknown>,
+    context: WorkbenchAssistantToolExecutionContext,
+  ): Promise<WorkbenchAssistantToolExecutionResult | undefined>;
+  applyProposal?(
+    proposal: import('@tano/protocol').AssistantProposal,
+    parsedArgs: Record<string, unknown>,
+  ): Promise<{ after: string; hash: string; fileId: string } | undefined>;
+}
 export interface WorkbenchExtensions {
   commands?: import('./shell/command-palette').WorkbenchCommand[];
   editing: EditingSession;
@@ -80,9 +128,14 @@ export interface WorkbenchExtensions {
   /**
    * workspace-menu-layout can wrap built-in workspace actions through its default slot.
    * plugin-publishing receives WorkbenchActions in the plugin center's My submissions view.
+   * plugin-forge receives WorkbenchActions + { canPublish } in the plugin center's Forge & Overlay view.
    */
   regions: Record<string, Component>;
   views?: readonly WorkbenchView[];
+  /** Optional product-owned workbench overlay hook (Safe Mode, sidebar overrides, home/new tab views). */
+  overlay?: WorkbenchOverlayExtension;
+  /** Optional product-owned assistant tools, prompt hints, and proposal appliers. */
+  assistant?: WorkbenchAssistantExtension;
   /** Receives WorkbenchObjectDetailsProps for a saved workspace object. */
   objectDetails?: Component;
   commentAuthor?: () => CommentAuthor;

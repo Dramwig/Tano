@@ -1,6 +1,104 @@
 /** Public, browser-first SDK. Import types only; the runtime supplies `tano` to activate(). */
-import type { PluginViewNode, PluginJson, WorkspaceObject, WorkspaceRelation, PluginConnectionRequest, PluginConnectionResponse } from '@tano/protocol';
-export type { PluginManifest, ExecutablePluginManifest, PluginPackage, PluginPermission, PluginViewNode, PluginJson, PluginUiBundle } from '@tano/protocol';
+import type {
+  PluginViewNode,
+  PluginJson,
+  WorkspaceObject,
+  WorkspaceRelation,
+  PluginConnectionRequest,
+  PluginConnectionResponse,
+  PluginPlatform,
+  PluginEngines,
+  PluginErrorCode,
+  PluginStatusBarItem,
+  PluginUiPickOptions,
+  PluginUiPromptOptions,
+  PluginUiConfirmOptions,
+  PluginUiTone,
+  PluginSlashCommandDefinition,
+  PluginActiveEditorSnapshot,
+  PluginFrontmatterPatch,
+  PluginCodeBlockRendererDefinition,
+  PluginEditorDecorationTone,
+  PluginEditorDecoration,
+  PluginAttachmentWriteRequest,
+  WorkspacePersonalPluginPolicy,
+  PluginAssistantToolEffect,
+  PluginAssistantToolDefinition,
+  PluginAssistantContextProviderDefinition,
+  PluginAiCompleteRequest,
+  PluginAiStructuredRequest,
+  PluginAiCompleteResult,
+  PluginAiStructuredResult,
+  PluginServiceDefinition,
+  PluginServiceDependency,
+} from '@tano/protocol';
+export type {
+  PluginManifest,
+  ExecutablePluginManifest,
+  PluginPackage,
+  PluginPackageAssets,
+  PluginArchiveV2,
+  PluginServiceDefinition,
+  PluginServiceDependency,
+  PluginPermission,
+  PluginViewDefinition,
+  PluginViewLocation,
+  PluginViewLayout,
+  PluginStatusBarAlign,
+  PluginStatusBarTone,
+  PluginStatusBarItem,
+  PluginUiTone,
+  PluginUiPickItem,
+  PluginUiPickOptions,
+  PluginUiPromptOptions,
+  PluginUiConfirmOptions,
+  PluginUiToastOptions,
+  PluginSlashCommandDefinition,
+  PluginActiveEditorSnapshot,
+  PluginFrontmatterPatch,
+  PluginCodeBlockRendererDefinition,
+  PluginEditorDecorationTone,
+  PluginEditorDecoration,
+  PluginAttachmentWriteRequest,
+  WorkspacePersonalPluginPolicy,
+  PluginAssistantToolEffect,
+  PluginAssistantToolDefinition,
+  PluginAssistantContextProviderDefinition,
+  PluginAiCompleteRequest,
+  PluginAiStructuredRequest,
+  PluginAiCompleteResult,
+  PluginAiStructuredResult,
+  PluginFileHandlerMode,
+  PluginFileHandlerDefinition,
+  PluginSettingFieldType,
+  PluginSettingField,
+  PluginActivationEvent,
+  PluginPlatform,
+  PluginEngines,
+  PluginErrorCode,
+  PluginViewNode,
+  PluginJson,
+  PluginUiBundle,
+} from '@tano/protocol';
+export interface PluginAssistantCallContext {
+  workspaceId: string;
+  activeFileId?: string;
+}
+export interface PluginAssistantContextResult {
+  title?: string;
+  content: string;
+  metadata?: PluginJson;
+}
+export interface PluginHostInfo {
+  coreVersion: string;
+  apiVersion: string;
+  platform: PluginPlatform;
+  capabilities: string[];
+}
+export interface TanoPluginError extends Error {
+  readonly code: PluginErrorCode;
+  readonly retryable: boolean;
+}
 /** Runs inside the custom UI frame; workspace access stays in the plugin's Worker. */
 export interface TanoPluginViewApi {
   /** Read-only host appearance, also applied as CSS variables inside the isolated UI. */
@@ -44,9 +142,21 @@ export type PluginEvent = { type: 'workspace.changed'; fileId?: string } | {
   reset?: boolean;
 };
 export interface TanoPluginApi {
-  /** Read-only binary snapshot in bounded base64 chunks; continue with the returned revision. */
-  attachments: { read(fileId: string, offset?: number, revision?: string): Promise<{ path: string; revision: string; offset: number; total: number; chunk: string }> };
+  /** Read-only binary snapshot in bounded base64 chunks, plus optional bounded attachment write. */
+  attachments: {
+    read(fileId: string, offset?: number, revision?: string): Promise<{ path: string; revision: string; offset: number; total: number; chunk: string }>;
+    write(request: PluginAttachmentWriteRequest): Promise<{ path: string; name: string; image: boolean; url: string }>;
+  };
   context(): Promise<{ workspaceId: string; pluginId: string; settings: Record<string, unknown> }>;
+  /** Host runtime version, platform mode, and supported capabilities for graceful feature detection. */
+  hostInfo(): Promise<PluginHostInfo>;
+  /** Register a graceful cleanup handler invoked before the host terminates this plugin instance. */
+  lifecycle: { onDeactivate(handler: () => void | Promise<void>): () => void };
+  /** Read-only access to binary assets bundled inside this plugin's own v2 ZIP package (`assets/bin/*`). */
+  assets: {
+    list(): Promise<string[]>;
+    read(path: string): Promise<{ path: string; bytes: number; base64: string }>;
+  };
   documents: {
     list(): Promise<PluginDocumentEntry[]>;
     query(options?: PluginDocumentQuery): Promise<PluginPage<PluginDocumentEntry>>;
@@ -56,7 +166,25 @@ export interface TanoPluginApi {
     write(fileId: string, content: string, baseHash: string): Promise<{ id: string; hash: string; status: 'applied' | 'saved' }>;
     edit(fileId: string, edits: PluginTextEdit[], baseHash: string): Promise<{ id: string; hash: string; status: 'applied' | 'saved' }>;
     create(path: string, content: string): Promise<{ id: string; path: string }>;
+    move(fileId: string, destination: string, baseHash: string): Promise<{ id: string; path: string }>;
+    trash(fileId: string, baseHash: string): Promise<{ id: string; path: string; trashed: true }>;
     open(fileId: string): Promise<void>;
+    frontmatter: {
+      read(fileId: string): Promise<{ id: string; hasFrontmatter: boolean; data: Record<string, PluginJson>; hash: string }>;
+      update(
+        fileId: string,
+        patch: PluginFrontmatterPatch,
+        baseHash: string,
+      ): Promise<{ id: string; hash: string; data: Record<string, PluginJson>; status: 'applied' | 'saved' }>;
+    };
+  };
+  /** Active editor selection, single-step undoable cursor transactions, and declarative decorations. */
+  editor: {
+    active(): Promise<PluginActiveEditorSnapshot | null>;
+    insert(text: string): Promise<{ fileId: string; hash: string; status: 'applied' }>;
+    replaceSelection(text: string): Promise<{ fileId: string; hash: string; status: 'applied' }>;
+    setDecorations(fileId: string, decorations: PluginEditorDecoration[]): Promise<void>;
+    clearDecorations(fileId?: string): Promise<void>;
   };
   objects: {
     list(): Promise<PluginObjectSnapshot[]>;
@@ -88,6 +216,43 @@ export interface TanoPluginApi {
     open(id: string): Promise<void>;
     onAction(id: string, handler: (event: { action: string; values: Record<string, string> }) => void | Promise<void>): () => void;
     onMessage(id: string, handler: (message: PluginJson) => void | Promise<void>): () => void;
+  };
+  /** Host-managed lightweight UI primitives and status bar items; no iframe frontend required. */
+  ui: {
+    pick(options: PluginUiPickOptions): Promise<string | null>;
+    prompt(options: PluginUiPromptOptions): Promise<string | null>;
+    confirm(options: PluginUiConfirmOptions): Promise<boolean>;
+    toast(message: string, tone?: PluginUiTone): Promise<void>;
+    setStatusBar(item: PluginStatusBarItem): Promise<void>;
+    removeStatusBar(id: string): Promise<void>;
+  };
+  /** Host-managed model completion using the user's configured connection; API keys never enter the sandbox. */
+  ai: {
+    complete(request: PluginAiCompleteRequest): Promise<PluginAiCompleteResult>;
+    structured<T = PluginJson>(request: PluginAiStructuredRequest): Promise<PluginAiStructuredResult<T>>;
+  };
+  /** Register handlers for manifest-declared assistantTools and assistantContextProviders. */
+  assistant: {
+    registerTool(
+      name: string,
+      handler: (args: Record<string, unknown>, context: PluginAssistantCallContext) => PluginJson | Promise<PluginJson>,
+    ): Promise<void>;
+    registerContextProvider(
+      id: string,
+      handler: (
+        query: string,
+        context: PluginAssistantCallContext,
+      ) => PluginAssistantContextResult | string | Promise<PluginAssistantContextResult | string>,
+    ): Promise<void>;
+  };
+  /** Stateless cross-plugin RPC message bus (zero shared memory). */
+  services: {
+    register(
+      name: string,
+      handler: (payload: PluginJson, caller: { pluginId: string }) => PluginJson | Promise<PluginJson>,
+    ): Promise<void>;
+    call<T = PluginJson>(pluginId: string, service: string, payload?: PluginJson): Promise<T>;
+    available(pluginId: string, service: string): Promise<boolean>;
   };
   events: { subscribe(handler: (event: PluginEvent) => void | Promise<void>, options?: { types?: PluginEvent['type'][]; ids?: string[] }): () => void };
   notify(message: string): Promise<void>;

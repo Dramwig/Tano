@@ -15,7 +15,7 @@ const editor = ref(false), jobId = ref(''), version = ref<string>(), pluginId = 
 const label = ref(''), enabled = ref(true), schedule = ref('manual'), interval = ref(1440), payload = ref('{}'), approved = ref(false);
 const deleting = ref(''), pending = ref<Record<string, boolean>>({}), reviewed = ref(false);
 let controller = new AbortController(), timer: ReturnType<typeof setTimeout> | undefined;
-const plugins = computed(() => store.installedPlugins.filter(item => item.manifest.manifestVersion === 2 && item.manifest.automations?.length && item.rule?.mode !== 'disabled' && item.rule?.integrity));
+const plugins = computed(() => store.installedPlugins.filter(item => item.scope !== 'user' && !item.system && item.manifest.manifestVersion === 2 && item.manifest.automations?.length && item.rule?.mode !== 'disabled' && item.rule?.integrity));
 const installation = computed(() => plugins.value.find(item => item.manifest.id === pluginId.value));
 const manifest = computed(() => installation.value?.manifest.manifestVersion === 2 ? installation.value.manifest : undefined);
 const canSave = computed(() => !!(approved.value && manifest.value?.automations?.some(item => item.id === automationId.value) && label.value.trim() && installation.value?.rule?.integrity));

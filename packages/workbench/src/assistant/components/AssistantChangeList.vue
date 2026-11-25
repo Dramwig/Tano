@@ -16,8 +16,8 @@ const emit = defineEmits<{
 const checks = ref<Record<string, boolean>>({});
 const expanded = ref<Record<string, boolean>>({});
 const statuses = { ready: '', get applying() { return t('正在应用'); }, applied: '', get rejected() { return t('已放弃'); }, get conflicted() { return t('存在冲突'); }, get unknown() { return t('结果待核对'); } };
-const labels = { get create() { return t('新增'); }, get edit() { return t('修改'); }, get delete() { return t('删除'); }, get rename() { return t('重命名'); }, get move() { return t('移动'); }, get object() { return t('对象'); }, get relation() { return t('关系'); } };
-const isFile = (proposal: AssistantProposal) => !['object', 'relation'].includes(proposal.kind);
+const labels = { get create() { return t('新增'); }, get edit() { return t('修改'); }, get delete() { return t('删除'); }, get rename() { return t('重命名'); }, get move() { return t('移动'); }, get object() { return t('对象'); }, get relation() { return t('关系'); }, get plugin() { return t('插件操作'); } };
+const isFile = (proposal: AssistantProposal) => !['object', 'relation', 'plugin'].includes(proposal.kind);
 const canUndo = (proposal: AssistantProposal) => proposal.status === 'applied' &&
   (proposal.kind === 'edit' || proposal.kind === 'create' && !isDataTableFilePath(proposal.path));
 const groups = computed(() => {
@@ -62,16 +62,17 @@ const groupStatus = (proposals: AssistantProposal[]) => [...new Set(proposals.ma
           <p v-if="proposal.destination" class="proposal-path">{{ proposal.preview?.path ?? proposal.path }} → {{ proposal.destination }}</p>
           <p>{{ proposal.reason }}</p>
           <p v-if="proposal.kind === 'delete'" class="delete-note">{{ proposal.status === 'applied' ? t('文件已删除。') : t('将删除此文件。') }}{{ t('桌面文件可从回收站恢复；浏览器演示存储会直接删除。') }}</p>
-          <TaskProposalPreview v-if="!group.file" :proposal="proposal" @open-reference="emit('openReference', $event)" @ready="checks[proposal.id] = $event" />
+          <p v-if="proposal.kind === 'plugin' && proposal.pluginAction" class="panel-hint">{{ proposal.pluginAction.effect === 'external' ? t('此操作将由插件发起外部调用，请确认参数后执行。') : t('此操作将由插件执行写入，请确认参数后执行。') }}</p>
+          <TaskProposalPreview v-if="!group.file && proposal.kind !== 'plugin'" :proposal="proposal" @open-reference="emit('openReference', $event)" @ready="checks[proposal.id] = $event" />
           <p v-if="proposal.error" class="assistant-message-error" role="alert">{{ proposal.error }}</p>
           <p v-if="['rename', 'move'].includes(proposal.kind)" class="panel-hint">{{ t('文件内容保持不变。') }}</p>
           <ChangeDiff v-else :before="proposal.applied?.before ?? proposal.preview?.before ?? proposal.base" :after="proposal.applied?.after ?? proposal.preview?.after ?? proposal.content"
-            :before-label="proposal.kind === 'create' ? t('尚未创建') : t('修改前')" :after-label="proposal.kind === 'delete' ? t('文件删除') : t('修改后')" />
+            :before-label="proposal.kind === 'create' ? t('尚未创建') : proposal.kind === 'plugin' ? t('执行前') : t('修改前')" :after-label="proposal.kind === 'delete' ? t('文件删除') : proposal.kind === 'plugin' ? (proposal.status === 'applied' ? t('执行结果') : t('调用参数')) : t('修改后')" />
           <div v-if="['ready', 'conflicted', 'unknown'].includes(proposal.status)" class="assistant-proposal-actions">
             <button v-if="proposal.kind === 'edit' && !isDataTableFilePath(proposal.path) && ['ready', 'conflicted'].includes(proposal.status)" class="secondary-button" :disabled="busy" @click="emit('suggestions', proposal)"><Pencil :size="14" />{{ proposal.suggestionGroupId ? t('打开文档建议') : t('在文档中逐项审阅') }}</button>
             <template v-if="!proposal.suggestionGroupId && ['ready', 'conflicted'].includes(proposal.status)">
-              <button class="secondary-button" :disabled="busy" @click="emit('review', proposal)"><Search :size="14" />{{ t('查看差异') }}</button>
-              <button v-if="proposal.preview && proposal.status === 'ready'" class="primary-button" :class="{ destructive: proposal.kind === 'delete' }" :disabled="busy || checks[proposal.id] === false" @click="emit('review', proposal, true)"><Check :size="14" />{{ proposal.kind === 'delete' ? t('删除文件') : proposal.kind === 'rename' ? t('应用重命名') : proposal.kind === 'move' ? t('应用移动') : t('应用修改') }}</button>
+              <button v-if="proposal.kind !== 'plugin'" class="secondary-button" :disabled="busy" @click="emit('review', proposal)"><Search :size="14" />{{ t('查看差异') }}</button>
+              <button v-if="proposal.preview && proposal.status === 'ready'" class="primary-button" :class="{ destructive: proposal.kind === 'delete' }" :disabled="busy || checks[proposal.id] === false" @click="emit('review', proposal, true)"><Check :size="14" />{{ proposal.kind === 'delete' ? t('删除文件') : proposal.kind === 'rename' ? t('应用重命名') : proposal.kind === 'move' ? t('应用移动') : proposal.kind === 'plugin' ? t('确认执行插件操作') : t('应用修改') }}</button>
               <button class="icon-button" :data-tooltip="t('放弃建议')" :aria-label="t('放弃修改建议')" :disabled="busy" @click="emit('reject', proposal)"><X :size="15" /></button>
             </template>
             <button v-if="proposal.status === 'unknown'" class="secondary-button" :disabled="busy" @click="emit('verify', proposal)"><Search :size="14" />{{ t('核对写入结果') }}</button>

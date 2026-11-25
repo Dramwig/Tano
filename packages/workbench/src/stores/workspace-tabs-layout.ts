@@ -17,7 +17,7 @@ import { recordHelpCompleted } from '../help/help-checklist';
 import { t } from '../i18n/i18n';
 import { dockLayout, layoutPanes, reconcileLayout, type PaneDrop } from '../shell/pane-layout';
 import { bundledPluginCatalog } from '../plugins/plugin-catalog';
-import { pluginViewKey, type PluginWorkbenchView } from '../plugins/workbench';
+import { isPluginPreviewTab, type PluginWorkbenchView } from '../plugins/workbench';
 import type { WorkbenchViewTab } from '../runtime';
 import { useTabNavigation } from '../tabs/tab-navigation';
 import {
@@ -126,8 +126,6 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
       ? (installedPlugins.value.find((item) => `plugin:${item.manifest.id}` === id)?.manifest ??
         bundledPluginCatalog.find((item) => `plugin:${item.manifest.id}` === id)?.manifest)
       : undefined;
-  const wordPreviewTab = pluginViewKey('word-preview', 'document');
-  const presentationPreviewTab = pluginViewKey('presentation-preview', 'slides');
   const attachmentForTab = (id: string) =>
     id.startsWith('attachment:') ? fileRegistry.value?.get(id.slice('attachment:'.length)) : undefined;
   const isNavigationPage = (id: string) =>
@@ -138,8 +136,7 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
     isTableTab(id) ||
     hasWorkspaceViewTab(id) ||
     id.startsWith('attachment:') ||
-    id === wordPreviewTab ||
-    id === presentationPreviewTab;
+    isPluginPreviewTab(id, installedPlugins.value);
   const isBuiltinTab = (id: string) =>
     isDirectoryTab(id) ||
     id.startsWith('blank:') ||
@@ -393,7 +390,7 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
     busy: () => busy.value,
     available: (id) => {
       if (id.startsWith('attachment:')) return !!attachmentForTab(id);
-      if (id === wordPreviewTab || id === presentationPreviewTab)
+      if (isPluginPreviewTab(id, installedPlugins.value))
         return pluginViews.value.some((view) => view.key === id);
       const file = fileRegistry.value?.get(id);
       return (
@@ -646,8 +643,6 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
     workspaceViewTabId,
     isWorkspaceViewTab,
     pluginDetailManifest,
-    wordPreviewTab,
-    presentationPreviewTab,
     attachmentForTab,
     isNavigationPage,
     isUtilityTab,

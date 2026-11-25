@@ -1,6 +1,12 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
-import { isAssistantModelId, isAssistantReasoningSelection, parseAssistantSession, parseAssistantAnswers, isDataTableFilePath } from '@tano/protocol';
+import {
+  isAssistantModelId,
+  isAssistantReasoningSelection,
+  parseAssistantSession,
+  parseAssistantAnswers,
+  isDataTableFilePath,
+} from '@tano/protocol';
 import type { AssistantQuestion, AssistantQuestionAnswer, AssistantUserInput } from '@tano/protocol';
 import type { AssistantActivity, AssistantConnection, AssistantQuotaResult, AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSession, AssistantSource } from '@tano/protocol';
 import type { AssistantExecutionResult } from './execution';
@@ -18,6 +24,15 @@ import { isFeatureEnabled } from '../features';
 import { assistantCopy, assistantTaskPrompts, formatAssistantText } from './language';
 import { assistantAttachmentBytes, describeAssistantAttachment, maxAssistantAttachments, readAssistantAttachments } from './attachments';
 import type { AssistantDraftAttachment } from './attachments';
+import {
+  canPluginToolExecute,
+  compilePluginAssistantTools,
+  createPluginToolProposal,
+  describeInstalledPluginsForAssistant,
+  extractPluginContextMentions,
+  runPluginAiCompletion,
+  wrapUntrustedPluginData,
+} from '../plugins/assistant-bridge';
 
 export type AssistantConnectionCheck = { fingerprint: string; elapsedMs?: number; checkedAt?: number; message: string; failed: boolean };
 
@@ -84,6 +99,13 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
   const externalSessions = ref<AssistantSession[]>([]);
   const session = ref<AssistantSession | null>(null);
   const files = ref<string[]>([]);
+  const pluginContextKeys = ref<string[]>([]);
+  function togglePluginContext(key: string) {
+    if (busy.value || loading.value || applying.value) return;
+    pluginContextKeys.value = pluginContextKeys.value.includes(key)
+      ? pluginContextKeys.value.filter(item => item !== key)
+      : [...pluginContextKeys.value, key].slice(0, 4);
+  }
   const attachmentsEnabled = !inline && !background && available && isFeatureEnabled('assistantClipboardAttachments');
   const attachments = shallowRef<AssistantDraftAttachment[]>([]);
   const selection = ref<{ fileId: string; text: string; from?: number; to?: number } | null>(null);
@@ -157,7 +179,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
       ...(connectionId.value ? { connectionId: connectionId.value } : {}),
       ...(modelId.value ? { model: modelId.value } : {}),
       ...(connection.value?.kind === 'codex-cli' ? { reasoningEffort: reasoningEffort.value } : {}) };
-    prompt.value = ''; attachments.value = []; error.value = '';
+    prompt.value = ''; attachments.value = []; pluginContextKeys.value = []; error.value = '';
     replyTarget.value = null;
   }
   async function persist(target = session.value) {
@@ -405,6 +427,29 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
         kind => transport.supportsMediaAttachments?.(config, kind) ?? false, abort.signal) : undefined;
       const sources: AssistantSource[] = [];
       const rules = await workspace.assistantRules(expected);
+      const matchedProviders = extractPluginContextMentions(
+        question,
+        workspace.pluginContextProviders ?? [],
+        pluginContextKeys.value,
+      );
+      const pluginContext: {
+        pluginId: string;
+        pluginName: string;
+        providerId: string;
+        title: string;
+        content: string;
+      }[] = [];
+      for (const entry of matchedProviders) {
+        abort.signal.throwIfAborted();
+        const block = await workspace.queryPluginAssistantContext(entry.pluginId, entry.provider.id, question);
+        pluginContext.push({
+          pluginId: entry.pluginId,
+          pluginName: entry.pluginName,
+          providerId: entry.provider.id,
+          title: block.title,
+          content: block.content,
+        });
+      }
       for (const id of [...new Set(files.value)]) {
         abort.signal.throwIfAborted();
         const source = await workspace.assistantSnapshot(expected, id);
@@ -440,7 +485,96 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
       target.title = (first.content || first.attachments?.[0]?.name || target.title).slice(0, 50);
       target.updatedAt = now; prompt.value = '';
       await persist(target);
-      if (epoch === generation) attachments.value = [];
+      if (epoch === generation) { attachments.value = []; pluginContextKeys.value = []; }
+      const assistantExtension = runtime.extensions?.().assistant;
+      const extensionTools = assistantExtension
+        ? assistantExtension.listTools({
+            workspaceReadOnly: !!workspace.workspace?.readOnly,
+            inline: !!inline,
+            background: !!background,
+          })
+        : [];
+      const extensionToolNames = new Set(extensionTools.map(tool => tool.function.name));
+      const compiledPlugins = compilePluginAssistantTools(
+        workspace.installedPlugins ?? [],
+        workspace.pluginRuntime ?? [],
+        !!workspace.workspace?.readOnly,
+      );
+      const combinedExtraTools = [...extensionTools, ...compiledPlugins.tools];
+      const extensionPromptHints =
+        assistantExtension?.promptHints?.({ workspaceReadOnly: !!workspace.workspace?.readOnly }) ?? [];
+      const pluginBridge = combinedExtraTools.length
+        ? {
+            tools: combinedExtraTools,
+            ...(extensionPromptHints.length ? { promptHints: extensionPromptHints } : {}),
+            isPluginTool: (name: string) =>
+              name === 'inspect_plugins' ||
+              name === 'open_plugin_view' ||
+              extensionToolNames.has(name) ||
+              compiledPlugins.pluginTools.has(name),
+            executeTool: async (call: import('@tano/protocol').AssistantToolCall, signal: AbortSignal) => {
+              signal.throwIfAborted();
+              if (workspace.workspace?.id !== expected.id || workspace.workspace.path !== expected.path)
+                throw new Error('工作区已切换');
+              const parsedArgs: unknown = JSON.parse(call.function.arguments || '{}');
+              if (!parsedArgs || typeof parsedArgs !== 'object' || Array.isArray(parsedArgs))
+                throw new Error('插件工具参数必须为对象');
+              const args = parsedArgs as Record<string, unknown>;
+              if (assistantExtension && extensionToolNames.has(call.function.name)) {
+                const extResult = await assistantExtension.executeTool(call.function.name, args, {
+                  workspaceId: expected.id,
+                  workspacePath: expected.path,
+                  runId: reply!.id,
+                  activeDocumentId: workspace.active?.id,
+                  signal,
+                });
+                if (extResult) return extResult;
+              }
+              if (call.function.name === 'inspect_plugins') {
+                if (Object.keys(args).length) throw new Error('inspect_plugins 不接受参数');
+                return {
+                  kind: 'result' as const,
+                  data: {
+                    plugins: describeInstalledPluginsForAssistant(
+                      workspace.installedPlugins,
+                      workspace.pluginRuntime,
+                      !!workspace.workspace?.readOnly,
+                    ),
+                  },
+                };
+              }
+              if (call.function.name === 'open_plugin_view') {
+                if (typeof args.pluginId !== 'string' || typeof args.viewId !== 'string' || Object.keys(args).length !== 2)
+                  throw new Error('open_plugin_view 参数无效');
+                workspace.openPluginView(args.pluginId, args.viewId);
+                return { kind: 'result' as const, data: { opened: true, pluginId: args.pluginId, viewId: args.viewId } };
+              }
+              const compiled = compiledPlugins.pluginTools.get(call.function.name);
+              if (!compiled) throw new Error('插件工具不可用或未授权');
+              const installation = workspace.installedPlugins.find(item => item.manifest.id === compiled.pluginId);
+              if (!installation || !canPluginToolExecute(installation, compiled.tool, !!workspace.workspace?.readOnly))
+                throw new Error('当前工作区权限或策略不允许执行此插件工具');
+              if (compiled.tool.effect === 'read') {
+                const raw = await workspace.invokePluginAssistantTool(compiled.pluginId, compiled.tool.name, args);
+                return {
+                  kind: 'result' as const,
+                  data: {
+                    untrustedPluginData: wrapUntrustedPluginData(compiled.pluginId, `tool:${compiled.tool.name}`, raw),
+                  },
+                };
+              }
+              return {
+                kind: 'proposal' as const,
+                proposal: createPluginToolProposal({
+                  workspaceId: expected.id,
+                  runId: reply!.id,
+                  compiled,
+                  rawArgs: args,
+                }),
+              };
+            },
+          }
+        : undefined;
       let structureSnapshot: Awaited<ReturnType<typeof workspace.assistantStructures>> | undefined;
       let structureChanged = false;
       let responseActivity: Extract<AssistantActivity, { kind: 'text' }> | undefined;
@@ -454,6 +588,8 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
       reply.usage = await runAssistant({ transport: executionTransport, connectionId: config.id, model, reasoningEffort: effort, tools: config.tools,
         mode: inline ? 'inline' : 'sidebar', locale: requestLocale, promptOrigin,
         workspaceId: expected.id, runId: reply.id, sources: reply.sources!, history, rules, prompt: question, signal: abort.signal,
+        ...(pluginContext.length ? { pluginContext } : {}),
+        ...(pluginBridge ? { pluginBridge } : {}),
         ...(inputs ? { attachments: inputs } : {}),
         ...(inline ? {} : { askUser: (questions: AssistantQuestion[]) => askUser(questions, target, reply!, abort.signal) }),
         execute: async (proposal: AssistantProposal) => {
@@ -627,6 +763,63 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     const originalStatus = proposal.status;
     let submitting = false;
     try {
+      if (proposal.kind === 'plugin') {
+        const action = proposal.pluginAction;
+        if (!action) throw new Error('插件操作元数据缺失');
+        if (!apply) {
+          proposal.preview = {
+            before: '',
+            after: proposal.content,
+            diskHash: null,
+            path: proposal.path,
+          };
+          proposal.status = 'ready';
+          await persist(target);
+          return;
+        }
+        const parsedArgs = JSON.parse(proposal.content) as Record<string, unknown>;
+        const assistantExtension = runtime.extensions?.().assistant;
+        if (assistantExtension?.applyProposal) {
+          proposal.status = 'applying';
+          await persist(target);
+          submitting = true;
+          const extApplied = await assistantExtension.applyProposal(proposal, parsedArgs);
+          if (extApplied) {
+            proposal.applied = {
+              before: '',
+              after: extApplied.after,
+              hash: extApplied.hash,
+              fileId: extApplied.fileId,
+            };
+            proposal.status = 'applied';
+            proposal.error = undefined;
+            await persist(target);
+            return;
+          }
+          submitting = false;
+        }
+        const installation = workspace.installedPlugins.find(item => item.manifest.id === action.pluginId);
+        const toolDef =
+          installation?.manifest.manifestVersion === 2
+            ? installation.manifest.assistantTools?.find(tool => tool.name === action.toolName)
+            : undefined;
+        if (!installation || !toolDef || !canPluginToolExecute(installation, toolDef, !!workspace.workspace?.readOnly))
+          throw new Error('插件已停用、未授权或受当前工作区策略限制，无法执行此操作');
+        proposal.status = 'applying';
+        await persist(target);
+        submitting = true;
+        const output = await workspace.invokePluginAssistantTool(action.pluginId, action.toolName, parsedArgs);
+        proposal.applied = {
+          before: '',
+          after: JSON.stringify(output ?? null, null, 2),
+          hash: action.toolName,
+          fileId: action.pluginId,
+        };
+        proposal.status = 'applied';
+        proposal.error = undefined;
+        await persist(target);
+        return;
+      }
       const acceptance = apply ? proposal.preview : undefined;
       if (apply && !acceptance) throw new Error('请先查看最新差异');
       if (apply) {
@@ -741,7 +934,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     if (busy.value || applying.value) return;
     session.value = sessions.value.find(item => item.id === id) ?? null;
     restoreModelSelection(session.value);
-    files.value = []; attachments.value = []; selection.value = null; prompt.value = ''; error.value = '';
+    files.value = []; attachments.value = []; pluginContextKeys.value = []; selection.value = null; prompt.value = ''; error.value = '';
     replyTarget.value = null;
   }
   async function loadExternal() {
@@ -765,7 +958,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
   watch(() => workspace.workspace ? `${workspace.workspace.id}:${workspace.workspace.path}:${workspace.assistantEpoch}` : '', async key => {
     stop(); modelController?.abort(); const epoch = ++generation;
     if (displayMode.value === 'fullscreen') setDisplayMode('sidebar');
-    busy.value = false; prompt.value = ''; files.value = []; attachments.value = []; selection.value = null; session.value = null; sessions.value = [];
+    busy.value = false; prompt.value = ''; files.value = []; attachments.value = []; pluginContextKeys.value = []; selection.value = null; session.value = null; sessions.value = [];
     replyTarget.value = null;
     connectionId.value = ''; modelId.value = ''; models.value = []; modelsError.value = ''; modelsLoading.value = false;
     if (!key || !transport) return;
@@ -795,8 +988,38 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     if (fullscreenTabId.value && !ids.includes(fullscreenTabId.value)) setDisplayMode('sidebar');
   });
   watch([connection, opened], () => { void reloadModels(); });
-  onScopeDispose(() => { stop(); modelController?.abort(); });
+  if (!inline && !background && transport) {
+    workspace.setPluginAiRunner?.(async ({ structured, request, signal }) => {
+      let availableConnections = connections.value;
+      if (!availableConnections.length) {
+        await reloadConnections();
+        availableConnections = connections.value;
+      }
+      const selectedConn =
+        availableConnections.find(item => item.id === connectionId.value) ?? availableConnections[0];
+      if (!selectedConn) throw new Error('尚未配置同页助手模型连接，无法执行插件 AI 推理');
+      let targetModel = modelId.value;
+      if (!targetModel) {
+        const fetched = models.value.length ? models.value : await transport.models(selectedConn.id, signal);
+        targetModel = fetched.find(item => isAssistantModelId(item)) ?? '';
+      }
+      if (!targetModel) throw new Error('当前模型连接没有可用模型，请先在助手设置中选择模型');
+      return runPluginAiCompletion({
+        transport,
+        connectionId: selectedConn.id,
+        model: targetModel,
+        request,
+        structured,
+        signal,
+      });
+    });
+  }
+  onScopeDispose(() => {
+    if (!inline && !background) workspace.setPluginAiRunner?.(undefined);
+    stop();
+    modelController?.abort();
+  });
   return { connectionCheckResults, connectionQuotaResults, canImportCcSwitch, scanCcSwitch, importCcSwitch, available, demo, canConfigure, opened, displayMode, fullscreenTabId, fullscreenPaneId, isFullscreenTab, setDisplayMode, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, refreshModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
-    files, attachmentsEnabled, attachments, addClipboardAttachments, removeAttachment, selection, prompt, hasDraft, setBuiltInPrompt, error, progress, pendingUserInput, startDocumentDraft, submitUserInput, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
+    files, pluginContextKeys, togglePluginContext, attachmentsEnabled, attachments, addClipboardAttachments, removeAttachment, selection, prompt, hasDraft, setBuiltInPrompt, error, progress, pendingUserInput, startDocumentDraft, submitUserInput, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,
     undo, reject, publishSuggestions, saveConnection, removeConnection, reloadConnections, checkConnection, readConnectionKey, queryQuota, saveQuota, setManaged: (check: (id: string) => boolean) => { managed = check; } };
 }

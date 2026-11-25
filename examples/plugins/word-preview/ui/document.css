@@ -1,4 +1,4 @@
-@import '../../../../packages/workbench/src/scrollbars.css';
+@import '../../../../packages/workbench/src/styles/scrollbars.css';
 
 html,body,#app { margin:0; height:100%; font:14px system-ui,sans-serif; color:#24292f; background:#f1f2f4; }
 #app { display:flex; flex-direction:column; overflow:hidden; }

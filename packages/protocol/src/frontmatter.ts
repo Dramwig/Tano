@@ -1,4 +1,4 @@
-import { isMap, isScalar, parseDocument } from 'yaml';
+import { Document, isMap, isScalar, parseDocument } from 'yaml';
 
 export interface FrontmatterProperty {
   name: string;
@@ -75,4 +75,63 @@ export function frontmatterValue(prefix: string, name: string): { kind: Frontmat
   if (plain && typeof value === 'string' && /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(value))
     return { kind: 'date', value: value.replaceAll('/', '-') };
   return { kind: 'text', value: String(value) };
+}
+
+export function splitFrontmatterSource(markdown: string): { prefix: string; body: string } {
+  const opening = /^\uFEFF?---(\r?\n)/.exec(markdown);
+  if (!opening) return { prefix: '', body: markdown };
+  const remainder = markdown.slice(opening[0].length);
+  const match = /(?:^|\r?\n)(---|\.\.\.)(?:\r?\n|$)/.exec(remainder);
+  if (!match) return { prefix: '', body: markdown };
+  const end = opening[0].length + match.index + match[0].length;
+  return { prefix: markdown.slice(0, end), body: markdown.slice(end) };
+}
+
+/** Structured JSON-safe read of YAML frontmatter without mutating Markdown source. */
+export function readFrontmatterData(markdown: string): { hasFrontmatter: boolean; data: Record<string, unknown> } {
+  const { prefix } = splitFrontmatterSource(markdown);
+  if (!prefix) return { hasFrontmatter: false, data: {} };
+  const parsed = frontmatterDocument(prefix);
+  if (!parsed) throw new Error('YAML 属性无法解析，请在源码中修改');
+  const raw: unknown = parsed.document.toJS({ maxAliasCount: 100 });
+  if (raw === null || raw === undefined) return { hasFrontmatter: true, data: {} };
+  if (typeof raw !== 'object' || Array.isArray(raw)) throw new Error('YAML 属性必须为键值对映射');
+  const normalized = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
+  return { hasFrontmatter: true, data: normalized };
+}
+
+/** Structured AST-preserving patch of YAML frontmatter keys while keeping Markdown body intact. */
+export function patchFrontmatterMarkdown(
+  markdown: string,
+  patch: { set?: Record<string, unknown>; remove?: string[] },
+): string {
+  const setEntries = Object.entries(patch.set ?? {});
+  const removeKeys = patch.remove ?? [];
+  if (!setEntries.length && !removeKeys.length) return markdown;
+  const { prefix, body } = splitFrontmatterSource(markdown);
+  const lineEnding = markdown.includes('\r\n') ? '\r\n' : '\n';
+  const bom = markdown.startsWith('\uFEFF') ? '\uFEFF' : '';
+  if (!prefix) {
+    if (!setEntries.length) return markdown;
+    const doc = new Document(Object.fromEntries(setEntries));
+    const yamlText = doc.toString({ lineWidth: 0 }).replace(/\r?\n/g, lineEnding);
+    const bodyWithoutBom = bom ? body.slice(1) : body;
+    return `${bom}---${lineEnding}${yamlText}---${lineEnding}${bodyWithoutBom}`;
+  }
+  const parsed = frontmatterDocument(prefix);
+  if (!parsed) throw new Error('YAML 属性无法解析，请在源码中修改');
+  const doc: Document = parsed.document;
+  if (doc.contents === null) {
+    if (!setEntries.length) return `${bom}${body}`;
+    doc.contents = doc.createNode({});
+  }
+  if (!isMap(doc.contents)) throw new Error('YAML 属性必须为键值对映射');
+  for (const key of removeKeys) doc.delete(key);
+  for (const [key, value] of setEntries) doc.set(key, value);
+  if (isMap(doc.contents) && doc.contents.items.length === 0) {
+    return `${bom}${body}`;
+  }
+  const serialized = doc.toString({ lineWidth: 0 }).replace(/\r?\n/g, lineEnding);
+  const nextSource = serialized.endsWith(lineEnding) ? serialized : `${serialized}${lineEnding}`;
+  return prefix.slice(0, parsed.start) + nextSource + prefix.slice(parsed.end) + body;
 }

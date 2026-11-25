@@ -1,4 +1,4 @@
-import { canonicalPluginJson, isMarkdown, isWorkspaceInternalPath, pluginRecord } from '@tano/protocol';
+import { canonicalPluginJson, isMarkdown, isWorkspaceInternalPath, matchesPluginPathScopes, pluginRecord } from '@tano/protocol';
 import type { Workspace, WorkspaceRelation, WorkspaceObject } from '@tano/protocol';
 import type { PluginDocumentEntry, PluginPageOptions } from './plugin-sdk';
 import { assistantHash } from '../assistant/hash';
@@ -17,12 +17,14 @@ export interface PluginQueryContext {
 export async function queryPluginData(method: string, params: Record<string, unknown>, pager: PluginQueryPager, context: PluginQueryContext) {
   const { workspace, objects, relations, drafts, assertCurrent } = context;
   const scope = `${workspace.id}:${String(params.queryScope)}`;
+  const pathScopes = Array.isArray(params.pathScopes) ? (params.pathScopes as string[]) : undefined;
   if (method === 'documents.query' || method === 'documents.search') {
     const options = pluginQueryOptions(params.options, method === 'documents.search' ? ['query', 'pathPrefix', 'readOnly'] : ['query', 'pathPrefix', 'readOnly', 'sort']);
     const query = queryText(options.query) ?? '', prefix = queryText(options.pathPrefix, 1000) ?? '', readOnly = queryBoolean(options.readOnly);
     if (options.sort !== undefined && !['path', 'name', 'modified'].includes(String(options.sort))) throw new Error('文档排序字段无效');
     if (method === 'documents.search' && !query.trim()) throw new Error('请输入搜索文本');
     const rows = workspace.files.filter(row => row.kind === 'file' && isMarkdown(row.path) && !isWorkspaceInternalPath(row.path) &&
+      matchesPluginPathScopes(row.path, pathScopes) &&
       row.path.startsWith(prefix) && (readOnly === undefined || !!(workspace.readOnly || row.readOnly) === readOnly) &&
       (method === 'documents.search' || `${row.path}\n${row.name}`.toLowerCase().includes(query.toLowerCase())));
     const sort = String(options.sort ?? 'path'), direction = options.direction === 'desc' ? -1 : 1;

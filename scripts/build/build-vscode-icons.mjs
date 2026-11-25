@@ -6,7 +6,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import sharp from 'sharp';
-import { verifyPlugin } from '../plugin/plugin-build.mjs';
+import { protocol, verifyPlugin } from '../plugin/plugin-build.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const version = '13.0.0', commit = '866d4f48701ba71e39d309e9e519bcf2eaf1c3e2';
@@ -96,10 +96,12 @@ try {
   // Do not carry unused alternate artwork into the installable package.
   const used = new Set([theme.file, theme.folder, theme.folderExpanded, ...['fileNames','fileExtensions','folderNames','folderNamesExpanded'].flatMap(field => Object.values(theme[field]))]);
   for (const id of Object.keys(icons)) if (!used.has(id)) delete icons[id];
+  const { externalizeHeavyIconAssets, parsePluginPackage } = await protocol();
   const manifest = { manifestVersion: 1, id: 'vscode-icons', name: 'vscode-icons 文件图标', version: '1.0.0',
     description: `vscode-icons ${version} 的同页独立适配版（非官方）。经典彩色文件与文件夹图标，支持展开与深浅色变体，离线可用，无脚本权限。图标：CC BY-SA 4.0，品牌图标保留各自权利；适配代码：MIT。`,
     objectTypes: [], relationTypes: [], appearance: { version: 2, icons: [theme] } };
-  const { canonical, integrity } = await verifyPlugin(JSON.stringify({ packageVersion: 1, manifest }));
+  const pkg = externalizeHeavyIconAssets(parsePluginPackage(JSON.stringify({ packageVersion: 1, manifest })));
+  const { canonical, integrity } = await verifyPlugin(JSON.stringify(pkg));
   await mkdir(target, { recursive: true });
   await writeFile(join(target, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   await writeFile(join(target, 'vscode-icons-1.0.0.tano-plugin.json'), canonical + '\n');

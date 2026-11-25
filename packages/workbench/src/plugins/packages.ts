@@ -16,16 +16,88 @@ export function pluginApplicationStorage(): Pick<Storage, 'getItem' | 'setItem'>
   return { getItem: key => memory.get(key) ?? null, setItem: (key, value) => { memory.set(key, value); } };
 }
 
+export const PLUGIN_BINARY_ASSET_LIMIT = 1024 * 1024;
+export const PLUGIN_BINARY_ASSETS_TOTAL_LIMIT = 4 * 1024 * 1024;
+
+export interface PluginBinaryAssetReadResult {
+  path: string;
+  bytes: number;
+  base64: string;
+}
+
+function normalizeBinaryAssetPath(raw: string): string {
+  if (typeof raw !== 'string') throw new Error('插件资产路径无效');
+  const normalized = raw.trim().replaceAll('\\', '/').replace(/^assets\/bin\//, '');
+  if (
+    !normalized ||
+    normalized.length > 240 ||
+    normalized.startsWith('/') ||
+    normalized.endsWith('/') ||
+    normalized.includes('//') ||
+    /[\u0000-\u001f]/.test(normalized) ||
+    normalized.split('/').some((seg) => !seg || seg === '.' || seg === '..')
+  ) {
+    throw new Error(`插件资产路径无效：${raw}`);
+  }
+  return normalized;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 /** Content-addressed application cache; no executable code is written to the workspace. */
 export class PluginPackageCache {
   private cache: PluginCacheStorage;
   constructor(storage: Pick<Storage, 'getItem' | 'setItem'> = pluginApplicationStorage()) { this.cache = new PluginCacheStorage(storage); }
-  async put(pkg: PluginPackage) {
+  async put(pkg: PluginPackage, binaryAssets?: Record<string, Uint8Array>) {
     const parsed = parsePluginPackage(JSON.stringify(pkg));
     const integrity = await pluginIntegrity(parsed);
     const content = canonicalPluginJson(parsed);
     await this.cache.put({ integrity, pluginId: parsed.manifest.id, version: parsed.manifest.version, bytes: new TextEncoder().encode(content).length, savedAt: new Date().toISOString() }, content);
+    if (binaryAssets && Object.keys(binaryAssets).length) {
+      await this.putBinaryAssets(integrity, binaryAssets);
+    }
     return integrity;
+  }
+  async putBinaryAssets(integrity: string, binaryAssets: Record<string, Uint8Array>) {
+    const encoded: Record<string, { bytes: number; base64: string }> = {};
+    let total = 0;
+    for (const [rawPath, bytes] of Object.entries(binaryAssets)) {
+      const path = normalizeBinaryAssetPath(rawPath);
+      if (!(bytes instanceof Uint8Array)) throw new Error(`插件资产 ${path} 必须为二进制字节`);
+      if (bytes.byteLength > PLUGIN_BINARY_ASSET_LIMIT) {
+        throw new Error(`单个插件二进制资产不能超过 1 MiB：${path}`);
+      }
+      total += bytes.byteLength;
+      if (total > PLUGIN_BINARY_ASSETS_TOTAL_LIMIT) {
+        throw new Error('插件二进制资产总大小不能超过 4 MiB');
+      }
+      encoded[path] = { bytes: bytes.byteLength, base64: bytesToBase64(bytes) };
+    }
+    await this.cache.putAssets(integrity, JSON.stringify({ version: 1, assets: encoded }));
+  }
+  async listBinaryAssets(integrity: string): Promise<string[]> {
+    const raw = await this.cache.getAssets(integrity);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { version?: number; assets?: Record<string, { bytes: number; base64: string }> };
+    if (parsed.version !== 1 || !parsed.assets || typeof parsed.assets !== 'object') return [];
+    return Object.keys(parsed.assets).sort();
+  }
+  async getBinaryAsset(integrity: string, rawPath: string): Promise<PluginBinaryAssetReadResult | null> {
+    const path = normalizeBinaryAssetPath(rawPath);
+    const raw = await this.cache.getAssets(integrity);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { version?: number; assets?: Record<string, { bytes: number; base64: string }> };
+    if (parsed.version !== 1 || !parsed.assets || !Object.hasOwn(parsed.assets, path)) return null;
+    const entry = parsed.assets[path];
+    if (!entry || typeof entry.base64 !== 'string' || typeof entry.bytes !== 'number') return null;
+    return { path, bytes: entry.bytes, base64: entry.base64 };
   }
   async get(integrity: string) {
     const content = await this.cache.get(integrity);

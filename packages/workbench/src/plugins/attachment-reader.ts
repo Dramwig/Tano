@@ -1,4 +1,4 @@
-import { isWorkspaceInternalPath, isMarkdown, type Workspace } from '@tano/protocol';
+import { isWorkspaceInternalPath, isMarkdown, matchesPluginPathScopes, type Workspace } from '@tano/protocol';
 import type { AttachmentService } from '../files/attachments';
 
 /** One bounded snapshot per workbench. A continuation can never mix file versions or instances. */
@@ -8,6 +8,8 @@ export class PluginAttachmentReader {
   async read(workspace: Workspace, params: Record<string, unknown>, service: AttachmentService | undefined, assertCurrent: () => void) {
     const file = workspace.files.find(file => file.id === params.fileId && file.kind === 'file');
     if (!file || isMarkdown(file.path) || isWorkspaceInternalPath(file.path)) throw new Error('附件不存在或不可访问');
+    const pathScopes = Array.isArray(params.pathScopes) ? (params.pathScopes as string[]) : undefined;
+    if (!matchesPluginPathScopes(file.path, pathScopes)) throw new Error('附件路径不在插件授权目录范围内');
     const offset = params.offset ?? 0;
     if (!Number.isSafeInteger(offset) || Number(offset) < 0 || Number(offset) % 18000 !== 0) throw new Error('附件分块位置无效');
     const key = JSON.stringify([workspace.id, params.queryScope, file.id, file.path, file.modified, file.size, file.contentHash]);

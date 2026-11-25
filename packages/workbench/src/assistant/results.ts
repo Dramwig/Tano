@@ -1,5 +1,6 @@
 import type { AssistantActivity, AssistantMessage, AssistantToolResult, AssistantUserInput, AssistantWireMessage } from '@tano/protocol';
-import { uiLocale } from '../i18n/i18n';
+import { t, uiLocale } from '../i18n/i18n';
+import { useWorkbenchRuntime } from '../runtime';
 import { assistantCopy } from './language';
 
 export function assistantMessageParts(message: AssistantMessage) {
@@ -88,5 +89,18 @@ export function assistantHistory(messages: readonly AssistantMessage[]): Assista
 export function assistantToolLabel(name: string) {
   const copy = assistantCopy(uiLocale.value);
   const toolLabels: Record<string, string> = copy.tools;
-  return Object.prototype.hasOwnProperty.call(toolLabels, name) ? toolLabels[name] : copy.result.toolCall;
+  if (Object.prototype.hasOwnProperty.call(toolLabels, name)) return toolLabels[name];
+  if (name === 'inspect_plugins') return t('查看已启用插件');
+  if (name === 'open_plugin_view') return t('打开插件视图');
+  try {
+    const customLabel = useWorkbenchRuntime().extensions?.().assistant?.toolLabel?.(name);
+    if (customLabel) return customLabel;
+  } catch {
+    /* outside Pinia runtime */
+  }
+  if (name.startsWith('plugin__')) {
+    const parts = name.split('__').slice(1).filter(Boolean);
+    return `${t('插件工具')} · ${parts.join(' / ')}`;
+  }
+  return copy.result.toolCall;
 }

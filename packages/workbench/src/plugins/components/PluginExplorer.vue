@@ -117,6 +117,7 @@ async function openImport() {
           <PluginIcon :id="item.manifest.id" /><span
             ><strong
               >{{ item.manifest.name }}
+              <small v-if="item.scope === 'user'">{{ t('全局') }}</small>
               <small v-if="!item.enabled">{{ t('已停用') }}</small></strong
             ><span class="description">{{ item.manifest.description }}</span></span
           >
@@ -131,7 +132,7 @@ async function openImport() {
               <Power :size="14" />{{ item.enabled ? t('停用插件') : t('启用插件') }}</button
             ><button
               v-if="!item.system"
-              :disabled="busy || !store.canManagePlugins"
+              :disabled="busy || (item.scope !== 'user' && !store.canManagePlugins)"
               @click="change({ uninstall: item.manifest.id })"
             >
               <Trash2 :size="14" />{{ t('卸载插件') }}</button

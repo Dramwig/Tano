@@ -1,0 +1,419 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tano.page/schemas/manifest.schema.json",
+  "title": "Tano Plugin Manifest",
+  "description": "Official JSON Schema for Tano (同页) declarative (manifestVersion 1) and executable code (manifestVersion 2) plugin manifests across Phases 0–4.",
+  "oneOf": [
+    { "$ref": "#/$defs/declarativeManifest" },
+    { "$ref": "#/$defs/executableManifest" }
+  ],
+  "$defs": {
+    "pluginId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,39}$",
+      "description": "Lowercase plugin identifier (1–40 chars)."
+    },
+    "pluginKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.-]{0,79}$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["desktop-local", "desktop-online", "web", "mobile"]
+    },
+    "engines": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tano": {
+          "type": "string",
+          "pattern": "^>=\\d+\\.\\d+\\.\\d+$",
+          "description": "Minimum supported Tano Core semver, e.g. \">=0.14.0\"."
+        }
+      }
+    },
+    "permission": {
+      "type": "string",
+      "enum": [
+        "attachments.read",
+        "attachments.write",
+        "documents.read",
+        "documents.write",
+        "documents.move",
+        "documents.trash",
+        "objects.read",
+        "objects.write",
+        "relations.read",
+        "relations.write",
+        "storage",
+        "network",
+        "connections",
+        "native",
+        "ui",
+        "ai.invoke"
+      ]
+    },
+    "menuLocation": {
+      "type": "string",
+      "enum": ["workspace", "document", "file"]
+    },
+    "viewLocation": {
+      "type": "string",
+      "enum": [
+        "panel",
+        "tab",
+        "sidebar",
+        "settings",
+        "documentSidebar",
+        "documentHeader",
+        "documentFooter",
+        "homeTab",
+        "newTab"
+      ]
+    },
+    "viewLayout": {
+      "type": "string",
+      "enum": ["contained", "fill"]
+    },
+    "commandDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/pluginKey" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "shortcut": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "menus": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/menuLocation" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "slashCommandDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "command"],
+      "properties": {
+        "id": { "$ref": "#/$defs/pluginKey" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "command": { "$ref": "#/$defs/pluginKey" },
+        "description": { "type": "string", "maxLength": 200 },
+        "keywords": {
+          "type": "array",
+          "maxItems": 12,
+          "items": { "type": "string", "minLength": 1, "maxLength": 40 }
+        }
+      }
+    },
+    "viewDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/pluginKey" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "location": { "$ref": "#/$defs/viewLocation" },
+        "layout": { "$ref": "#/$defs/viewLayout" }
+      }
+    },
+    "codeBlockRendererDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languages", "view"],
+      "properties": {
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.+#_-]{0,31}$" }
+        },
+        "view": { "$ref": "#/$defs/pluginKey" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "height": { "type": "integer", "minimum": 80, "maximum": 1200 }
+      }
+    },
+    "fileHandlerDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extensions", "mode", "view", "command"],
+      "properties": {
+        "extensions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": { "type": "string", "pattern": "^\\.[a-z0-9][a-z0-9.-]{0,30}$" }
+        },
+        "mode": { "type": "string", "enum": ["preview", "editor"] },
+        "view": { "$ref": "#/$defs/pluginKey" },
+        "command": { "$ref": "#/$defs/pluginKey" }
+      }
+    },
+    "assistantToolDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "label", "description", "effect", "parameters"],
+      "properties": {
+        "name": { "$ref": "#/$defs/pluginKey" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "effect": { "type": "string", "enum": ["read", "write", "external"] },
+        "parameters": { "type": "object" }
+      }
+    },
+    "assistantContextProviderDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "description"],
+      "properties": {
+        "id": { "$ref": "#/$defs/pluginKey" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "maxBytes": { "type": "integer", "minimum": 256, "maximum": 16000 }
+      }
+    },
+    "serviceDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description"],
+      "properties": {
+        "name": { "$ref": "#/$defs/pluginKey" },
+        "description": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "parameters": { "type": "object" },
+        "returns": { "type": "object" }
+      }
+    },
+    "serviceDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pluginId", "service"],
+      "properties": {
+        "pluginId": { "$ref": "#/$defs/pluginId" },
+        "service": { "$ref": "#/$defs/pluginKey" },
+        "optional": { "type": "boolean" }
+      }
+    },
+    "settingField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "label", "type"],
+      "properties": {
+        "key": { "$ref": "#/$defs/pluginKey" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 300 },
+        "type": { "type": "string", "enum": ["string", "number", "boolean", "select"] },
+        "default": { "type": ["string", "number", "boolean"] },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "label"],
+            "properties": {
+              "value": { "type": "string", "minLength": 1, "maxLength": 80 },
+              "label": { "type": "string", "minLength": 1, "maxLength": 80 }
+            }
+          }
+        },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "required": { "type": "boolean" }
+      }
+    },
+    "activationEvent": {
+      "type": "string",
+      "pattern": "^(onStartup|onCommand:[a-z][a-z0-9.-]{0,79}|onView:[a-z][a-z0-9.-]{0,79}|onFile:\\.[a-z0-9][a-z0-9.-]{0,30}|onAssistantTool:[a-z][a-z0-9.-]{0,79}|onAssistantContext:[a-z][a-z0-9.-]{0,79}|onService:[a-z][a-z0-9.-]{0,79})$"
+    },
+    "automationDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/pluginKey" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "objectTypeDefinition": {
+      "type": "object",
+      "required": ["type", "label", "fields"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "fields": { "type": "array" }
+      }
+    },
+    "relationTypeDefinition": {
+      "type": "object",
+      "required": ["type", "label"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "declarativeManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifestVersion",
+        "id",
+        "name",
+        "version",
+        "description",
+        "objectTypes",
+        "relationTypes"
+      ],
+      "properties": {
+        "$schema": { "type": "string" },
+        "manifestVersion": { "const": 1 },
+        "id": { "$ref": "#/$defs/pluginId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "version": { "$ref": "#/$defs/semver" },
+        "description": { "type": "string", "maxLength": 2000 },
+        "engines": { "$ref": "#/$defs/engines" },
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/platform" }
+        },
+        "appearance": { "type": "object" },
+        "objectTypes": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/objectTypeDefinition" }
+        },
+        "relationTypes": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/relationTypeDefinition" }
+        }
+      }
+    },
+    "executableManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifestVersion",
+        "apiVersion",
+        "id",
+        "name",
+        "version",
+        "description",
+        "objectTypes",
+        "relationTypes",
+        "permissions",
+        "networkOrigins",
+        "nativeCommands",
+        "commands",
+        "views"
+      ],
+      "properties": {
+        "$schema": { "type": "string" },
+        "manifestVersion": { "const": 2 },
+        "apiVersion": { "const": 1 },
+        "id": { "$ref": "#/$defs/pluginId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "version": { "$ref": "#/$defs/semver" },
+        "description": { "type": "string", "maxLength": 2000 },
+        "engines": { "$ref": "#/$defs/engines" },
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/platform" }
+        },
+        "appearance": { "type": "object" },
+        "objectTypes": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/objectTypeDefinition" }
+        },
+        "relationTypes": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/relationTypeDefinition" }
+        },
+        "permissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/permission" }
+        },
+        "networkOrigins": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "type": "string", "format": "uri", "pattern": "^https://" }
+        },
+        "nativeCommands": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/pluginKey" }
+        },
+        "commands": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/commandDefinition" }
+        },
+        "slashCommands": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/slashCommandDefinition" }
+        },
+        "views": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/viewDefinition" }
+        },
+        "codeBlockRenderers": {
+          "type": "array",
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/codeBlockRendererDefinition" }
+        },
+        "fileHandlers": {
+          "type": "array",
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/fileHandlerDefinition" }
+        },
+        "assistantTools": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/assistantToolDefinition" }
+        },
+        "assistantContextProviders": {
+          "type": "array",
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/assistantContextProviderDefinition" }
+        },
+        "services": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/serviceDefinition" }
+        },
+        "usesServices": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/serviceDependency" }
+        },
+        "settingsSchema": {
+          "type": "array",
+          "maxItems": 40,
+          "items": { "$ref": "#/$defs/settingField" }
+        },
+        "activationEvents": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/activationEvent" }
+        },
+        "automations": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/automationDefinition" }
+        }
+      }
+    }
+  }
+}

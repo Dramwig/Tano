@@ -30,7 +30,11 @@ import { recordHelpCompleted } from '../help/help-checklist';
 import { createHelpEditQueue } from '../help/help-edit-queue';
 import { optimisticFiles } from '../files/optimistic-files';
 import { layoutPanes, restoreLayout } from '../shell/pane-layout';
-import type { PluginWorkbenchView } from '../plugins/workbench';
+import {
+  resolvePluginFileHandler,
+  type PluginWorkbenchFileHandler,
+  type PluginWorkbenchView,
+} from '../plugins/workbench';
 import { useWorkbenchRuntime, type WorkbenchViewTab } from '../runtime';
 import { SessionJournal } from '../shell/session-journal';
 import {
@@ -1077,22 +1081,26 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       recordHelpCompleted('folder-home');
   }
 
-  /** The bundled drawing plugin handles its own Markdown; disabled plugins keep source access. */
-  function drawingPluginHandles(file: FileEntry) {
-    return (
-      file.kind === 'file' &&
-      /\.excalidraw\.md$/i.test(file.path) &&
-      !!workspace.value &&
-      plugins.pluginRuntime.value.some(
-        (plugin) => plugin.id === 'excalidraw' && plugin.status === 'running',
-      )
-    );
+  /** Running plugins that declare fileHandlers can handle compound-suffix Markdown or attachments. */
+  function fileEditorHandler(file: FileEntry) {
+    if (file.kind !== 'file' || !workspace.value || !isMarkdown(file.path)) return undefined;
+    return resolvePluginFileHandler(file.path, 'editor', plugins.pluginFileHandlers.value);
   }
-  async function openDrawingPlugin(file: FileEntry) {
+  function filePreviewHandler(file: FileEntry) {
+    if (
+      file.kind !== 'file' ||
+      !workspace.value ||
+      isMarkdown(file.path) ||
+      isDataTableFilePath(file.path)
+    )
+      return undefined;
+    return resolvePluginFileHandler(file.path, 'preview', plugins.pluginFileHandlers.value);
+  }
+  async function openFileWithEditorHandler(file: FileEntry, handler: PluginWorkbenchFileHandler) {
     const currentWorkspace = workspace.value;
     if (!currentWorkspace) return false;
     try {
-      await plugins.pluginExecutor.invoke('excalidraw', 'command', 'open', {
+      await plugins.pluginExecutor.invoke(handler.pluginId, 'command', handler.command, {
         workspaceId: currentWorkspace.id,
         fileId: file.id,
       });
@@ -1102,17 +1110,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return false;
     }
   }
-  function officePluginId(file: FileEntry) {
-    return /\.pptx?$/i.test(file.path)
-      ? 'presentation-preview'
-      : /\.docx?$/i.test(file.path)
-        ? 'word-preview'
-        : undefined;
+  function hasMarkdownFileHandler(file: FileEntry) {
+    return !!fileEditorHandler(file);
   }
 
-  async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
-    if (file.kind === 'file' && officePluginId(file)) return openAttachment(file, options);
-    if (drawingPluginHandles(file) && (await openDrawingPlugin(file))) return;
+  async function openFile(
+    file: FileEntry,
+    options?: { historyIndex?: number; rawSource?: boolean },
+  ) {
+    if (filePreviewHandler(file)) return openAttachment(file, options);
+    const editorHandler = options?.rawSource ? undefined : fileEditorHandler(file);
+    if (editorHandler && (await openFileWithEditorHandler(file, editorHandler))) return;
     const creationAtRequest = fileOps.getCreationRevision();
     const request = ++fileOpenRevision;
     const paneId = tabsLayout.activePaneId.value;
@@ -1159,10 +1167,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  async function openFileInNewTab(file: FileEntry) {
+  async function openFileInNewTab(file: FileEntry, options?: { rawSource?: boolean }) {
     try {
-      if (file.kind === 'file' && officePluginId(file)) return openAttachmentInNewTab(file);
-      if (drawingPluginHandles(file) && (await openDrawingPlugin(file))) return;
+      if (filePreviewHandler(file)) return openAttachmentInNewTab(file);
+      const editorHandler = options?.rawSource ? undefined : fileEditorHandler(file);
+      if (editorHandler && (await openFileWithEditorHandler(file, editorHandler))) return;
       await serial(async () => {
         if (file.kind === 'file' && isDataTableFilePath(file.path)) {
           const target = tableTabId(dataTableFileId(file.id));
@@ -1211,17 +1220,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const activation = tabsLayout.getActivationRevision();
     const current = () => request === fileOpenRevision && !busy.value && !disposed;
     const target = `attachment:${file.id}`;
-    const pluginId = officePluginId(file);
-    const viewTab =
-      pluginId === 'word-preview' ? tabsLayout.wordPreviewTab : tabsLayout.presentationPreviewTab;
+    const handler = filePreviewHandler(file);
     const usePlugin =
-      !!pluginId &&
-      plugins.pluginRuntime.value.some(
-        (plugin) => plugin.id === pluginId && plugin.status === 'running',
-      ) &&
-      plugins.pluginViews.value.some((view) => view.key === viewTab);
-    const id = usePlugin ? viewTab : target;
-    // The bundled viewers share a tab per plugin, while history follows individual files.
+      !!handler && plugins.pluginViews.value.some((view) => view.key === handler.viewKey);
+    const id = usePlugin && handler ? handler.viewKey : target;
+    // Preview plugins share one tab per view while navigation history follows individual files.
     const opened = await openPageTab(id, {
       ...options,
       target,
@@ -1230,6 +1233,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (
       !opened ||
       !usePlugin ||
+      !handler ||
       !current() ||
       activeId.value !== id ||
       workspace.value?.id !== workspaceId
@@ -1237,7 +1241,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return;
     const previewActivation = tabsLayout.getActivationRevision();
     try {
-      await plugins.pluginExecutor.invoke(pluginId, 'command', 'open', {
+      await plugins.pluginExecutor.invoke(handler.pluginId, 'command', handler.command, {
         workspaceId,
         fileId: file.id,
         viewAlreadyOpen: true,
@@ -1667,7 +1671,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     resizeSplit: tabsLayout.resizeSplit,
     installedPlugins,
     installedPluginWorkspace: plugins.installedPluginWorkspace,
+    personalCodePluginPolicy: plugins.personalCodePluginPolicy,
     pluginRuntime: plugins.pluginRuntime,
+    pluginHostEnvironment: plugins.pluginHostEnvironment,
+    userPluginIntegrities: plugins.userPluginIntegrities,
     canManagePlugins: plugins.canManagePlugins,
     canManageSettings: policy.canManageSettings,
     authorizePlugin: plugins.pluginServices.authorizePlugin,
@@ -1781,11 +1788,30 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     registerViews: tabsLayout.registerViews,
     pluginViews: plugins.pluginViews,
     pluginCommands: plugins.pluginCommands,
+    pluginFileHandlers: plugins.pluginFileHandlers,
+    pluginSlashCommands: plugins.pluginSlashCommands,
+    pluginCodeBlockRenderers: plugins.pluginCodeBlockRenderers,
+    pluginDecorationsFor: plugins.pluginDecorationsFor,
+    pluginStatusBarItems: plugins.pluginStatusBarItems,
+    hasMarkdownFileHandler,
     activePluginSidebar,
+    activeDocumentPluginSidebar: plugins.activeDocumentPluginSidebar,
+    activePluginDialog: plugins.activePluginDialog,
+    resolvePluginDialog: plugins.resolvePluginDialog,
+    pluginToasts: plugins.pluginToasts,
+    dismissPluginToast: plugins.dismissPluginToast,
     pluginSettingsRequest: plugins.pluginSettingsRequest,
     pluginSettingsPages: plugins.pluginSettingsPages,
     openPluginView: plugins.openPluginView,
     interactWithPlugin: plugins.interactWithPlugin,
+    pluginContextProviders: plugins.pluginContextProviders,
+    invokePluginAssistantTool: plugins.invokePluginAssistantTool,
+    queryPluginAssistantContext: plugins.queryPluginAssistantContext,
+    setPluginAiRunner: plugins.setPluginAiRunner,
+    overlaySnapshot: plugins.overlaySnapshot,
+    setSafeMode: plugins.setSafeMode,
+    pluginHomeTabView: plugins.pluginHomeTabView,
+    pluginNewTabView: plugins.pluginNewTabView,
     openViewTab: tabsLayout.openViewTab,
     readGraphDocument,
     assistantSnapshot: assistantBridge.assistantSnapshot,

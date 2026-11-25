@@ -16,6 +16,7 @@ import {
 import { workbenchContextKey } from '../workbench-context';
 import CommandPalette from './CommandPalette.vue';
 import NewTabPicker from '../../tabs/components/NewTabPicker.vue';
+import PluginUiDialog from '../../plugins/components/PluginUiDialog.vue';
 import WorkbenchSettings from '../../settings/components/WorkbenchSettings.vue';
 import WorkspaceSyncPanel from '../../workspace/components/WorkspaceSyncPanel.vue';
 
@@ -369,6 +370,12 @@ const {
           </form>
         </section>
       </div>
+      <PluginUiDialog
+        :dialog="store.activePluginDialog"
+        :toasts="store.pluginToasts"
+        @resolve="store.resolvePluginDialog"
+        @dismiss-toast="store.dismissPluginToast"
+      />
     </WindowScope>
   </Teleport>
 </template>

@@ -1,5 +1,12 @@
 import { canonicalPluginJson, parsePluginPolicy, workspacePluginPath } from '@tano/protocol';
-import type { FileSnapshot, Workspace, WorkspaceAdapter, WorkspacePluginPolicy, WorkspacePluginRule } from '@tano/protocol';
+import type {
+  FileSnapshot,
+  Workspace,
+  WorkspaceAdapter,
+  WorkspacePersonalPluginPolicy,
+  WorkspacePluginPolicy,
+  WorkspacePluginRule,
+} from '@tano/protocol';
 
 export interface PluginPolicySnapshot { snapshot: FileSnapshot | null; policy: WorkspacePluginPolicy }
 export function canManageWorkspacePlugins(adapter: WorkspaceAdapter, workspace: Workspace) {
@@ -25,7 +32,7 @@ export async function savePluginRule(adapter: WorkspaceAdapter, base: PluginPoli
     if (!original || !latest || !desired) conflict = !equal(original, latest) && !equal(latest, desired);
     else {
       merged = structuredClone(latest);
-      for (const field of ['manifest', 'mode', 'integrity', 'sourceUrl', 'settings', 'history'] as const) {
+      for (const field of ['manifest', 'mode', 'integrity', 'sourceUrl', 'settings', 'pathScopes', 'history'] as const) {
         if (equal(original[field], desired[field])) continue;
         if (!equal(original[field], latest[field]) && !equal(desired[field], latest[field])) { conflict = true; break; }
         Object.assign(merged, { [field]: desired[field] });
@@ -38,7 +45,11 @@ export async function savePluginRule(adapter: WorkspaceAdapter, base: PluginPoli
       await adapter.create(path, JSON.stringify(proposed, null, 2) + '\n');
       throw new Error(`插件规则已被其他人修改；你的版本已保存在 ${path}，请刷新后比较。`);
     }
-    const policy = parsePluginPolicy(JSON.stringify({ version: 1, plugins: [...current.policy.plugins.filter(row => row.manifest.id !== id), ...(merged ? [merged] : [])] }));
+    const policy = parsePluginPolicy(JSON.stringify({
+      version: 1,
+      ...(current.policy.personalCodePlugins ? { personalCodePlugins: current.policy.personalCodePlugins } : {}),
+      plugins: [...current.policy.plugins.filter(row => row.manifest.id !== id), ...(merged ? [merged] : [])],
+    }));
     const content = JSON.stringify(policy, null, 2) + '\n';
     assertCurrent();
     if (current.snapshot) {
@@ -49,6 +60,45 @@ export async function savePluginRule(adapter: WorkspaceAdapter, base: PluginPoli
     } else {
       try { await adapter.create(workspacePluginPath, content); }
       catch (error) {
+        assertCurrent();
+        let snapshot: FileSnapshot;
+        try { snapshot = await adapter.read(workspacePluginPath); } catch { throw error; }
+        current = { snapshot, policy: parsePluginPolicy(snapshot.content) };
+        continue;
+      }
+      const snapshot = await adapter.read(workspacePluginPath);
+      return { snapshot, policy: parsePluginPolicy(snapshot.content) };
+    }
+  }
+  throw new Error('插件规则正在持续变化，请刷新后重试');
+}
+
+export async function saveWorkspacePersonalPluginPolicy(
+  adapter: WorkspaceAdapter,
+  base: PluginPolicySnapshot,
+  personalCodePlugins: WorkspacePersonalPluginPolicy,
+  assertCurrent: () => void,
+): Promise<PluginPolicySnapshot> {
+  let current = base;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    assertCurrent();
+    const policy = parsePluginPolicy(
+      JSON.stringify({
+        version: 1,
+        ...(personalCodePlugins !== 'allow' ? { personalCodePlugins } : {}),
+        plugins: current.policy.plugins,
+      }),
+    );
+    const content = JSON.stringify(policy, null, 2) + '\n';
+    if (current.snapshot) {
+      const result = await adapter.write(workspacePluginPath, content, current.snapshot.hash);
+      if (result.status === 'saved') return { policy, snapshot: result.snapshot };
+      if (result.status === 'missing') throw new Error('工作区插件规则已被移除，请刷新后重试');
+      current = { snapshot: result.snapshot, policy: parsePluginPolicy(result.snapshot.content) };
+    } else {
+      try {
+        await adapter.create(workspacePluginPath, content);
+      } catch (error) {
         assertCurrent();
         let snapshot: FileSnapshot;
         try { snapshot = await adapter.read(workspacePluginPath); } catch { throw error; }

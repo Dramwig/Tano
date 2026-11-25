@@ -9,18 +9,23 @@ import { useWorkspaceStore } from '../../stores/workspace';
 import { useAssistantStore } from '../../assistant/store';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import PluginIcon from '../../plugins/components/PluginIcon.vue';
+import { applyOverlayToWorkspaceViews } from '../../plugins/overlay-mapping';
 import { Check, Ellipsis, FolderOpen, CalendarDays, Bot, Puzzle } from 'lucide-vue-next';
 const store = useWorkspaceStore();
 const assistant = useAssistantStore();
 const props = defineProps<{ active: boolean; modelValue: string }>();
 const emit = defineEmits<{ open: []; 'update:modelValue': [value: string] }>();
-const views = computed(() => [
-  { id: 'repository', label: t('文件'), icon: FolderOpen },
-  ...(store.workspaceSettings.showPlan ? [{ id: 'events', label: t('事件与任务'), icon: CalendarDays }] : []),
-  ...(assistant.available ? [{ id: 'assistant', label: t('助手'), icon: Bot }] : []),
-  ...(store.workspaceSettings.showPlugins ? [{ id: 'plugin-views', label: t('插件'), icon: Puzzle }] : []),
-  ...store.pluginViews.filter(view => view.location === 'sidebar').map(view => ({ id: `plugin-sidebar:${view.key}`, label: view.label, icon: PluginIcon, pluginId: view.pluginId })),
-]);
+const views = computed(() => {
+  const base = [
+    { id: 'repository', label: t('文件'), icon: FolderOpen },
+    ...(store.workspaceSettings.showPlan ? [{ id: 'events', label: t('事件与任务'), icon: CalendarDays }] : []),
+    ...(assistant.available ? [{ id: 'assistant', label: t('助手'), icon: Bot }] : []),
+    ...(store.workspaceSettings.showPlugins ? [{ id: 'plugin-views', label: t('插件'), icon: Puzzle }] : []),
+    ...store.pluginViews.filter(view => view.location === 'sidebar').map(view => ({ id: `plugin-sidebar:${view.key}`, label: view.label, icon: PluginIcon, pluginId: view.pluginId })),
+  ];
+  const snapshot = store.overlaySnapshot;
+  return applyOverlayToWorkspaceViews(base, snapshot?.hiddenSidebarItems, snapshot?.sidebarOrder);
+});
 type View = (typeof views.value)[number];
 // Views are shown as one row of icon tabs. Plugin sidebars can add many entries, so anything past the
 // row's capacity moves into a trailing "more" menu instead of wrapping or scrolling the sidebar header.

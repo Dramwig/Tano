@@ -17,6 +17,8 @@
     "./selection-context": "./src/core/selection-context.ts",
     "./document-links": "./src/core/document-links.ts",
     "./runtime": "./src/core/runtime.ts",
+    "./slash-commands": "./src/plugins/slash-commands.ts",
+    "./external-decorations": "./src/plugins/external-decorations.ts",
     "./source-highlight": "./src/plugins/source-highlight.ts",
     "./source-editor": "./src/views/SourceEditor.vue",
     "./editor-mode": "./src/core/editor-mode.ts",

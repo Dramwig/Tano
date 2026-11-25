@@ -4,6 +4,7 @@ import workerSource from './worker.js?raw';
 export interface PluginSandbox {
   send(message: unknown): void;
   dispose(): void;
+  gracefulDispose?(timeoutMs?: number): void;
 }
 export type PluginSandboxFactory = (source: string, receive: (message: unknown) => void, failed: (error: string) => void) => PluginSandbox;
 
@@ -40,11 +41,24 @@ export const createPluginSandbox: PluginSandboxFactory = (source, receive, faile
   // There are no plugin-controlled URLs or HTML in this document.
   frame.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-HqAH3w25zKsq8qlxnq/FqwEwwxm4jFIT+lkTXMahrdU=' blob:; worker-src blob:; connect-src 'none'; child-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><script>${sandboxBootstrap}</script>`;
   document.body.append(frame);
+  const teardown = () => {
+    channel.port1.close(); channel.port2.close(); frame.remove();
+  };
   return {
     send(message) { if (!disposed) channel.port1.postMessage(message); },
     dispose() {
       if (disposed) return;
-      disposed = true; channel.port1.close(); channel.port2.close(); frame.remove();
+      disposed = true; teardown();
+    },
+    gracefulDispose(timeoutMs = 800) {
+      if (disposed) return;
+      disposed = true;
+      const timer = setTimeout(teardown, timeoutMs);
+      channel.port1.onmessage = event => {
+        if (event.data?.type === 'deactivated') { clearTimeout(timer); teardown(); }
+      };
+      try { channel.port1.postMessage({ type: 'deactivate' }); }
+      catch { clearTimeout(timer); teardown(); }
     },
   };
 };

@@ -4,6 +4,8 @@ export interface PluginCacheEntry { integrity: string; pluginId: string; version
 export type PluginStorage = Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem'>>;
 const indexKey = 'tano.plugin-cache-index.v1';
 const packageKey = (integrity: string) => `tano.plugin-package.v1.${integrity}`;
+const assetsKey = (integrity: string) => `tano.plugin-assets.v1.${integrity}`;
+const idbAssetsKey = (integrity: string) => `assets:${integrity}`;
 let database: Promise<IDBDatabase> | undefined;
 const storageOperations = new WeakMap<PluginStorage, Promise<unknown>>();
 function serialize<T>(storage: PluginStorage, run: () => Promise<T>): Promise<T> {
@@ -44,6 +46,36 @@ export class PluginCacheStorage {
     if (this.indexed) return (await requestValue<string | undefined>((await openDatabase()).transaction('packages').objectStore('packages').get(integrity))) ?? this.storage.getItem(packageKey(integrity));
     return this.storage.getItem(packageKey(integrity));
   }
+  async getAssets(integrity: string): Promise<string | null> {
+    if (this.indexed) {
+      return (
+        (await requestValue<string | undefined>((await openDatabase()).transaction('packages').objectStore('packages').get(idbAssetsKey(integrity)))) ??
+        this.storage.getItem(assetsKey(integrity))
+      );
+    }
+    return this.storage.getItem(assetsKey(integrity));
+  }
+  putAssets(integrity: string, content: string) {
+    return this.indexed ? this.writeAssets(integrity, content) : serialize(this.storage, () => this.writeAssets(integrity, content));
+  }
+  private async writeAssets(integrity: string, content: string) {
+    if (this.indexed) {
+      const db = await openDatabase();
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(['packages'], 'readwrite');
+        transaction.objectStore('packages').put(content, idbAssetsKey(integrity));
+        transaction.oncomplete = () => resolve();
+        transaction.onabort = () => reject(transaction.error ?? new Error('设备存储空间不足，插件二进制资产未写入'));
+      });
+      this.storage.removeItem?.(assetsKey(integrity));
+      return;
+    }
+    try {
+      this.storage.setItem(assetsKey(integrity), content);
+    } catch {
+      throw new Error('设备存储空间不足，插件二进制资产未写入');
+    }
+  }
   put(entry: PluginCacheEntry, content: string) {
     return this.indexed ? this.write(entry, content) : serialize(this.storage, () => this.write(entry, content));
   }
@@ -81,10 +113,18 @@ export class PluginCacheStorage {
       const db = await openDatabase();
       await new Promise<void>((resolve, reject) => {
         const transaction = db.transaction(['packages', 'metadata'], 'readwrite');
-        transaction.objectStore('packages').delete(integrity); transaction.objectStore('metadata').delete(integrity);
+        transaction.objectStore('packages').delete(integrity);
+        transaction.objectStore('packages').delete(idbAssetsKey(integrity));
+        transaction.objectStore('metadata').delete(integrity);
         transaction.oncomplete = () => resolve(); transaction.onabort = () => reject(transaction.error);
       });
     } else this.storage.setItem(indexKey, JSON.stringify((await this.entries()).filter(row => row.integrity !== integrity)));
-    if (this.storage.removeItem) this.storage.removeItem(packageKey(integrity)); else this.storage.setItem(packageKey(integrity), '');
+    if (this.storage.removeItem) {
+      this.storage.removeItem(packageKey(integrity));
+      this.storage.removeItem(assetsKey(integrity));
+    } else {
+      this.storage.setItem(packageKey(integrity), '');
+      this.storage.setItem(assetsKey(integrity), '');
+    }
   }
 }
