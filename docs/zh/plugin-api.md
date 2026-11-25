@@ -196,25 +196,26 @@ UI 没有文档、网络、本机存储或 Tauri API；Worker 读取后推送。
 插件与同页助手通过受控协议双向协作，且所有数据边界与权限交集均由宿主强制仲裁：
 
 1. **清单声明助手工具（`assistantTools`）**：v2 清单可声明最多 16 个工具，每项包含 `name`、`label`、`description`、`effect`（`'read' | 'write' | 'external'`）和受限 JSON Schema `parameters`（顶层 `type: "object"`，最多 20 个属性，≤ 8 KiB）。Worker 内通过 `tano.assistant.registerTool(name, handler)` 注册实现；支持 `activationEvents: ["onAssistantTool:<name>"]` 按需激活。
-   - **安全与权限交集**：只读工具（`read`）可直接执行，结果上限 32 KiB 并包裹 `[UNTRUSTED_PLUGIN_DATA ...]` 不可信数据边界；写入/外部调用工具（`write` / `external`）**永不自动执行**，而是生成 `kind: "plugin"` 的 `AssistantProposal`，必须由用户在界面显式审阅参数并点击确认后才真正执行。只读工作区或团队 `personalCodePlugins: "read-only"` 策略下自动屏蔽个人插件的 `write` 工具。
-2. **清单声明领域上下文（`assistantContextProviders`）**：v2 清单可声明最多 8 个 `@mention` 上下文提供者（`id`、`label`、`description`、`maxBytes` ≤ 16000）。Worker 内通过 `tano.assistant.registerContextProvider(id, handler)` 注册；用户在助手输入 `@<id>`（或在 `+` 菜单勾选）时按需拉取并包裹不可信数据边界，支持 `activationEvents: ["onAssistantContext:<id>"]`。
-3. **助手反射与视图编排**：助手可通过只读工具 `inspect_plugins` 发现已启用插件的对象类型、命令、视图与工具，并通过 `open_plugin_view` 导航打开已授权插件声明的视图。
+   - **安全与权限交集**：只读工具（`read`）可直接执行，结果上限 32 KiB 并包裹 `[UNTRUSTED_PLUGIN_DATA ...]` 不可信数据边界；写入/外部调用工具（`write` / `external`）**永不自动执行**，而是生成 `kind: "plugin"` 的 `AssistantProposal`，在助手变更清单中以结构化插件工具操作卡展示副作用徽章、调用参数与真实执行回执，必须由用户显式确认后才真正执行。只读工作区或团队 `personalCodePlugins: "read-only"` 策略下自动屏蔽个人插件的 `write` 工具，并在助手面板能力状态弹层中明确提示受限原因。
+2. **清单声明领域上下文（`assistantContextProviders`）**：v2 清单可声明最多 8 个 `@mention` 上下文提供者（`id`、`label`、`description`、`maxBytes` ≤ 16000）。Worker 内通过 `tano.assistant.registerContextProvider(id, handler)` 注册；用户在助手输入框键入 `@` 时会弹出支持键盘导航的交互式联想菜单（跨插件重名时自动补全为 `@<pluginId>:<id>`），选中后自动插入提及并挂载上下文芯片，发送时按需拉取并包裹不可信数据边界，支持 `activationEvents: ["onAssistantContext:<id>"]`。
+3. **助手反射、日志排查与视图编排**：助手可通过只读工具 `inspect_plugins` 发现已启用插件的对象类型、命令、视图与工具，通过只读工具 `inspect_plugin_logs` 查看指定插件的当前运行状态与近期控制台/异常日志（输出同样包裹 `[UNTRUSTED_PLUGIN_DATA ...]` 边界），并通过 `open_plugin_view` 导航打开已授权插件声明的视图。
 4. **宿主托管模型推理（`tano.ai`）**：声明 `ai.invoke` 权限后，插件可调用 `tano.ai.complete({ prompt, system?, maxTokens?, temperature? })` 或 `tano.ai.structured({ prompt, schema, ... })` 复用用户已配置的同页助手模型连接（单插件同时最多 1 个在途推理请求，超时 60 秒）。API Key 与连接凭据永远不进入插件沙箱；`structured` 会由宿主按声明的 JSON Schema 校验输出对象。
 
-## 个人工作台微调与本地插件工坊
+## 宿主中立扩展点与安全模式
 
-1. **L1 个人工作台微调（Overlay，Tier 0）**：纯声明式 JSON，保存在设备应用数据中（支持全局生效 + 当前工作区覆盖，不写入用户工作区文件），支持隐藏侧栏入口（`hiddenSidebarItems`）、固定快捷命令按钮（`pinnedCommands`）、受控颜色与排版令牌覆盖（`colorOverrides` / `typography`）以及目录级护眼配色（`directoryThemes`）。所有变更支持一键撤销与重置；开启**安全模式**（`?safeMode=1` 或状态栏/插件中心开关）时立即跳过全部个人微调与第三方代码插件。
-2. **L2 本地插件工坊（Plugin Forge）**：在应用数据的独立工坊空间内创建、编辑和迭代插件草稿（微规格卡、`manifest.json` 与 Worker 源码），内置三道自动门禁（清单/包结构与 SHA-256 → Worker 脚本语法检查 → 密钥/本机路径/内网地址/危险执行与混淆扫描 + Tier 定级 + 最小权限提醒）、只读隔离沙箱试运行（捕获启动日志）、一键安装到全局或当前工作区，以及通过社区脱敏体检后导出标准投稿包。
-3. **同页助手协同改造**：助手可通过 `inspect_workbench_overlay` / `propose_workbench_overlay` 发起 L1 微调提案，也可通过 `forge_inspect_drafts` / `forge_upsert_draft` 生成或迭代 L2 工坊草稿；所有写操作均经 `AssistantProposal` 确认，绝不静默修改界面或自动安装插件。
+公开 MIT 工作台提供中立的 `WorkbenchExtensions` 扩展契约（不内置商业产品实现），供官方/云端发行版按需注入壳层微调、插件工坊面板、领域助手扩展与受限本机处理器：
 
-## 容器升级、跨插件服务与高阶模式（Phase 4）
+1. **安全模式（Safe Mode）**：通过 `?safeMode=1` 或工作台安全模式开关开启后，立即暂停所有第三方代码插件与壳层覆盖扩展，快速回退至内置工作台壳层。
+2. **中立助手扩展（`WorkbenchAssistantExtension`）**：允许发行版注入额外工具、只读能力说明、起始引导卡片、自定义 `kind: "plugin"` 提案审阅卡，以及提案应用与精确撤回委托（`applyProposal` / `canUndoProposal` / `undoProposal`）。所有写操作依然必须经 `AssistantProposal` 由用户显式确认。
+3. **官方/商业扩展边界**：可视化个人工作台微调（L1/Tier 2 Overlay）、本地插件工坊（Plugin Forge）、自动化生成/试跑闭环以及桌面本机特权模式（Tier 3）属于官方商业产品扩展层，通过上述中立扩展契约注入，不包含在开源 MIT 核心仓库中。
 
-1. **`packageVersion: 2` 确定性 ZIP 容器**：通过 `@tano/protocol` 提供的 `packPluginArchiveV2()` / `unpackPluginArchiveV2()` 生成与解包确定性 STORED（method 0）ZIP 归档（固定 DOS 时间戳与规范路径排序，跨平台字节流与 SHA-256 完全一致，支持 ≤ 16 MiB），将 `manifest.json`、`worker.js`、`automation.js`、`ui/<viewId>/*`、`assets/icons.json` 与原始二进制资产 `assets/bin/*`（PNG/SVG/WASM/字体）无损打包，消除 JSON/base64 膨胀；插件中心导入器原生兼容 v1 JSON 与 v2 ZIP。
+## 容器升级、跨插件服务与视图位置（Phase 4）
+
+1. **`packageVersion: 2` 确定性 ZIP 容器**：通过 `@tano/protocol` 提供的 `packPluginArchiveV2()` / `unpackPluginArchiveV2()` 生成与解包确定性 STORED（method 0）ZIP 归档（固定 DOS 时间戳与规范路径排序，跨平台字节流与 SHA-256 完全一致，支持 ≤ 16 MiB），将 `manifest.json`、`worker.js`、`automation.js`、`ui/<viewId>/*`、`assets/icons.json` 与原始二进制资产 `assets/bin/*`（PNG/SVG/WASM/字体）无损打包，消除 JSON/base64 膨胀；插件中心导入器原生兼容 v1 JSON 与 v2 ZIP，并提供官方 JSON Schema（`@tano/protocol/manifest.schema.json`）供编辑器校验。
 2. **跨插件松耦合 `services` RPC**：
    - 提供方在清单声明 `services`（最多 16 个服务，可选 `parameters`/`returns` JSON Schema），支持 `activationEvents: ["onService:<name>"]` 按需唤醒，并在 Worker 内通过 `tano.services.register(name, handler)` 注册无状态处理函数。
    - 调用方在清单声明 `usesServices: [{ pluginId, service, optional? }]`，通过 `tano.services.available(pluginId, service)` 探测可用性、通过 `tano.services.call(pluginId, service, payload)` 经宿主总线调用（零共享内存、最大深度 4 层防循环、单次入参/出参上限 64 KiB、15 秒超时）。
-3. **Tier 2 工作台深度可塑**：视图位置扩展支持 `homeTab`（自定义工作区首页）与 `newTab`（自定义新标签页）；个人微调层支持 `sidebarOrder`、`homeTabView`、`newTabView` 与受控 `scopedCss`（≤ 8 KiB，严禁 `@import` / `url()` / `expression()` / 脚本标签），Web 与桌面通用且开启安全模式时立即回退至内置壳层。
-4. **Tier 3 桌面本机特权模式（`local-only`）**：仅限桌面本地版（`desktop-local`）由用户显式 Opt-in 开启，Web/移动端强制禁用；所有 CLI 命令白名单（无 Shell 展开、拦截元字符）、绝对目录白名单与本机 MCP 桥接（仅允许 `stdio` 或 `127.0.0.1/localhost`）均严格保存在本机应用数据中、绝不写入工作区或传播给团队，并保留最近 100 条本机审计日志；开启安全模式立即全量停用。
+3. **扩展视图槽位**：v2 清单的 `views[].location` 支持 `homeTab`（自定义工作区首页）与 `newTab`（自定义新标签页）以及 `fileHandler`（只读/编辑文件查看器），由宿主壳层按安全模式与扩展配置统一调度。
 
 ## 迁移和发布
 

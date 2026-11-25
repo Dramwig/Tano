@@ -17,7 +17,7 @@ import { demoAssistantTransport, nativeAssistantTransport } from './transport';
 import { runAssistant, AssistantWaitingError } from './engine';
 import { AssistantRunError } from './completion';
 import type { AssistantTextPhase } from './completion';
-import { assistantHistory } from './results';
+import { assistantHistory, assistantToolLabel } from './results';
 import { useSuggestionStore } from '../stores/suggestions';
 import { t, uiLocale } from '../i18n/i18n';
 import { isFeatureEnabled } from '../features';
@@ -503,12 +503,13 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
       const combinedExtraTools = [...extensionTools, ...compiledPlugins.tools];
       const extensionPromptHints =
         assistantExtension?.promptHints?.({ workspaceReadOnly: !!workspace.workspace?.readOnly }) ?? [];
-      const pluginBridge = combinedExtraTools.length
+      const pluginBridge = combinedExtraTools.length || extensionPromptHints.length
         ? {
             tools: combinedExtraTools,
             ...(extensionPromptHints.length ? { promptHints: extensionPromptHints } : {}),
             isPluginTool: (name: string) =>
               name === 'inspect_plugins' ||
+              name === 'inspect_plugin_logs' ||
               name === 'open_plugin_view' ||
               extensionToolNames.has(name) ||
               compiledPlugins.pluginTools.has(name),
@@ -540,6 +541,38 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
                       workspace.pluginRuntime,
                       !!workspace.workspace?.readOnly,
                     ),
+                  },
+                };
+              }
+              if (call.function.name === 'inspect_plugin_logs') {
+                if (Object.keys(args).some(key => key !== 'pluginId' && key !== 'limit'))
+                  throw new Error('inspect_plugin_logs 参数无效');
+                const pluginId = typeof args.pluginId === 'string' ? args.pluginId.trim() : '';
+                if (!pluginId) throw new Error('inspect_plugin_logs 缺少有效的 pluginId');
+                let limit = 20;
+                if (args.limit !== undefined) {
+                  if (typeof args.limit !== 'number' || !Number.isInteger(args.limit) || args.limit < 1 || args.limit > 50)
+                    throw new Error('inspect_plugin_logs 的 limit 必须为 1 至 50 的整数');
+                  limit = args.limit;
+                }
+                const installation = workspace.installedPlugins.find(item => item.manifest.id === pluginId);
+                const runtimeState = workspace.pluginRuntime.find(item => item.id === pluginId);
+                if (!installation && !runtimeState) throw new Error('未找到指定已安装插件');
+                const logs = (runtimeState?.logs ?? []).slice(-limit);
+                return {
+                  kind: 'result' as const,
+                  data: {
+                    pluginId,
+                    pluginName: installation?.manifest.name ?? runtimeState?.name ?? pluginId,
+                    enabled: installation?.enabled ?? false,
+                    authorized: installation?.authorized ?? false,
+                    status: runtimeState?.status ?? 'idle',
+                    logCount: logs.length,
+                    untrustedPluginData: wrapUntrustedPluginData(pluginId, 'runtime:logs', {
+                      status: runtimeState?.status ?? 'idle',
+                      message: runtimeState?.message ?? '',
+                      logs,
+                    }),
                   },
                 };
               }
@@ -643,8 +676,10 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
           } else {
             reply!.activity!.push({ kind: 'tool', name: event.name, status: 'running' });
             toolActivity = reply!.activity!.at(-1) as typeof toolActivity;
-            progress.value = formatAssistantText(assistantCopy(requestLocale).progress.executing,
-              [(assistantCopy(requestLocale).tools as Record<string, string>)[event.name] ?? assistantCopy(requestLocale).result.toolCall]);
+            const toolLabel = (assistantCopy(requestLocale).tools as Record<string, string>)[event.name]
+              ?? assistantExtension?.toolLabel?.(event.name)
+              ?? assistantToolLabel(event.name);
+            progress.value = formatAssistantText(assistantCopy(requestLocale).progress.executing, [toolLabel]);
           }
         },
         proposal: proposal => { if (epoch === generation) reply!.proposals!.push(proposal); },
@@ -786,7 +821,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
           const extApplied = await assistantExtension.applyProposal(proposal, parsedArgs);
           if (extApplied) {
             proposal.applied = {
-              before: '',
+              before: extApplied.before ?? '',
               after: extApplied.after,
               hash: extApplied.hash,
               fileId: extApplied.fileId,
@@ -909,7 +944,22 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     catch (reason) { error.value = String(reason); }
   }
   async function undo(proposal: AssistantProposal) {
-    if (!proposal.applied || applying.value || busy.value || !['edit', 'create'].includes(proposal.kind)) return;
+    if (!proposal.applied || applying.value || busy.value) return;
+    if (proposal.kind === 'plugin') {
+      const undoExt = runtime.extensions?.().assistant?.undoProposal;
+      if (!undoExt) return;
+      applying.value = true;
+      error.value = '';
+      try {
+        await undoExt(proposal);
+      } catch (reason) {
+        error.value = String(reason);
+      } finally {
+        applying.value = false;
+      }
+      return;
+    }
+    if (!['edit', 'create'].includes(proposal.kind)) return;
     if (proposal.kind === 'create' && isDataTableFilePath(proposal.path)) return;
     const reply = session.value?.messages.find(message => message.id === proposal.runId);
     if (!reply) return;

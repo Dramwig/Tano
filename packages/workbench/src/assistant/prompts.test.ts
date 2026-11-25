@@ -140,4 +140,28 @@ describe('assistant prompt modes and tool contract', () => {
     expect(system(request)).toContain('Actual suggestions appear in the file changes list below the corresponding reply');
     expect(request.tools?.some(tool => tool.function.name === 'ask_user')).toBe(true);
   });
+
+  it('injects generic plugin orchestration rules and neutral extension promptHints when advertised', async () => {
+    const [request] = await run({
+      mode: 'sidebar',
+      pluginBridge: {
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'inspect_plugin_logs',
+              description: 'Read plugin logs',
+              parameters: { type: 'object', properties: { pluginId: { type: 'string' } }, required: ['pluginId'] },
+            },
+          },
+        ],
+        promptHints: ['Custom host guidance for extended tools.'],
+        isPluginTool: name => name === 'inspect_plugin_logs',
+        executeTool: async () => ({ kind: 'result', data: {} }),
+      },
+    });
+    expect(system(request)).toContain('inspect_plugin_logs');
+    expect(system(request)).toContain('[UNTRUSTED_PLUGIN_DATA ...]');
+    expect(system(request)).toContain('Custom host guidance for extended tools.');
+  });
 });

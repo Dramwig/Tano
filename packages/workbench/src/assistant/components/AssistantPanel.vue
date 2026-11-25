@@ -11,7 +11,7 @@ import { t, uiLocale } from '../../i18n/i18n';
 import { assistantCopy, assistantTaskPrompts } from '../language';
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { agentInboxKey, type useAgentInboxController } from '../agent-controller';
-import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Bot, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Image as ImageIcon, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Quote, Search, Settings2, Square, Trash2, Undo2, X } from 'lucide-vue-next';
+import { AlignLeft, ArrowDown, ArrowLeft, ArrowUp, Bot, Check, ChevronDown, ChevronRight, ChevronsRight, CircleCheck, Copy, Cpu, createLucideIcon, FilePlus2, FileText, History, Image as ImageIcon, Languages, LoaderCircle, MessageCircle, MessageCirclePlus, Minus, MoreHorizontal, Paperclip, Pencil, Plug, Plus, RefreshCw, Reply, Quote, Search, Settings2, ShieldAlert, Sparkles, Square, Trash2, Undo2, X } from 'lucide-vue-next';
 import MarkdownEditor from '@tano/editor';
 import { confirmEntryReferenceDrop, droppedEntryReferences, entryReferenceDragType, referenceMarkdown } from '@tano/protocol';
 import type { AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSource, ReferenceIdentity } from '@tano/protocol';
@@ -21,6 +21,15 @@ import { clipboardAssistantFiles } from '../attachments';
 import { assistantToolLabel, assistantAnswerText } from '../results';
 import type { AssistantDisplayMode } from '../store';
 import { useWorkspaceStore } from '../../stores/workspace';
+import { useWorkbenchRuntime, type WorkbenchAssistantStarter } from '../../runtime';
+import { summarizePluginAssistantCapabilities, type ActivePluginContextProvider } from '../../plugins/assistant-bridge';
+import {
+  applyMentionSelection,
+  detectMentionTrigger,
+  filterPluginContextProviders,
+  formatPluginMentionToken,
+  type MentionTrigger,
+} from '../mention-autocomplete';
 import AssistantChangeList from './AssistantChangeList.vue';
 import AssistantConnectionAvatar from './AssistantConnectionAvatar.vue';
 import AssistantModelIcon from './AssistantModelIcon.vue';
@@ -34,6 +43,8 @@ import type { ShortcutBinding } from '../../shell/shortcuts';
 
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
+const runtime = useWorkbenchRuntime();
+const assistantExtension = computed(() => runtime.extensions?.().assistant);
 const props = defineProps<{ compact?: boolean; fullscreenTarget?: string | HTMLElement; navigationVisible?: boolean; toggleShortcut?: ShortcutBinding }>();
 const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; revealSelection: [source: AssistantSource]; openSettings: []; closed: []; showNavigation: [] }>();
 function afterPanelLeave() {
@@ -64,7 +75,11 @@ function cancelModeAnimation() {
   modeAnimation?.cancel();
   modeAnimation = undefined;
 }
-const popover = ref<'model' | 'reasoning' | 'add' | 'history' | 'more' | 'mode' | null>(null);
+const popover = ref<'model' | 'reasoning' | 'add' | 'capabilities' | 'history' | 'more' | 'mode' | null>(null);
+const mentionTrigger = ref<MentionTrigger | null>(null);
+const mentionDismissedAt = ref<number | null>(null);
+const mentionActiveIndex = ref(0);
+const isComposing = ref(false);
 function displayIcon(name: string, region: { x: string; y: string; width: string; height: string }) {
   return createLucideIcon(name, [
     ['rect', { x: '2', y: '4', width: '20', height: '16', rx: '2', key: 'frame' }],
@@ -133,6 +148,69 @@ const starters = computed(() => {
     { label: copy.tasks, prompt: prompts.tasks, icon: CircleCheck },
   ];
 });
+const extensionStarters = computed(() =>
+  assistantExtension.value?.starters?.({ demo: assistant.demo }) ?? [],
+);
+const pluginCapabilities = computed(() =>
+  summarizePluginAssistantCapabilities(
+    workspace.installedPlugins,
+    workspace.pluginRuntime,
+    !!workspace.workspace?.readOnly,
+  ),
+);
+const safeMode = computed(() => !!workspace.overlaySnapshot?.safeMode);
+const workspaceReadOnly = computed(() => !!workspace.workspace?.readOnly);
+const personalCodePolicy = computed(() => workspace.personalCodePluginPolicy);
+const extensionCapabilityNotes = computed(() =>
+  assistantExtension.value?.capabilitySummary?.({
+    workspaceReadOnly: workspaceReadOnly.value,
+    safeMode: safeMode.value,
+  }) ?? [],
+);
+const activePluginToolCount = computed(
+  () => pluginCapabilities.value.tools.filter(item => item.available).length,
+);
+const hasCapabilityRestriction = computed(
+  () =>
+    safeMode.value ||
+    workspaceReadOnly.value ||
+    personalCodePolicy.value !== 'allow' ||
+    extensionCapabilityNotes.value.some(note => note.tone === 'warning'),
+);
+const showCapabilityPill = computed(
+  () =>
+    pluginCapabilities.value.tools.length > 0 ||
+    pluginCapabilities.value.contexts.length > 0 ||
+    extensionCapabilityNotes.value.length > 0 ||
+    safeMode.value ||
+    personalCodePolicy.value !== 'allow',
+);
+const capabilityPillLabel = computed(() => {
+  if (safeMode.value) return t('安全模式');
+  if (personalCodePolicy.value === 'block') return t('个人插件已屏蔽');
+  if (personalCodePolicy.value === 'read-only') return t('团队只读策略');
+  if (workspaceReadOnly.value && pluginCapabilities.value.tools.some(item => !item.available)) {
+    return t('工作区只读');
+  }
+  const tools = activePluginToolCount.value;
+  const contexts = pluginCapabilities.value.contexts.length;
+  if (tools > 0 && contexts > 0) return t('{0} 工具 · {1} 上下文', [tools, contexts]);
+  if (tools > 0) return t('{0} 个插件工具', [tools]);
+  if (contexts > 0) return t('{0} 个 @上下文', [contexts]);
+  return t('扩展能力');
+});
+const mentionProviders = computed(() =>
+  mentionTrigger.value
+    ? filterPluginContextProviders(workspace.pluginContextProviders, mentionTrigger.value.query)
+    : [],
+);
+const mentionMenuOpen = computed(
+  () =>
+    !!mentionTrigger.value &&
+    workspace.pluginContextProviders.length > 0 &&
+    !controlsLocked.value &&
+    !assistant.pendingUserInput,
+);
 const sourceFiles = computed(() => workspace.workspace?.files.filter(file => file.kind === 'file' && isAssistantFile(file.path) &&
   file.path.toLocaleLowerCase().includes(query.value.toLocaleLowerCase())).slice(0, 100) ?? []);
 const displayed = computed(() => assistant.session?.messages.slice(-visibleMessages.value) ?? []);
@@ -284,7 +362,88 @@ async function exportAnswer() {
   message.proposals ??= []; message.proposals.push(proposal); exportMessage.value = undefined;
   await assistant.review(proposal);
 }
+function refreshMentionTrigger() {
+  if (isComposing.value || !textarea.value || !workspace.pluginContextProviders.length) {
+    mentionTrigger.value = null;
+    return;
+  }
+  const caret = textarea.value.selectionStart ?? assistant.prompt.length;
+  const detected = detectMentionTrigger(assistant.prompt, caret);
+  if (!detected) {
+    mentionTrigger.value = null;
+    mentionDismissedAt.value = null;
+    return;
+  }
+  if (mentionDismissedAt.value === detected.start) {
+    mentionTrigger.value = null;
+    return;
+  }
+  mentionDismissedAt.value = null;
+  mentionTrigger.value = detected;
+  if (mentionActiveIndex.value >= mentionProviders.value.length) {
+    mentionActiveIndex.value = 0;
+  }
+}
+function dismissMentionMenu() {
+  if (mentionTrigger.value) {
+    mentionDismissedAt.value = mentionTrigger.value.start;
+    mentionTrigger.value = null;
+  }
+}
+function selectMention(entry: ActivePluginContextProvider) {
+  const trigger = mentionTrigger.value;
+  if (!trigger) return;
+  const applied = applyMentionSelection(
+    assistant.prompt,
+    trigger,
+    entry,
+    workspace.pluginContextProviders,
+  );
+  assistant.prompt = applied.text;
+  if (!assistant.pluginContextKeys.includes(entry.key) && assistant.pluginContextKeys.length < 4) {
+    assistant.togglePluginContext(entry.key);
+  }
+  mentionTrigger.value = null;
+  mentionDismissedAt.value = null;
+  mentionActiveIndex.value = 0;
+  void nextTick(() => {
+    textarea.value?.focus({ preventScroll: true });
+    textarea.value?.setSelectionRange(applied.caret, applied.caret);
+  });
+}
+function onComposerInput() {
+  refreshMentionTrigger();
+}
+function onComposerKeyup(event: KeyboardEvent) {
+  if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)) return;
+  refreshMentionTrigger();
+}
 function sendKey(event: KeyboardEvent) {
+  if (mentionMenuOpen.value) {
+    if (event.key === 'ArrowDown' && mentionProviders.value.length) {
+      event.preventDefault();
+      mentionActiveIndex.value = (mentionActiveIndex.value + 1) % mentionProviders.value.length;
+      return;
+    }
+    if (event.key === 'ArrowUp' && mentionProviders.value.length) {
+      event.preventDefault();
+      mentionActiveIndex.value =
+        (mentionActiveIndex.value - 1 + mentionProviders.value.length) % mentionProviders.value.length;
+      return;
+    }
+    if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey && !event.isComposing && mentionProviders.value.length) {
+      event.preventDefault();
+      const target = mentionProviders.value[mentionActiveIndex.value] ?? mentionProviders.value[0];
+      if (target) selectMention(target);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      dismissMentionMenu();
+      return;
+    }
+  }
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void assistant.send(); }
 }
 function togglePopover(kind: NonNullable<typeof popover.value>, event: MouseEvent) {
@@ -336,6 +495,9 @@ function endFloatingGesture() {
 function outsidePopover(event: PointerEvent) {
   if (!(isElement(event.target)) || !panel.value?.contains(event.target) ||
     !event.target.closest('.assistant-popover, [data-assistant-popover]')) closePopover();
+  if (!(isElement(event.target)) || !event.target.closest('.assistant-mention-menu, .assistant-composer textarea')) {
+    mentionTrigger.value = null;
+  }
 }
 function openHistory() {
   closePopover(); section.value = 'history';
@@ -390,6 +552,39 @@ function preparePrompt(prompt: string) {
   assistant.setBuiltInPrompt(prompt);
   void nextTick(() => textarea.value?.focus());
 }
+function prepareExtensionPrompt(starter: WorkbenchAssistantStarter) {
+  closePopover();
+  if (starter.requiresActiveDocument) {
+    const fileId = workspace.active?.id;
+    if (fileId && !assistant.files.includes(fileId)) {
+      if (assistant.files.length >= 20) { notice.value = t('一次最多选择 20 篇文档，请先移除一篇参考文档'); return; }
+      assistant.files.push(fileId);
+    }
+  }
+  assistant.setBuiltInPrompt(starter.prompt);
+  void nextTick(() => textarea.value?.focus());
+}
+async function handleProposalFollowUp(payload: { prompt: string; autoSend?: boolean }) {
+  if (!payload.prompt.trim()) return;
+  closePopover();
+  assistant.prompt = payload.prompt;
+  await nextTick();
+  if (payload.autoSend && !controlsLocked.value && assistant.connection && assistant.modelId) {
+    await assistant.send();
+  } else {
+    textarea.value?.focus();
+  }
+}
+function exitSafeMode() {
+  workspace.setSafeMode(false);
+  notice.value = t('已退出安全模式');
+  closePopover();
+}
+function blockedToolReasonLabel(reason?: 'workspace-read-only' | 'team-read-only' | 'team-blocked') {
+  if (reason === 'team-blocked') return t('团队策略已屏蔽个人代码插件');
+  if (reason === 'team-read-only') return t('团队只读策略限制写入');
+  return t('当前工作区为只读');
+}
 function resizeInput() {
   if (!textarea.value) return;
   // Let each display mode's CSS minimum size the empty composer.
@@ -398,7 +593,7 @@ function resizeInput() {
   updateMenuPosition();
 }
 function updateMenuPosition() {
-  if (!['model', 'reasoning', 'add'].includes(popover.value ?? '') || !popoverTrigger) return;
+  if (!['model', 'reasoning', 'add', 'capabilities'].includes(popover.value ?? '') || !popoverTrigger) return;
   const element = panel.value;
   const composer = element?.querySelector('.assistant-composer-area');
   const menu = composer?.querySelector('.assistant-popover');
@@ -462,7 +657,13 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', outsidePopover);
   window.removeEventListener('resize', viewportResized);
 });
-watch(() => assistant.prompt, () => { void nextTick(resizeInput); });
+watch(() => assistant.prompt, value => {
+  if (!value) {
+    mentionTrigger.value = null;
+    mentionDismissedAt.value = null;
+  }
+  void nextTick(resizeInput);
+});
 watch(() => assistant.pendingUserInput?.request.id, (id, previous) => {
   if (id) closePopover();
   void nextTick(() => { scrollToLatest(); resizeInput(); if (!id && previous) textarea.value?.focus({ preventScroll: true }); });
@@ -597,6 +798,19 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           <div class="assistant-starters">
             <button v-for="starter in starters" :key="starter.label" class="assistant-starter" :disabled="controlsLocked || !workspace.active" @click="preparePrompt(starter.prompt)"><component :is="starter.icon" :size="18" /><span>{{ starter.label }}</span></button>
           </div>
+          <div v-if="extensionStarters.length" class="assistant-extension-starters" :aria-label="t('工作台与插件快捷入口')">
+            <button
+              v-for="starter in extensionStarters"
+              :key="starter.id"
+              type="button"
+              class="assistant-extension-starter"
+              :disabled="controlsLocked || (starter.requiresActiveDocument && !workspace.active)"
+              @click="prepareExtensionPrompt(starter)"
+            >
+              <component :is="starter.icon ?? Sparkles" :size="16" />
+              <span>{{ starter.label }}</span>
+            </button>
+          </div>
         </div>
         <button v-if="(assistant.session?.messages.length ?? 0) > visibleMessages" class="assistant-text-action" @click="visibleMessages += 30">{{ t('查看较早消息') }}</button>
         <div v-if="displayed.length" class="assistant-conversation-meta">{{ t('同页助手 ·') }} {{ messageTime(displayed[0]!.createdAt) }}</div>
@@ -631,7 +845,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           <small v-if="message.rules?.length" class="assistant-rules">{{ t('工作区约定：') }}{{ message.rules.join('、') }}</small>
           <AssistantChangeList v-if="message.proposals?.length" :proposals="message.proposals" :busy="assistant.busy || assistant.applying"
             @review="assistant.review" @reject="assistant.reject" @verify="assistant.verify" @undo="assistant.undo"
-            @suggestions="assistant.publishSuggestions" @open-reference="openAnswerReference" />
+            @suggestions="assistant.publishSuggestions" @open-reference="openAnswerReference" @send-follow-up="handleProposalFollowUp" />
           <div v-if="message.role === 'assistant' && !['running', 'waiting'].includes(message.state ?? '')" class="assistant-message-actions">
             <button class="icon-button" :data-tooltip="t('复制回答')" :aria-label="t('复制助手回答')" :disabled="!assistantAnswerText(message).trim()" @click="copy(message)"><Copy :size="14" /></button>
             <button v-if="assistant.replyTarget" class="icon-button" :data-tooltip="t('填写回复草稿：{0}', [assistant.replyTarget.label])" :aria-label="t('将助手回答填入回复草稿')" :disabled="assistant.busy || assistant.applying || !assistantAnswerText(message).trim()" @click="draftReply(message)"><Reply :size="14" /></button>
@@ -762,6 +976,109 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           </div>
           <p class="assistant-reasoning-help">{{ t('用于当前对话。可用强度取决于所选模型。') }}</p>
         </div>
+        <div v-surface-motion="'AssistantPanel:8'" v-if="popover === 'capabilities'" id="assistant-capability-options" class="assistant-popover assistant-capability-menu" :style="menuPosition" role="dialog" :aria-label="t('当前会话插件能力')">
+          <div class="assistant-popover-heading"><span>{{ t('当前会话可用能力') }}</span></div>
+          <div v-if="safeMode" class="assistant-capability-banner warning" role="status">
+            <span>{{ t('安全模式已开启：已暂停第三方代码插件与工作台扩展覆盖。') }}</span>
+            <button type="button" class="assistant-capability-action" @click="exitSafeMode">{{ t('退出安全模式') }}</button>
+          </div>
+          <div v-else-if="personalCodePolicy === 'block'" class="assistant-capability-banner warning" role="status">
+            <span>{{ t('团队工作区策略：已屏蔽个人代码插件。') }}</span>
+          </div>
+          <div v-else-if="personalCodePolicy === 'read-only'" class="assistant-capability-banner warning" role="status">
+            <span>{{ t('团队工作区策略：个人代码插件仅允许只读操作，写入工具已禁用。') }}</span>
+          </div>
+          <div v-if="workspaceReadOnly" class="assistant-capability-banner warning" role="status">
+            <span>{{ t('当前工作区为只读，所有写入型插件工具已禁用。') }}</span>
+          </div>
+          <div class="assistant-menu-scroll panel-scrollbar">
+            <section v-if="extensionCapabilityNotes.length" class="assistant-capability-group">
+              <h4>{{ t('工作台扩展能力') }}</h4>
+              <div v-for="item in extensionCapabilityNotes" :key="item.id" class="assistant-capability-row" :class="{ warning: item.tone === 'warning' }">
+                <strong>{{ item.label }}</strong>
+                <small v-if="item.detail">{{ item.detail }}</small>
+              </div>
+            </section>
+            <section v-if="pluginCapabilities.contexts.length" class="assistant-capability-group">
+              <h4>{{ t('可用 @ 上下文（输入 @ 快速联想）') }}</h4>
+              <button
+                v-for="entry in pluginCapabilities.contexts"
+                :key="`cap-ctx-${entry.key}`"
+                type="button"
+                class="assistant-menu-item"
+                :class="{ selected: assistant.pluginContextKeys.includes(entry.key) }"
+                :aria-pressed="assistant.pluginContextKeys.includes(entry.key)"
+                :disabled="controlsLocked"
+                data-menu-item
+                @click="assistant.togglePluginContext(entry.key)"
+              >
+                <Plug :size="14" />
+                <span class="assistant-capability-item-text">
+                  <span>{{ formatPluginMentionToken(entry, pluginCapabilities.contexts) }} · {{ entry.provider.label }}</span>
+                  <small>{{ entry.pluginName }} · {{ entry.provider.description }}</small>
+                </span>
+                <Check v-if="assistant.pluginContextKeys.includes(entry.key)" :size="15" class="assistant-menu-check" />
+              </button>
+            </section>
+            <section v-if="pluginCapabilities.tools.length" class="assistant-capability-group">
+              <h4>{{ t('插件工具') }}</h4>
+              <div
+                v-for="item in pluginCapabilities.tools"
+                :key="item.wireName"
+                class="assistant-capability-row"
+                :class="{ disabled: !item.available }"
+              >
+                <div class="assistant-capability-row-head">
+                  <strong>{{ item.pluginName }} · {{ item.tool.label }}</strong>
+                  <span class="assistant-menu-badge">
+                    {{ item.tool.effect === 'read' ? t('只读') : item.tool.effect === 'external' ? t('外发 · 需确认') : t('写入 · 需确认') }}
+                  </span>
+                </div>
+                <small>{{ item.available ? item.tool.description : blockedToolReasonLabel(item.blockedReason) }}</small>
+              </div>
+            </section>
+            <p v-if="!pluginCapabilities.tools.length && !pluginCapabilities.contexts.length && !extensionCapabilityNotes.length" class="assistant-menu-empty">
+              {{ t('当前会话暂无已授权插件工具或上下文') }}
+            </p>
+          </div>
+        </div>
+        <div
+          v-if="mentionMenuOpen"
+          id="assistant-mention-options"
+          class="assistant-popover assistant-mention-menu"
+          role="listbox"
+          :aria-label="t('插件上下文联想')"
+        >
+          <div class="assistant-popover-heading">
+            <span>{{ t('引用插件上下文') }}</span>
+            <small>{{ t('↑↓ 选择 · Enter 确认') }}</small>
+          </div>
+          <div class="assistant-menu-scroll panel-scrollbar">
+            <button
+              v-for="(entry, index) in mentionProviders"
+              :id="`assistant-mention-item-${index}`"
+              :key="entry.key"
+              type="button"
+              role="option"
+              class="assistant-menu-item assistant-mention-option"
+              :class="{ selected: index === mentionActiveIndex }"
+              :aria-selected="index === mentionActiveIndex"
+              @mouseenter="mentionActiveIndex = index"
+              @mousedown.prevent="selectMention(entry)"
+            >
+              <Plug :size="14" />
+              <span class="assistant-mention-body">
+                <span class="assistant-mention-title">
+                  <code>{{ formatPluginMentionToken(entry, workspace.pluginContextProviders) }}</code>
+                  <span>{{ entry.provider.label }}</span>
+                </span>
+                <small>{{ entry.pluginName }} · {{ entry.provider.description }}</small>
+              </span>
+              <Check v-if="assistant.pluginContextKeys.includes(entry.key)" :size="14" class="assistant-menu-check" />
+            </button>
+            <p v-if="!mentionProviders.length" class="assistant-menu-empty">{{ t('没有匹配的插件上下文') }}</p>
+          </div>
+        </div>
       <AssistantQuestionCard v-if="assistant.pendingUserInput" :key="assistant.pendingUserInput.request.id" :request="assistant.pendingUserInput.request" />
       <form v-else class="assistant-composer" @submit.prevent="closePopover(); assistant.send()">
         <div v-if="assistant.files.length || assistant.selection || assistant.attachments.length || assistant.pluginContextKeys.length" class="assistant-contexts">
@@ -786,9 +1103,42 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
             <component :is="attachment.kind === 'image' ? ImageIcon : FileText" :size="13" /><span>{{ attachment.name }}</span><X :size="12" />
           </button>
         </div>
-        <textarea ref="textarea" v-model="assistant.prompt" rows="2" maxlength="20000" :aria-label="t('给助手的任务')" :placeholder="t('问问同页助手…')" @keydown="sendKey" @paste="pasteAttachments" />
+        <textarea
+          ref="textarea"
+          v-model="assistant.prompt"
+          rows="2"
+          maxlength="20000"
+          :aria-label="t('给助手的任务')"
+          :placeholder="t('问问同页助手…')"
+          :aria-expanded="mentionMenuOpen || undefined"
+          :aria-controls="mentionMenuOpen ? 'assistant-mention-options' : undefined"
+          :aria-activedescendant="mentionMenuOpen && mentionProviders[mentionActiveIndex] ? `assistant-mention-item-${mentionActiveIndex}` : undefined"
+          @input="onComposerInput"
+          @click="refreshMentionTrigger"
+          @keyup="onComposerKeyup"
+          @compositionstart="isComposing = true"
+          @compositionend="isComposing = false; refreshMentionTrigger()"
+          @keydown="sendKey"
+          @paste="pasteAttachments"
+        />
         <div class="assistant-compose-actions">
           <button type="button" class="icon-button assistant-compose-tool" :data-tooltip="t('添加内容')" :aria-label="t('添加内容')" :disabled="controlsLocked" :aria-expanded="popover === 'add'" aria-controls="assistant-add-options" data-assistant-popover @click="togglePopover('add', $event)"><Plus :size="20" /></button>
+          <button
+            v-if="showCapabilityPill"
+            type="button"
+            class="assistant-compose-capabilities"
+            :class="{ restricted: hasCapabilityRestriction }"
+            :data-tooltip="t('查看当前会话可用插件工具与上下文')"
+            :aria-label="t('查看当前会话可用插件工具与上下文')"
+            :aria-expanded="popover === 'capabilities'"
+            aria-controls="assistant-capability-options"
+            data-assistant-popover
+            @click="togglePopover('capabilities', $event)"
+          >
+            <ShieldAlert v-if="hasCapabilityRestriction" :size="13" />
+            <Plug v-else :size="13" />
+            <span>{{ capabilityPillLabel }}</span>
+          </button>
           <button type="button" class="assistant-compose-model" :data-tooltip="`${assistant.connection?.name ?? t('模型连接')} · ${modelLabel}`" :aria-label="t('选择助手模型')" :aria-expanded="popover === 'model'" aria-controls="assistant-model-options" data-assistant-popover @click="togglePopover('model', $event)"><span>{{ modelLabel }}</span></button>
           <button v-if="assistant.connection?.kind === 'codex-cli'" type="button" class="assistant-compose-reasoning" :data-tooltip="t('推理强度：{0}', [reasoningLabel])" :aria-label="t('选择推理强度')" :disabled="controlsLocked" :aria-expanded="popover === 'reasoning'" aria-controls="assistant-reasoning-options" data-assistant-popover @click="togglePopover('reasoning', $event)"><span>{{ reasoningLabel }}</span></button>
           <button v-if="assistant.busy" type="button" class="icon-button assistant-stop" :aria-label="t('停止助手生成')" :data-tooltip="t('停止生成')" @click="assistant.stop()"><Square :size="16" /></button><button v-else class="primary-button assistant-send" :aria-label="t('发送给助手')" :data-tooltip="t('发送')" :disabled="!assistant.hasDraft || !assistant.connection || !assistant.modelId || assistant.loading || assistant.applying"><ArrowUp :size="18" /></button>
@@ -941,6 +1291,10 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-starter { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 38px; padding: 7px 8px; margin-left: -8px; border-radius: 6px; color: var(--text-secondary); text-align: left; font-size: 14px; }
 .assistant-starters button svg { flex-shrink: 0; }
 .assistant-starters button:hover:not(:disabled) { background: var(--surface); color: var(--text); }
+.assistant-extension-starters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.assistant-extension-starter { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--text-secondary); font-size: 12px; }
+.assistant-extension-starter:hover:not(:disabled) { border-color: var(--control-border); color: var(--text); }
+.assistant-extension-starter svg { flex-shrink: 0; color: var(--muted); }
 .assistant-conversation-meta { flex: 0 0 auto; padding: 4px 0 18px; color: var(--muted); font-size: 11px; text-align: center; }
 .assistant-message { flex-shrink: 0; width: 100%; padding: 10px 0 4px; }
 .assistant-message-user { display: flex; flex-direction: column; align-items: flex-end; color: var(--text-secondary); }
@@ -1006,6 +1360,35 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-compose-tool { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 6px; color: var(--assistant-composer-muted); }
 .assistant-compose-tool[aria-expanded='true'] { background: var(--surface); }
 .assistant-compose-tool:hover, .assistant-compose-tool[aria-expanded='true'] { color: var(--text-secondary); }
+.assistant-compose-capabilities { display: inline-flex; align-items: center; gap: 4px; max-width: 44%; min-width: 0; height: 26px; padding: 0 7px; margin-left: 3px; border-radius: 999px; border: 1px solid transparent; background: color-mix(in srgb, var(--surface) 70%, var(--paper)); color: var(--assistant-composer-muted); font-size: 11px; white-space: nowrap; }
+.assistant-compose-capabilities span { overflow: hidden; text-overflow: ellipsis; }
+.assistant-compose-capabilities svg { flex-shrink: 0; }
+.assistant-compose-capabilities:hover, .assistant-compose-capabilities[aria-expanded='true'] { background: var(--surface); color: var(--text-secondary); }
+.assistant-compose-capabilities.restricted { border-color: color-mix(in srgb, var(--warning, #b97a16) 35%, transparent); background: color-mix(in srgb, var(--warning, #b97a16) 12%, var(--paper)); color: var(--warning, #9a620b); }
+.assistant-capability-menu { z-index: 70; width: min(336px, 100%); max-height: min(420px, var(--assistant-menu-max-height)); display: flex; flex-direction: column; overflow: hidden; }
+.assistant-capability-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 6px 6px; padding: 6px 8px; border-radius: 6px; font-size: 11px; line-height: 1.45; }
+.assistant-capability-banner.warning { background: color-mix(in srgb, var(--warning, #b97a16) 12%, var(--paper)); color: var(--warning, #9a620b); }
+.assistant-capability-action { flex-shrink: 0; padding: 2px 7px; border: 1px solid currentColor; border-radius: 4px; background: transparent; color: inherit; font-size: 11px; }
+.assistant-capability-group { padding: 4px 2px; }
+.assistant-capability-group + .assistant-capability-group { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 6px; }
+.assistant-capability-group h4 { margin: 0 0 4px; padding: 0 6px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.assistant-capability-row { display: grid; gap: 2px; padding: 5px 7px; border-radius: 6px; }
+.assistant-capability-row.warning { color: var(--warning, #9a620b); }
+.assistant-capability-row.disabled { opacity: 0.6; }
+.assistant-capability-row-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.assistant-capability-row strong { font-size: 12px; font-weight: 500; color: var(--text); }
+.assistant-capability-row small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.assistant-capability-item-text { display: grid; flex: 1; min-width: 0; gap: 1px; }
+.assistant-capability-item-text > span { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-capability-item-text small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-mention-menu { z-index: 75; left: 0; right: 0; bottom: calc(100% + 6px); display: flex; flex-direction: column; overflow: hidden; max-height: min(260px, var(--assistant-menu-max-height)); }
+.assistant-mention-option { align-items: flex-start; padding: 6px 8px; }
+.assistant-mention-option > svg { margin-top: 2px; }
+.assistant-mention-body { display: grid; flex: 1; min-width: 0; gap: 2px; }
+.assistant-mention-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.assistant-mention-title code { padding: 1px 4px; border-radius: 4px; background: var(--surface); color: var(--text); font-size: 11px; }
+.assistant-mention-title > span { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-mention-body small { color: var(--muted); font-size: 11px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-compose-model { display: inline-flex; align-items: center; min-width: 0; max-width: 52%; margin-left: auto; padding: 6px 5px; border-radius: 10px; color: var(--assistant-composer-muted); font-size: 12px; }
 .assistant-compose-model span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-compose-model:hover, .assistant-compose-model[aria-expanded='true'] { background: var(--surface); color: var(--text-secondary); }

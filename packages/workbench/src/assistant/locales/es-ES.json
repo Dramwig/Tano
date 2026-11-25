@@ -46,7 +46,10 @@
     "propose_relation": "Sugerir crear una relación",
     "propose_task_update": "Sugerir actualizar una tarea",
     "propose_assignment": "Sugerir actualizar un asignado",
-    "propose_relation_change": "Sugerir cambiar una relación"
+    "propose_relation_change": "Sugerir cambiar una relación",
+    "inspect_plugins": "Inspeccionar complementos activos",
+    "inspect_plugin_logs": "Consultar registros del complemento",
+    "open_plugin_view": "Abrir vista del complemento"
   },
   "result": {
     "toolCall": "Llamada de herramienta",

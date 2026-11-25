@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { t } from '../../i18n/i18n';
-import { computed, ref } from 'vue';
-import { Check, ChevronRight, FileText, Pencil, Search, Undo2, X } from 'lucide-vue-next';
+import { computed, ref, watch } from 'vue';
+import { Check, ChevronRight, FileText, Pencil, Plug, Search, Undo2, X } from 'lucide-vue-next';
 import type { AssistantProposal, ReferenceIdentity } from '@tano/protocol';
 import { isDataTableFilePath } from '@tano/protocol';
+import { useWorkbenchRuntime, type WorkbenchAssistantProposalCardDescriptor } from '../../runtime';
 import ChangeDiff from './ChangeDiff.vue';
+import PluginToolProposalCard from './PluginToolProposalCard.vue';
 import TaskProposalPreview from './TaskProposalPreview.vue';
 
 const props = defineProps<{ proposals: AssistantProposal[]; busy: boolean }>();
@@ -12,67 +14,130 @@ const emit = defineEmits<{
   review: [proposal: AssistantProposal, apply?: boolean]; reject: [proposal: AssistantProposal];
   verify: [proposal: AssistantProposal]; undo: [proposal: AssistantProposal];
   suggestions: [proposal: AssistantProposal]; openReference: [identity: ReferenceIdentity];
+  sendFollowUp: [payload: { prompt: string; autoSend?: boolean }];
 }>();
 const checks = ref<Record<string, boolean>>({});
 const expanded = ref<Record<string, boolean>>({});
+const assistantExtension = computed(() => {
+  try {
+    return useWorkbenchRuntime().extensions?.().assistant;
+  } catch {
+    return undefined;
+  }
+});
+function extensionCard(proposal: AssistantProposal): WorkbenchAssistantProposalCardDescriptor | undefined {
+  return proposal.kind === 'plugin' ? assistantExtension.value?.proposalCard?.(proposal) : undefined;
+}
 const statuses = { ready: '', get applying() { return t('正在应用'); }, applied: '', get rejected() { return t('已放弃'); }, get conflicted() { return t('存在冲突'); }, get unknown() { return t('结果待核对'); } };
 const labels = { get create() { return t('新增'); }, get edit() { return t('修改'); }, get delete() { return t('删除'); }, get rename() { return t('重命名'); }, get move() { return t('移动'); }, get object() { return t('对象'); }, get relation() { return t('关系'); }, get plugin() { return t('插件操作'); } };
 const isFile = (proposal: AssistantProposal) => !['object', 'relation', 'plugin'].includes(proposal.kind);
-const canUndo = (proposal: AssistantProposal) => proposal.status === 'applied' &&
-  (proposal.kind === 'edit' || proposal.kind === 'create' && !isDataTableFilePath(proposal.path));
+const canUndo = (proposal: AssistantProposal) => {
+  if (proposal.status !== 'applied') return false;
+  if (proposal.kind === 'plugin') return !!assistantExtension.value?.canUndoProposal?.(proposal);
+  return proposal.kind === 'edit' || (proposal.kind === 'create' && !isDataTableFilePath(proposal.path));
+};
 const groups = computed(() => {
   const result = new Map<string, { key: string; file: boolean; proposals: AssistantProposal[] }>();
   for (const proposal of props.proposals) {
     const file = isFile(proposal);
-    const key = file ? `file:${proposal.fileId ?? proposal.applied?.fileId ?? proposal.path}` : `${proposal.kind}:${proposal.fileId ?? proposal.path}`;
+    const key = file
+      ? `file:${proposal.fileId ?? proposal.applied?.fileId ?? proposal.path}`
+      : proposal.kind === 'plugin'
+        ? `plugin:${proposal.id}`
+        : `${proposal.kind}:${proposal.fileId ?? proposal.path}`;
     if (!result.has(key)) result.set(key, { key, file, proposals: [] });
     result.get(key)!.proposals.push(proposal);
   }
   return [...result.values()];
 });
 const fileCount = computed(() => groups.value.filter(group => group.file).length);
-const groupLabel = (proposals: AssistantProposal[]) => [...new Set(proposals.map(proposal => labels[proposal.kind]))].join('、');
+const proposalKindLabel = (proposal: AssistantProposal) => {
+  if (proposal.kind === 'plugin') {
+    const custom = extensionCard(proposal);
+    if (custom?.kindLabel) return custom.kindLabel;
+    return proposal.pluginAction?.effect === 'external' ? t('外部调用') : t('插件写入');
+  }
+  return labels[proposal.kind];
+};
+const groupLabel = (proposals: AssistantProposal[]) => [...new Set(proposals.map(proposalKindLabel))].join('、');
 const proposalStatus = (proposal: AssistantProposal) => proposal.suggestionGroupId ? t('文档中审阅') : proposal.execution === 'direct' && proposal.status === 'ready' ? t('未完成') : statuses[proposal.status];
 const groupStatus = (proposals: AssistantProposal[]) => [...new Set(proposals.map(proposalStatus).filter(Boolean))].join(' · ');
+function defaultGroupOpen(group: { key: string; file: boolean; proposals: AssistantProposal[] }): boolean {
+  return !group.file && group.proposals.some(proposal => {
+    if (proposal.kind !== 'plugin') return false;
+    const custom = extensionCard(proposal);
+    return custom ? custom.defaultOpen !== false : true;
+  });
+}
+watch(groups, list => {
+  for (const group of list) {
+    if (!Object.prototype.hasOwnProperty.call(expanded.value, group.key) && defaultGroupOpen(group)) {
+      expanded.value[group.key] = true;
+    }
+  }
+}, { immediate: true });
+function applyButtonLabel(proposal: AssistantProposal): string {
+  if (proposal.kind === 'delete') return t('删除文件');
+  if (proposal.kind === 'rename') return t('应用重命名');
+  if (proposal.kind === 'move') return t('应用移动');
+  if (proposal.kind === 'plugin') {
+    const custom = extensionCard(proposal);
+    if (custom?.applyLabel) return custom.applyLabel;
+    return proposal.pluginAction?.effect === 'external' ? t('确认发起外部调用') : t('确认执行插件操作');
+  }
+  return t('应用修改');
+}
 </script>
 
 <template>
   <section v-if="proposals.length" class="assistant-change-list" :aria-label="t('本轮文件变更清单')">
     <header>
       <div class="change-list-heading">
-        <strong>{{ fileCount ? t('文件变更') : t('工作区变更') }}</strong><span>{{ fileCount }} {{ t('个文件 ·') }} {{ proposals.length }} {{ t('项操作') }}</span>
+        <strong>{{ fileCount ? t('文件变更') : t('工作区变更') }}</strong>
+        <span v-if="fileCount">{{ fileCount }} {{ t('个文件 ·') }} {{ proposals.length }} {{ t('项操作') }}</span>
+        <span v-else>{{ proposals.length }} {{ t('项操作') }}</span>
       </div>
     </header>
-    <details v-for="group in groups" :key="group.key" class="assistant-file-change" @toggle="expanded[group.key] = ($event.target as HTMLDetailsElement).open">
+    <details v-for="group in groups" :key="group.key" class="assistant-file-change" v-bind="defaultGroupOpen(group) ? { open: true } : {}" @toggle="expanded[group.key] = ($event.target as HTMLDetailsElement).open">
       <summary>
-        <ChevronRight class="change-chevron" :size="14" /><FileText :size="14" />
+        <ChevronRight class="change-chevron" :size="14" /><Plug v-if="group.proposals[0].kind === 'plugin'" :size="14" /><FileText v-else :size="14" />
         <span class="change-file-heading">
           <span class="change-file-name">{{ group.proposals[0].preview?.path ?? group.proposals[0].path }}<span v-if="group.proposals.some(proposal => proposal.destination)" class="change-destination">→ {{ group.proposals.filter(proposal => proposal.destination).at(-1)?.destination }}</span></span>
-          <span class="change-kind" :class="`change-kind-${group.proposals[0].kind}`">{{ groupLabel(group.proposals) }}</span>
+          <span class="change-kind" :class="[`change-kind-${group.proposals[0].kind}`, group.proposals[0].pluginAction?.effect === 'external' ? 'change-kind-external' : '']">{{ groupLabel(group.proposals) }}</span>
           <small v-if="groupStatus(group.proposals)" class="change-file-status">{{ groupStatus(group.proposals) }}</small>
         </span>
-        <button v-if="group.proposals.length === 1 && canUndo(group.proposals[0])" class="change-undo-action" :disabled="busy" @click.stop.prevent="emit('undo', group.proposals[0])"><Undo2 :size="14" />{{ t('撤回内容') }}</button>
+        <button v-if="group.proposals.length === 1 && canUndo(group.proposals[0])" class="change-undo-action" :disabled="busy" @click.stop.prevent="emit('undo', group.proposals[0])"><Undo2 :size="14" />{{ group.proposals[0].kind === 'plugin' ? t('撤回') : t('撤回内容') }}</button>
       </summary>
       <div v-if="expanded[group.key]" class="change-file-details">
         <section v-for="proposal in group.proposals" :key="proposal.id" class="assistant-proposal" :aria-label="t('修改建议 {0}', [proposal.path])">
           <div class="assistant-proposal-heading">
-            <strong>{{ labels[proposal.kind] }} · {{ proposal.preview?.path ?? proposal.path }}</strong><small v-if="group.proposals.length > 1 && proposalStatus(proposal)">{{ proposalStatus(proposal) }}</small>
-            <button v-if="group.proposals.length > 1 && canUndo(proposal)" class="change-undo-action" :disabled="busy" @click="emit('undo', proposal)"><Undo2 :size="14" />{{ t('撤回内容') }}</button>
+            <strong>{{ proposalKindLabel(proposal) }} · {{ proposal.preview?.path ?? proposal.path }}</strong><small v-if="group.proposals.length > 1 && proposalStatus(proposal)">{{ proposalStatus(proposal) }}</small>
+            <button v-if="group.proposals.length > 1 && canUndo(proposal)" class="change-undo-action" :disabled="busy" @click="emit('undo', proposal)"><Undo2 :size="14" />{{ proposal.kind === 'plugin' ? t('撤回') : t('撤回内容') }}</button>
           </div>
           <p v-if="proposal.destination" class="proposal-path">{{ proposal.preview?.path ?? proposal.path }} → {{ proposal.destination }}</p>
           <p>{{ proposal.reason }}</p>
           <p v-if="proposal.kind === 'delete'" class="delete-note">{{ proposal.status === 'applied' ? t('文件已删除。') : t('将删除此文件。') }}{{ t('桌面文件可从回收站恢复；浏览器演示存储会直接删除。') }}</p>
-          <p v-if="proposal.kind === 'plugin' && proposal.pluginAction" class="panel-hint">{{ proposal.pluginAction.effect === 'external' ? t('此操作将由插件发起外部调用，请确认参数后执行。') : t('此操作将由插件执行写入，请确认参数后执行。') }}</p>
           <TaskProposalPreview v-if="!group.file && proposal.kind !== 'plugin'" :proposal="proposal" @open-reference="emit('openReference', $event)" @ready="checks[proposal.id] = $event" />
+          <component
+            :is="extensionCard(proposal)!.component"
+            v-if="proposal.kind === 'plugin' && extensionCard(proposal)"
+            :proposal="proposal"
+            :busy="busy"
+            @review="(target: AssistantProposal, apply?: boolean) => emit('review', target, apply)"
+            @reject="(target: AssistantProposal) => emit('reject', target)"
+            @undo="(target: AssistantProposal) => emit('undo', target)"
+            @send-follow-up="(payload: { prompt: string; autoSend?: boolean }) => emit('sendFollowUp', payload)"
+          />
+          <PluginToolProposalCard v-else-if="proposal.kind === 'plugin'" :proposal="proposal" :busy="busy" />
           <p v-if="proposal.error" class="assistant-message-error" role="alert">{{ proposal.error }}</p>
           <p v-if="['rename', 'move'].includes(proposal.kind)" class="panel-hint">{{ t('文件内容保持不变。') }}</p>
-          <ChangeDiff v-else :before="proposal.applied?.before ?? proposal.preview?.before ?? proposal.base" :after="proposal.applied?.after ?? proposal.preview?.after ?? proposal.content"
+          <ChangeDiff v-else-if="proposal.kind !== 'plugin' || extensionCard(proposal)?.hideDefaultDiff === false" :before="proposal.applied?.before ?? proposal.preview?.before ?? proposal.base" :after="proposal.applied?.after ?? proposal.preview?.after ?? proposal.content"
             :before-label="proposal.kind === 'create' ? t('尚未创建') : proposal.kind === 'plugin' ? t('执行前') : t('修改前')" :after-label="proposal.kind === 'delete' ? t('文件删除') : proposal.kind === 'plugin' ? (proposal.status === 'applied' ? t('执行结果') : t('调用参数')) : t('修改后')" />
-          <div v-if="['ready', 'conflicted', 'unknown'].includes(proposal.status)" class="assistant-proposal-actions">
+          <div v-if="['ready', 'conflicted', 'unknown'].includes(proposal.status) && !extensionCard(proposal)?.hideDefaultActions" class="assistant-proposal-actions">
             <button v-if="proposal.kind === 'edit' && !isDataTableFilePath(proposal.path) && ['ready', 'conflicted'].includes(proposal.status)" class="secondary-button" :disabled="busy" @click="emit('suggestions', proposal)"><Pencil :size="14" />{{ proposal.suggestionGroupId ? t('打开文档建议') : t('在文档中逐项审阅') }}</button>
             <template v-if="!proposal.suggestionGroupId && ['ready', 'conflicted'].includes(proposal.status)">
               <button v-if="proposal.kind !== 'plugin'" class="secondary-button" :disabled="busy" @click="emit('review', proposal)"><Search :size="14" />{{ t('查看差异') }}</button>
-              <button v-if="proposal.preview && proposal.status === 'ready'" class="primary-button" :class="{ destructive: proposal.kind === 'delete' }" :disabled="busy || checks[proposal.id] === false" @click="emit('review', proposal, true)"><Check :size="14" />{{ proposal.kind === 'delete' ? t('删除文件') : proposal.kind === 'rename' ? t('应用重命名') : proposal.kind === 'move' ? t('应用移动') : proposal.kind === 'plugin' ? t('确认执行插件操作') : t('应用修改') }}</button>
+              <button v-if="(proposal.preview || proposal.kind === 'plugin') && proposal.status === 'ready'" class="primary-button" :class="{ destructive: proposal.kind === 'delete' }" :disabled="busy || checks[proposal.id] === false" @click="emit('review', proposal, true)"><Check :size="14" />{{ applyButtonLabel(proposal) }}</button>
               <button class="icon-button" :data-tooltip="t('放弃建议')" :aria-label="t('放弃修改建议')" :disabled="busy" @click="emit('reject', proposal)"><X :size="15" /></button>
             </template>
             <button v-if="proposal.status === 'unknown'" class="secondary-button" :disabled="busy" @click="emit('verify', proposal)"><Search :size="14" />{{ t('核对写入结果') }}</button>
@@ -102,6 +167,7 @@ details[open] .change-chevron { transform: rotate(90deg); }
 .change-destination { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .change-kind { font-size: 10px; border-radius: 4px; padding: 2px 5px; background: var(--accent); color: var(--muted); }
 .change-kind-create { color: var(--green); }
+.change-kind-external { color: var(--warning, #9a620b); }
 .change-kind-delete, .delete-note, .assistant-message-error { color: var(--danger); }
 .change-file-details { padding: 0 12px 12px; }
 .assistant-proposal + .assistant-proposal { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }

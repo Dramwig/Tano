@@ -102,6 +102,27 @@ export interface WorkbenchAssistantToolExecutionContext {
 export type WorkbenchAssistantToolExecutionResult =
   | { kind: 'result'; data: unknown }
   | { kind: 'proposal'; proposal: import('@tano/protocol').AssistantProposal };
+export interface WorkbenchAssistantStarter {
+  id: string;
+  label: string;
+  prompt: string;
+  icon?: Component;
+  requiresActiveDocument?: boolean;
+}
+export interface WorkbenchAssistantCapabilityNote {
+  id: string;
+  label: string;
+  detail?: string;
+  tone?: 'default' | 'warning';
+}
+export interface WorkbenchAssistantProposalCardDescriptor {
+  component: Component;
+  kindLabel?: string;
+  applyLabel?: string;
+  defaultOpen?: boolean;
+  hideDefaultDiff?: boolean;
+  hideDefaultActions?: boolean;
+}
 export interface WorkbenchAssistantExtension {
   listTools(context: {
     workspaceReadOnly: boolean;
@@ -118,7 +139,17 @@ export interface WorkbenchAssistantExtension {
   applyProposal?(
     proposal: import('@tano/protocol').AssistantProposal,
     parsedArgs: Record<string, unknown>,
-  ): Promise<{ after: string; hash: string; fileId: string } | undefined>;
+  ): Promise<{ before?: string; after: string; hash: string; fileId: string } | undefined>;
+  canUndoProposal?(proposal: import('@tano/protocol').AssistantProposal): boolean;
+  undoProposal?(proposal: import('@tano/protocol').AssistantProposal): Promise<boolean>;
+  proposalCard?(
+    proposal: import('@tano/protocol').AssistantProposal,
+  ): WorkbenchAssistantProposalCardDescriptor | undefined;
+  starters?(context: { demo: boolean }): readonly WorkbenchAssistantStarter[];
+  capabilitySummary?(context: {
+    workspaceReadOnly: boolean;
+    safeMode: boolean;
+  }): readonly WorkbenchAssistantCapabilityNote[];
 }
 export interface WorkbenchExtensions {
   commands?: import('./shell/command-palette').WorkbenchCommand[];

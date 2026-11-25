@@ -622,6 +622,87 @@ it('adds dragged sources once and rejects cross-workspace references', async () 
   expect(assistant.files).toEqual(targets.map(target => target.id));
 });
 
+it('opens keyboard-navigable @ context autocomplete, inserts mention, and mounts context chip', async () => {
+  const { workspace, assistant } = await mountEmptyConversation();
+  const { parsePluginManifest } = await import('@tano/protocol');
+  const manifest = parsePluginManifest({
+    manifestVersion: 2,
+    apiVersion: 1,
+    id: 'kanban-board',
+    name: '项目看板',
+    version: '1.0.0',
+    description: '看板插件',
+    objectTypes: [],
+    relationTypes: [],
+    permissions: ['documents.read'],
+    networkOrigins: [],
+    nativeCommands: [],
+    commands: [],
+    views: [],
+    assistantTools: [
+      {
+        name: 'create_card',
+        label: '新建卡片',
+        description: '创建看板卡片',
+        effect: 'write',
+        parameters: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
+      },
+    ],
+    assistantContextProviders: [
+      { id: 'board', label: '进行中看板', description: '当前迭代卡片摘要' },
+      { id: 'backlog', label: '待办池', description: '待排期任务列表' },
+    ],
+  });
+  workspace.installedPlugins = [
+    {
+      manifest,
+      enabled: true,
+      authorized: true,
+      scope: 'user',
+      personalCodePolicy: 'read-only',
+    },
+  ];
+  workspace.pluginRuntime = [
+    { id: 'kanban-board', instanceId: 'i1', name: '项目看板', status: 'running', message: '', commands: [], views: [] },
+  ];
+  workspace.personalCodePluginPolicy = 'read-only';
+  await nextTick();
+
+  // Capability pill shows team read-only policy restriction & lists tools/contexts in popover
+  const capBtn = root.querySelector<HTMLButtonElement>('.assistant-compose-capabilities')!;
+  expect(capBtn.classList.contains('restricted')).toBe(true);
+  expect(capBtn.textContent).toContain('团队只读策略');
+  capBtn.click();
+  await nextTick();
+  const capPopover = root.querySelector('#assistant-capability-options')!;
+  expect(capPopover.textContent).toContain('团队工作区策略：个人代码插件仅允许只读操作');
+  expect(capPopover.textContent).toContain('新建卡片');
+  expect(capPopover.textContent).toContain('@board');
+  capBtn.click();
+  await nextTick();
+
+  // Typing "@" in composer opens mention listbox and supports ArrowDown + Enter without sending
+  const box = root.querySelector<HTMLTextAreaElement>('textarea')!;
+  assistant.prompt = '结合 @';
+  await nextTick();
+  box.setSelectionRange(assistant.prompt.length, assistant.prompt.length);
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+  await nextTick();
+  expect(root.querySelector('#assistant-mention-options')).not.toBeNull();
+  expect(root.querySelectorAll('.assistant-mention-option')).toHaveLength(2);
+
+  box.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+  await nextTick();
+  expect(root.querySelectorAll('.assistant-mention-option')[1]!.getAttribute('aria-selected')).toBe('true');
+
+  box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await nextTick();
+  expect(assistant.prompt).toBe('结合 @backlog ');
+  expect(assistant.pluginContextKeys).toEqual(['kanban-board:backlog']);
+  expect(assistant.session!.messages).toHaveLength(0);
+  expect(root.querySelector('#assistant-mention-options')).toBeNull();
+});
+
 beforeAll(async () => {
   const { uiLocales } = await import('../../i18n/locale');
   await Promise.all(uiLocales.map(preloadUiLocale));

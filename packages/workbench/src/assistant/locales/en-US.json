@@ -46,7 +46,10 @@
     "propose_relation": "Suggest creating a relation",
     "propose_task_update": "Suggest updating a task",
     "propose_assignment": "Suggest updating an assignee",
-    "propose_relation_change": "Suggest changing a relation"
+    "propose_relation_change": "Suggest changing a relation",
+    "inspect_plugins": "Inspect enabled plugins",
+    "inspect_plugin_logs": "Inspect plugin runtime logs",
+    "open_plugin_view": "Open plugin view"
   },
   "result": {
     "toolCall": "Tool call",

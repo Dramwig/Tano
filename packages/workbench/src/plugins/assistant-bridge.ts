@@ -230,6 +230,79 @@ const effectTag: Record<PluginAssistantToolDefinition['effect'], string> = {
   external: '[插件工具 · 外部调用，须经用户确认]',
 };
 
+export interface PluginAssistantCapabilitySummary {
+  tools: {
+    pluginId: string;
+    pluginName: string;
+    tool: PluginAssistantToolDefinition;
+    wireName: string;
+    available: boolean;
+    blockedReason?: 'workspace-read-only' | 'team-read-only' | 'team-blocked';
+  }[];
+  contexts: ActivePluginContextProvider[];
+  blockedPersonalPluginCount: number;
+  readOnlyPersonalPluginCount: number;
+}
+
+/** Summarize active & policy-restricted plugin assistant capabilities for UI visibility. */
+export function summarizePluginAssistantCapabilities(
+  installed: readonly InstalledObjectPlugin[],
+  runtimeStates: readonly PluginRuntimeState[],
+  workspaceReadOnly: boolean,
+): PluginAssistantCapabilitySummary {
+  const runtimeById = new Map(runtimeStates.map(state => [state.id, state]));
+  const tools: PluginAssistantCapabilitySummary['tools'] = [];
+  let blockedPersonalPluginCount = 0;
+  let readOnlyPersonalPluginCount = 0;
+
+  for (const installation of installed) {
+    if (!installation.enabled || !installation.authorized) continue;
+    if (installation.manifest.manifestVersion !== 2) continue;
+    if (installation.scope === 'user' && installation.personalCodePolicy === 'block') {
+      blockedPersonalPluginCount++;
+      for (const tool of installation.manifest.assistantTools ?? []) {
+        tools.push({
+          pluginId: installation.manifest.id,
+          pluginName: installation.manifest.name,
+          tool,
+          wireName: pluginAssistantWireName(installation.manifest.id, tool.name),
+          available: false,
+          blockedReason: 'team-blocked',
+        });
+      }
+      continue;
+    }
+    const runtime = runtimeById.get(installation.manifest.id);
+    if (!runtime || (runtime.status !== 'running' && runtime.status !== 'idle')) continue;
+    if (installation.scope === 'user' && installation.personalCodePolicy === 'read-only') {
+      readOnlyPersonalPluginCount++;
+    }
+    for (const tool of installation.manifest.assistantTools ?? []) {
+      const available = canPluginToolExecute(installation, tool, workspaceReadOnly);
+      const blockedReason = available
+        ? undefined
+        : installation.scope === 'user' && installation.personalCodePolicy === 'read-only'
+          ? 'team-read-only'
+          : 'workspace-read-only';
+      tools.push({
+        pluginId: installation.manifest.id,
+        pluginName: installation.manifest.name,
+        tool,
+        wireName: pluginAssistantWireName(installation.manifest.id, tool.name),
+        available,
+        ...(blockedReason ? { blockedReason } : {}),
+      });
+    }
+  }
+
+  return {
+    tools,
+    contexts: listActivePluginContextProviders(installed, runtimeStates),
+    blockedPersonalPluginCount,
+    readOnlyPersonalPluginCount,
+  };
+}
+
 export function compilePluginAssistantTools(
   installed: readonly InstalledObjectPlugin[],
   runtimeStates: readonly PluginRuntimeState[],
@@ -251,6 +324,24 @@ export function compilePluginAssistantTools(
         name: 'inspect_plugins',
         description: '只读查看当前工作区及用户级已启用插件的对象类型、命令、视图与助手工具列表。',
         parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
+      },
+    });
+  }
+  if (enabledPlugins.length > 0 || runtimeStates.length > 0) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'inspect_plugin_logs',
+        description: '只读查看指定已安装插件的当前运行状态与近期控制台/异常日志，用于排查插件运行问题。请先用 inspect_plugins 获取准确的 pluginId。',
+        parameters: {
+          type: 'object',
+          properties: {
+            pluginId: { type: 'string', description: '已安装插件 ID' },
+            limit: { type: 'integer', minimum: 1, maximum: 50, description: '返回最近日志条数（1–50，默认 20）' },
+          },
+          required: ['pluginId'],
+          additionalProperties: false,
+        },
       },
     });
   }
