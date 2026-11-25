@@ -56,6 +56,7 @@ export const usePlanStore = defineStore('plans', () => {
   const personalWritable = computed(
     () => !!personalId.value && !loadError.value && !errors.value.length,
   );
+  const workspaceId = computed(() => workspace.workspace?.id);
   const workspaceWritable = computed(
     () =>
       !!workspace.workspace &&
@@ -189,6 +190,7 @@ export const usePlanStore = defineStore('plans', () => {
     records,
     recordsFor,
     defaultScope,
+    workspaceId,
     personalWritable,
     workspaceWritable,
     panel,

@@ -9,7 +9,13 @@ export interface PlanDateValue {
   end: string;
 }
 export function readPlanDate(properties: Record<string, unknown>): PlanDateValue {
-  if (validEventDate(properties.date)) return { date: properties.date, time: '', end: '' };
+  if (validEventDate(properties.date)) {
+    return {
+      date: properties.date,
+      time: '',
+      end: validEventDate(properties.endDate) ? properties.endDate : '',
+    };
+  }
   if (validEventTime(properties.start)) {
     const start = localDateTime(new Date(properties.start));
     if (properties.allDay === true && validEventTime(properties.end)) {
@@ -29,6 +35,7 @@ export function readPlanDate(properties: Record<string, unknown>): PlanDateValue
 export function writePlanDate(properties: Record<string, unknown>, value: PlanDateValue) {
   const result = { ...properties };
   delete result.date;
+  delete result.endDate;
   delete result.start;
   delete result.end;
   delete result.allDay;

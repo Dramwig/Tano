@@ -23,6 +23,7 @@ export * from './plugin-connections';
 export * from './plugin-automations';
 export * from './task-review';
 export * from './task-repeat';
+export * from './plan-item';
 export * from './file-database';
 export * from './view-engine';
 export * from './agent-gateway';

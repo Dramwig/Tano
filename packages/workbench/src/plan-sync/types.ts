@@ -1,3 +1,4 @@
+import { isPlanCompleted } from '@tano/protocol';
 import type { ObjectRecord } from '../objects/workspace-objects';
 export type SyncKind = 'calendar' | 'todo';
 export type ProviderId = 'google' | 'icloud' | 'feishu' | 'caldav' | 'todoist' | 'microsoft';
@@ -49,10 +50,12 @@ export const sameValue = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.
 export function localValue(record: ObjectRecord, kind: SyncKind): ItemValue {
   const p = record.object.properties;
   if (kind === 'todo') return { name: record.object.name, description: record.object.description, archived: record.object.archived,
-    completed: p.completed === true || p.status === 'done' || p.status === 'completed', ...(typeof p.due === 'string' && p.due ? { date: p.due } : {}) };
+    completed: isPlanCompleted(record.object), ...(typeof p.due === 'string' && p.due ? { date: p.due } : {}) };
   if (typeof p.date === 'string' && p.date && !p.start) {
-    const start = new Date(`${p.date}T00:00:00`), end = new Date(start); end.setDate(end.getDate() + 1);
-    return { name: record.object.name, description: record.object.description, archived: record.object.archived, start: start.toISOString(), end: end.toISOString(), allDay: true };
+    const start = new Date(`${p.date}T00:00:00`);
+    const endBase = typeof p.endDate === 'string' && p.endDate >= p.date ? new Date(`${p.endDate}T00:00:00`) : new Date(start);
+    endBase.setDate(endBase.getDate() + 1);
+    return { name: record.object.name, description: record.object.description, archived: record.object.archived, start: start.toISOString(), end: endBase.toISOString(), allDay: true };
   }
   return {
     name: record.object.name, description: record.object.description, archived: record.object.archived,

@@ -1,6 +1,7 @@
 import type { WorkspaceObject } from './objects';
 import { isShortId } from './short-id';
 import { validEventTime } from './object-types';
+import { isDoneStatus } from './plan-item';
 
 export interface TaskReview {
   version: 1;
@@ -35,15 +36,23 @@ export function parseTaskReview(value: unknown): TaskReview {
 export function taskReview(object: Pick<WorkspaceObject, 'properties'>): TaskReview | null {
   return object.properties.deliveryReview === undefined ? null : parseTaskReview(object.properties.deliveryReview);
 }
+function syncedReviewStatus(object: WorkspaceObject, completed: boolean) {
+  const current = typeof object.properties.status === 'string' ? object.properties.status.trim() : '';
+  if (!current) return object.type === 'task' ? { status: completed ? 'done' : 'todo' } : {};
+  const chinese = ['待处理', '进行中', '已阻塞', '已完成'].includes(current);
+  if (completed) return { status: chinese ? '已完成' : 'done' };
+  if (isDoneStatus(current)) return { status: chinese ? '待处理' : 'todo' };
+  return object.type === 'task' ? { status: 'todo' } : {};
+}
 export function submitTaskReview(object: WorkspaceObject, input: Omit<TaskReview, 'version' | 'state' | 'decidedAt' | 'comment'>): WorkspaceObject {
   const review = parseTaskReview({ ...input, version: 1, state: 'pending' });
   return { ...object, properties: { ...object.properties, completed: false,
-    ...(object.type === 'task' ? { status: 'todo' } : {}), deliveryReview: review } };
+    ...syncedReviewStatus(object, false), deliveryReview: review } };
 }
 export function decideTaskReview(object: WorkspaceObject, decision: 'approved' | 'changes-requested', comment: string, now = new Date().toISOString()): WorkspaceObject {
   const previous = taskReview(object);
   if (!previous || previous.state !== 'pending') throw new Error('此交付没有待处理的审阅请求');
   const review = parseTaskReview({ ...previous, state: decision, decidedAt: now, ...(comment.trim() ? { comment: comment.trim() } : {}) });
   return { ...object, properties: { ...object.properties, completed: decision === 'approved',
-    ...(object.type === 'task' ? { status: decision === 'approved' ? 'done' : 'todo' } : {}), deliveryReview: review } };
+    ...syncedReviewStatus(object, decision === 'approved'), deliveryReview: review } };
 }

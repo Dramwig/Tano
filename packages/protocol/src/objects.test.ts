@@ -184,7 +184,8 @@ it('supports unscheduled, date-only and timed tasks using the same event type', 
     { checkable: true, start: '2026-10-01T10:00:00Z' },
     { date: '2026-10-01', start: '2026-10-01T10:00:00Z', end: '2026-10-01T11:00:00Z' },
   ]) expect(() => validateObjectProperties('event', properties)).toThrow();
-  expect(coreObjectTypes.find(type => type.type === 'task')?.legacy).not.toBe(true);
+  expect(coreObjectTypes.find(type => type.type === 'task')?.legacy).toBe(true);
+  expect(() => validateObjectProperties('task', { status: 'todo', due: '2026-10-01', completed: false })).not.toThrow();
 });
 it('derives Document and Asset metadata from file identity without storing content or following paths', () => {
   const files = [

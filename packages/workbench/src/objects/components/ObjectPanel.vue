@@ -92,7 +92,7 @@ const definition = computed(() =>
 );
 const retired = computed(() => objectTypeRegistry.get(current.value?.value.type ?? '')?.retired === true);
 const visibleFields = computed(() => definition.value?.fields.filter(field =>
-  current.value?.value.type !== 'event' || !['date', 'start', 'end'].includes(field.key)) ?? []);
+  current.value?.value.type !== 'event' || !['date', 'endDate', 'start', 'end', 'allDay', 'timezone'].includes(field.key)) ?? []);
 const planDate = computed<PlanDateValue>(() => {
   try { return readPlanDate(JSON.parse(current.value?.json ?? '{}')); }
   catch { return { date: '', time: '', end: '' }; }

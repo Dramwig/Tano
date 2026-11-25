@@ -6,10 +6,19 @@ import type { ObjectRecord, ObjectStorage } from '../objects/workspace-objects';
 import { t } from '../i18n/i18n';
 
 export const PERSONAL_PLANS_KEY = 'tano.personal-plans.v1';
-export const planKey = (record: ObjectRecord) =>
+export const sourcePlanKey = (record: ObjectRecord) =>
   record.source?.scope === 'personal'
     ? `personal:${record.source.id}:${record.object.id}`
     : record.object.id;
+export const planKey = (record: ObjectRecord) => {
+  const base = sourcePlanKey(record);
+  const occurrence =
+    record.object.properties.repeatVirtual === true &&
+    typeof record.object.properties.repeatOccurrence === 'string'
+      ? record.object.properties.repeatOccurrence
+      : '';
+  return occurrence ? `${base}@${occurrence}` : base;
+};
 export const planSourceLabel = (record: ObjectRecord) =>
   record.source?.scope === 'personal' ? t('个人') : (record.source?.name ?? t('工作区'));
 

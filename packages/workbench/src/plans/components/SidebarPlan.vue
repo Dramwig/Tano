@@ -30,7 +30,8 @@ import {
 import { useWorkspaceStore } from '../../stores/workspace';
 import { usePlanStore } from '../../stores/plans';
 import type { PlanScope } from '../../stores/plans';
-import { planKey } from '../personal-plans';
+import { planKey, sourcePlanKey } from '../personal-plans';
+import { expandRecurringPlans, isVirtualOccurrence } from '../recurrence';
 import { useWorkbenchRuntime } from '../../runtime';
 import PlanEventList from './PlanEventList.vue';
 import { createPlanListMotion } from './plan-list-motion';
@@ -40,7 +41,7 @@ import type { SyncKind } from '../../plan-sync/types';
 import PlanDateField from './PlanDateField.vue';
 import { writePlanDate } from '../plan-date';
 import type { PlanDateValue } from '../plan-date';
-import { taskReview } from '@tano/protocol';
+import { isPlanCompletionLocked, withPlanCompleted } from '@tano/protocol';
 import type { WorkspaceObject } from '@tano/protocol';
 import PlanEventContextMenu from './PlanEventContextMenu.vue';
 
@@ -124,7 +125,17 @@ let suppressCalendarClick = false;
 let savedScrollTop = BUFFER_WEEKS * WEEK_HEIGHT;
 let repositioning = false;
 let resizeObserver: ResizeObserver | undefined;
-const events = computed(() => planningEvents(plans.recordsFor(effectiveView.value)));
+const events = computed(() =>
+  planningEvents(
+    expandRecurringPlans(
+      plans.recordsFor(effectiveView.value),
+      start.value,
+      offsetDays(start.value, TOTAL_WEEKS * 7 - 1),
+    ),
+  ),
+);
+const canEditItem = (record: ObjectRecord) => !isVirtualOccurrence(record) && plans.canEdit(record);
+const selectEventKey = (key: string) => emit('select-event', key.replace(/@\d{4}-\d{2}-\d{2}$/, ''));
 const unfinished = computed(() => events.value.filter(record => !isEventCompleted(record)));
 const completed = computed(() => events.value.filter(isEventCompleted));
 const completedExpanded = ref(false);
@@ -162,7 +173,7 @@ async function contextAction(action: 'details' | 'complete' | 'archive') {
   if (!record) return;
   if (action === 'details') {
     trigger?.focus({ preventScroll: true });
-    emit('select-event', planKey(record));
+    emit('select-event', sourcePlanKey(record));
     return;
   }
   if (action === 'complete') await completeEvent(record, !isEventCompleted(record));
@@ -363,13 +374,9 @@ async function updateEvent(record: ObjectRecord, change: Partial<Pick<WorkspaceO
   }
 }
 function completeEvent(record: ObjectRecord, completed: boolean) {
-  if (!isCheckableEvent(record)) return;
-  const review = taskReview(record.object);
-  if (review && review.state !== 'approved') return;
-  const properties = { ...record.object.properties, completed };
-  if (record.object.type === 'task')
-    Object.assign(properties, { status: completed ? 'done' : 'todo' });
-  return updateEvent(record, { properties });
+  if (!isCheckableEvent(record) || isPlanCompletionLocked(record.object)) return;
+  const next = withPlanCompleted(record.object, completed);
+  return updateEvent(record, { properties: next.properties });
 }
 
 async function resetScroll(date: Date) {
@@ -763,12 +770,12 @@ onBeforeUnmount(() => {
         :records="agenda"
         :date="selectedDate"
         :disabled="false"
-        :can-edit="plans.canEdit"
+        :can-edit="canEditItem"
         :pending="pending"
         :context-key="context?.key"
         :context-menu-id="contextMenuId"
         @context="openContextMenu"
-        @select="emit('select-event', $event)"
+        @select="selectEventKey"
         @complete="completeEvent"
       >
         <template #empty>
@@ -798,12 +805,12 @@ onBeforeUnmount(() => {
         :records="unscheduled"
         :date="selectedDate"
         :disabled="false"
-        :can-edit="plans.canEdit"
+        :can-edit="canEditItem"
         :pending="pending"
         :context-key="context?.key"
         :context-menu-id="contextMenuId"
         @context="openContextMenu"
-        @select="emit('select-event', $event)"
+        @select="selectEventKey"
         @complete="completeEvent"
       >
         <template #empty>

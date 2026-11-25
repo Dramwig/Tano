@@ -1,5 +1,5 @@
 import ICAL from 'ical.js';
-import { parseTaskRepeat, referenceKey, validateObjectProperties, validEventDate } from '@tano/protocol';
+import { isPlanCompleted, parseTaskRepeat, referenceKey, validateObjectProperties, validEventDate, withPlanCompleted } from '@tano/protocol';
 import type { WorkspaceObject, WorkspaceRelation } from '@tano/protocol';
 import type { ObjectRecord } from '../objects/workspace-objects';
 import { assistantHash } from '../assistant/hash';
@@ -27,20 +27,20 @@ export async function previewTaskRepeat(record: ObjectRecord, relations: Workspa
   if (series.object.archived || series.object.properties.repeat === undefined) throw new Error('来源任务已停止重复或归档');
   const base: WorkspaceObject = { ...record.object, properties: { ...record.object.properties, repeat: series.object.properties.repeat } };
   validateObjectProperties(base.type, base.properties);
-  if (base.archived || base.properties.syncReadOnly === true || base.properties.completed !== true) throw new Error('请先完成当前任务，再创建下一次');
+  if (base.archived || base.properties.syncReadOnly === true || !isPlanCompleted(base)) throw new Error('请先完成当前任务，再创建下一次');
   const date = nextRepeatDate(base);
   if (!date) return null;
   const sourceId = String(base.properties.repeatSourceId ?? base.id);
   const id = (await assistantHash(`tano-repeat:${sourceId}:${date}`)).slice(0, 6);
-  const properties = { ...base.properties, completed: false, repeatSourceId: sourceId, repeatOccurrence: date };
-  for (const key of ['syncConnection', 'syncRemoteId', 'syncReadOnly', 'syncConflictCopy', 'deliveryReview', 'start', 'end']) delete (properties as Record<string, unknown>)[key];
-  if (base.properties.date) (properties as Record<string, unknown>).date = date;
-  else (properties as Record<string, unknown>).due = date;
+  const reset = withPlanCompleted({ ...base, properties: { ...base.properties, deliveryReview: undefined } }, false);
+  const properties: Record<string, unknown> = { ...reset.properties, repeatSourceId: sourceId, repeatOccurrence: date };
+  for (const key of ['syncConnection', 'syncRemoteId', 'syncReadOnly', 'syncConflictCopy', 'deliveryReview', 'start', 'end']) delete properties[key];
+  if (base.properties.date) properties.date = date;
+  else properties.due = date;
   if (base.properties.date && base.properties.due) {
     const offset = Date.parse(`${base.properties.due}T00:00:00Z`) - Date.parse(`${base.properties.date}T00:00:00Z`);
-    (properties as Record<string, unknown>).due = new Date(Date.parse(`${date}T00:00:00Z`) + offset).toISOString().slice(0, 10);
+    properties.due = new Date(Date.parse(`${date}T00:00:00Z`) + offset).toISOString().slice(0, 10);
   }
-  if (base.type === 'task') (properties as Record<string, unknown>).status = 'todo';
   const object = { ...base, id, properties };
   validateObjectProperties(object.type, object.properties);
   const linked = repeatRelations(base, relations);

@@ -1,4 +1,4 @@
-import { parseObject, parseRelations, referenceKey, relationKey, validateObjectProperties, validateRelation, workspaceRelationPath } from '@tano/protocol';
+import { isActionableTask, parseObject, parseRelations, referenceKey, relationKey, validateObjectProperties, validateRelation, withPlanCompleted, workspaceRelationPath } from '@tano/protocol';
 import type { AssistantProposal, AssistantRequest, AssistantToolCall, ReferenceTarget, RelationTypeDefinition, WorkspaceRelation, WorkspaceObject, RelationFile } from '@tano/protocol';
 
 const text = { type: 'string' };
@@ -41,7 +41,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const available = (targets: readonly ReferenceTarget[], identity: { type: string; id: string }) =>
   targets.some(target => referenceKey(target) === referenceKey(identity) && !target.archived);
 export function requireTask(object: WorkspaceObject) {
-  if (object.archived || !(object.type === 'task' || (object.type === 'event' && object.properties.checkable === true)))
+  if (object.archived || !isActionableTask(object))
     throw new Error('只能修改可用的已有任务');
 }
 export function validateTaskUpdate(base: WorkspaceObject, proposed: WorkspaceObject) {
@@ -49,7 +49,7 @@ export function validateTaskUpdate(base: WorkspaceObject, proposed: WorkspaceObj
   if (!same({ ...base, name: '', description: '', properties: {} }, { ...proposed, name: '', description: '', properties: {} }))
     throw new Error('任务身份、类型和扩展字段不能修改');
   for (const key of new Set([...Object.keys(base.properties), ...Object.keys(proposed.properties)])) {
-    if (!['completed', 'due', 'date', 'start', 'end', ...(base.type === 'task' ? ['status'] : [])].includes(key) && !same(base.properties[key], proposed.properties[key]))
+    if (!['completed', 'due', 'date', 'start', 'end', 'status'].includes(key) && !same(base.properties[key], proposed.properties[key]))
       throw new Error('任务属性修改超出允许范围');
   }
   validateObjectProperties('event', proposed.properties);
@@ -93,8 +93,10 @@ export function structureProposal(call: AssistantToolCall, context: {
           if (value === null && key !== 'completed') delete properties[key];
           else properties[key] = value;
         }
-        if (record.object.type === 'task' && 'completed' in patch.properties)
-          properties.status = patch.properties.completed ? 'done' : 'open';
+        if ('completed' in patch.properties) {
+          const synced = withPlanCompleted({ ...record.object, properties }, Boolean(patch.properties.completed));
+          Object.assign(properties, synced.properties);
+        }
       }
       const object = parseObject(JSON.stringify({ ...record.object, ...patch, properties }));
       validateTaskUpdate(record.object, object);

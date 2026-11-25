@@ -3,7 +3,7 @@ import { useWindowContext } from '../../windows/context';
 const { window, document } = useWindowContext();
 
 import { computed, ref, watch } from 'vue';
-import { objectViewText, objectViewValue, referenceKey, viewEngine } from '@tano/protocol';
+import { objectViewText, objectViewValue, referenceKey, viewEngine, withPlanStatus } from '@tano/protocol';
 import type { WorkspaceObject, WorkspaceViewDefinition, ReferenceIdentity, ObjectViewLayout } from '@tano/protocol';
 import { useWorkspaceStore } from '../../stores/workspace';
 import { t } from '../../i18n/i18n';
@@ -22,6 +22,7 @@ const writable = computed(() => store.workspace?.id === props.view.workspaceId &
 const records = computed(() => store.workspace?.id === props.view.workspaceId ? store.objects : []);
 const projection = computed(() => viewEngine.query(records.value.map(record => record.object), query.value, store.relations));
 const types = computed(() => store.objectDefinitions.filter(type => type.storage === 'record' && !type.retired));
+const creatableTypes = computed(() => types.value.filter(type => !type.legacy));
 const fields = computed(() => {
   const names = new Map([['name', '名称'], ['type', '类型'], ['description', '描述'], ['archived', '归档'], ['property:status', '状态']]);
   for (const type of types.value) for (const field of type.fields) names.set(`property:${field.key}`, field.label);
@@ -50,9 +51,7 @@ async function setStatus(row: WorkspaceObject, event: Event) {
   const status = (event.target as HTMLSelectElement).value;
   busy.value = true; error.value = '';
   try {
-    const value = JSON.parse(JSON.stringify(row)) as WorkspaceObject;
-    value.properties.status = status;
-    if (value.type === 'task') value.properties.completed = ['已完成', 'done', 'completed'].includes(status);
+    const value = withPlanStatus(JSON.parse(JSON.stringify(row)) as WorkspaceObject, status);
     await store.updateObject(record, value, props.view.workspaceId);
   } catch (reason) { error.value = String(reason); (event.target as HTMLSelectElement).value = objectViewText(row.properties.status); }
   finally { busy.value = false; }
@@ -85,7 +84,7 @@ async function setStatus(row: WorkspaceObject, event: Event) {
     <p v-if="stale" role="status">{{ t('视图已在外部更新，当前设置仍保留。') }}<button @click="reload">{{ t('丢弃当前设置并重新载入') }}</button></p>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-for="message in store.objectErrors" :key="message" role="alert">{{ message }}</p>
-    <div class="controls"><button v-for="type in types" :key="type.type" :disabled="!writable || busy" @click="panel = { type: type.type }">{{ t('新建{0}', [t(type.label)]) }}</button></div>
+    <div class="controls"><button v-for="type in creatableTypes" :key="type.type" :disabled="!writable || busy" @click="panel = { type: type.type }">{{ t('新建{0}', [t(type.label)]) }}</button></div>
     <p v-if="!projection.rows.length">{{ t('没有符合条件的对象记录。') }}</p>
     <div v-if="query.layout === 'table'" class="table-scroll"><table><thead><tr><th>{{ t('名称') }}</th><th>{{ t('类型') }}</th><th>{{ t('状态') }}</th><th>{{ t('描述') }}</th><th>{{ t('关联') }}</th></tr></thead><tbody>
       <tr v-for="row in projection.rows" :key="referenceKey(row)" :data-object-id="row.id"><td><button @click="panel = { id: row.id }">{{ row.name }}</button></td><td>{{ t(label(row.type)) }}</td><td><select :value="row.properties.status ?? ''" :aria-label="`${t('状态')}：${row.name}`" :disabled="!writable || busy || row.properties.syncReadOnly === true" @change="setStatus(row, $event)"><option value="">{{ t('未设置') }}</option><option v-for="status in statuses" :key="status">{{ status }}</option></select></td><td>{{ row.description }}</td><td>{{ countLinks(row) }}</td></tr>

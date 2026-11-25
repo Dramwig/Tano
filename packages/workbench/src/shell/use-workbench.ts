@@ -20,6 +20,8 @@ import {
   isDataTableFilePath,
   isMarkdown,
   isObjectPath,
+  isPlanObject,
+  isPlanObjectType,
   isWorkspaceInternalPath,
   parentPath,
   relativeWorkspaceReference,
@@ -55,6 +57,8 @@ import { GRAPH_TAB_ID } from '../documents/document-graph';
 import type { HelpAvailability, HelpContext } from '../help/help-content';
 import { t, uiLocale } from '../i18n/i18n';
 import { planKey } from '../plans/personal-plans';
+import { expandRecurringPlans } from '../plans/recurrence';
+import { LocalReminderScheduler } from '../plans/local-reminders';
 import { mobile } from '../platform/platform';
 import { nativeListen as listen } from '../platform/native-bridge';
 import { pluginPreviewStatus, pluginViewHeader } from '../plugins/view-header';
@@ -638,16 +642,32 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     void workspaceSync.action('status');
   }
   let syncTimer: ReturnType<typeof setInterval> | undefined;
+  let reminderTimer: ReturnType<typeof setInterval> | undefined;
+  const reminderScheduler = new LocalReminderScheduler({
+    onRemind: (item) => {
+      store.report(t('日程提醒：{0}', [item.record.object.name]));
+    },
+  });
+  function checkPlanReminders() {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    const now = new Date();
+    const windowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const windowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
+    const records = expandRecurringPlans(plans.recordsFor('all'), windowStart, windowEnd);
+    reminderScheduler.check(records, now.getTime());
+  }
   onMounted(() => {
     window.addEventListener(syncEvent, openSystemSync);
     if (native && !mobile)
       syncTimer = setInterval(() => {
         void workspaceSync.tick();
       }, 30_000);
+    reminderTimer = setInterval(checkPlanReminders, 60_000);
   });
   onBeforeUnmount(() => {
     window.removeEventListener(syncEvent, openSystemSync);
     clearInterval(syncTimer);
+    clearInterval(reminderTimer);
     workspaceSync.reset();
   });
   watch(
@@ -889,7 +909,7 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
   function showPlanEvent(key: string) {
     const personal = plans.personal.find((item) => planKey(item) === key);
     const local = store.objects.find(
-      (item) => item.object.id === key && ['event', 'task'].includes(item.object.type),
+      (item) => item.object.id === key && isPlanObject(item.object),
     );
     const record =
       personal ??
@@ -957,7 +977,7 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
       return;
     }
     if (identity.type !== 'document') {
-      if (['event', 'task'].includes(identity.type)) showPlanEvent(identity.id);
+      if (isPlanObjectType(identity.type)) showPlanEvent(identity.id);
       else if (['document', 'asset'].includes(identity.type)) showFileObject(identity);
       else showObjects(identity.id);
       return;

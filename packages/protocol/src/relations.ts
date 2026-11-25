@@ -12,7 +12,7 @@ export interface RelationTypeDefinition {
 }
 export const coreRelationTypes: readonly RelationTypeDefinition[] = [
   { type: 'member', label: '成员', sourceTypes: ['person'], targetTypes: ['project'], level: 2 },
-  { type: 'contains', label: '包含', sourceTypes: ['project'], targetTypes: ['task', 'experiment', 'document', 'asset'], level: 2 },
+  { type: 'contains', label: '包含', sourceTypes: ['project'], targetTypes: ['event', 'task', 'experiment', 'document', 'asset'], level: 2 },
   { type: 'related', label: '关联', sourceTypes: ['*'], targetTypes: ['*'], level: 2 },
   { type: 'assigned', label: '负责', sourceTypes: ['person'], targetTypes: ['event', 'task', 'project', 'experiment'], level: 2 },
   { type: 'authored', label: '撰写', sourceTypes: ['person'], targetTypes: ['document'], level: 2 },

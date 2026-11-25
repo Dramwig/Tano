@@ -57,27 +57,26 @@ function mountPanel(objects: ObjectRecord[] = [], selectedId?: string, visible =
   return store;
 }
 it('keeps unsaved typed drafts separate when reopening database creation controls', async () => {
-  const visible = ref(true), type = ref('task');
+  const visible = ref(true), type = ref('event');
   mountPanel([], undefined, visible, type);
   const name = () => root.querySelector<HTMLInputElement>('input[maxlength="200"]')!;
-  name().value = 'Unsaved task';
+  name().value = 'Unsaved event';
   name().dispatchEvent(new Event('input', { bubbles: true }));
   visible.value = false; await nextTick();
   type.value = 'project'; visible.value = true; await nextTick();
   expect(name().value).toBe('');
   expect(root.querySelector('select')!.value).toBe('project');
   visible.value = false; await nextTick();
-  type.value = 'task'; visible.value = true; await nextTick();
-  expect(name().value).toBe('Unsaved task');
+  type.value = 'event'; visible.value = true; await nextTick();
+  expect(name().value).toBe('Unsaved event');
 });
-it('offers task, project and experiment schemas alongside events and saves offset timestamps', async () => {
+it('hides legacy task from new creation while offering canonical event and other core schemas', async () => {
   const store = mountPanel();
   Array.from(root.querySelectorAll('button'))
     .find((button) => button.textContent?.includes('新建对象'))!
     .click();
   await nextTick();
   expect(Array.from(root.querySelectorAll('option')).map((option) => option.value)).toEqual([
-    'task',
     'project',
     'experiment',
     'person',
