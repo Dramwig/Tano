@@ -35,7 +35,7 @@ This requirement applies to release work, not ordinary non-release Git operation
    `git merge --no-ff dev`. Prepare versions locally on main with
    `node scripts/release/release-plan.mjs prepare patch core` (minor, major or an exact
    stable version also work). This aligns npm/Tauri/Cargo versions and locks and
-   drafts release notes. **Prepare Core release PR** remains an optional helper.
+   drafts release notes.
 2. Review the version changes, then commit and push main normally. When using a
    release branch, merge with `--no-ff`. Before tagging, complete the full local
    check and applicable platform acceptance on the final integrated release
@@ -49,18 +49,14 @@ This requirement applies to release work, not ordinary non-release Git operation
    evidence, or publish locally with `npm run core:publish -- --apply --evidence
    <json>`. Follow [Core distribution](core-distribution.md). Five npm packages
    use `@tano.page`; the Rust crate uses crates.io. Publish the small discovery
-   manifest with the Core GitHub Release. **Export reviewed Core** remains an
-   optional transport export; its expiring artifact is not a dependency source.
+   manifest with the Core GitHub Release.
 5. In the consumer, run `npm run core:sync -- --registry <manifest-file-or-url>`
    and commit the manifests/locks and removal of tracked snapshots to dev. The
    explicit sync includes local validation; it is not a prerequisite for ordinary
-   Git work. **Sync reviewed Core** remains an optional manual PR helper and
-   installs published packages without running test suites in Actions.
+   Git work.
 6. Synchronize main into dev locally with `git merge --no-ff main` and push dev.
-   **Sync main into dev** remains an optional manual PR helper. Neither path starts
-   Actions or requires a PR to update the protected branches.
+   This path starts no Actions and requires no PR to update the protected branches.
 
-Android and Apple preview builds are manual-only and build without running tests.
 Local `npm run version:set -- X.Y.Z` and `npm run core:export` remain available.
 
 For public Windows x64 Tano Local installers, manually dispatch **Build reviewed
@@ -84,10 +80,10 @@ it in Git. Use the App ID, not its Client ID or Installation ID. Do not reuse a
 human CLI token as an automation secret. App credentials are not yet implied by
 the existence of these files; configure them before manually using write jobs.
 
-To verify write access, manually dispatch **Sync main into dev** when main has a
-commit missing from dev and verify the PR author. A no-op with equal branches
-cannot prove write permissions. The PR starts no CI; test locally when useful
-for its changes, and apply the release gate if publishing a new version.
+Verify write access on the first manual tag-creating run by checking that the
+tag was created through the App identity. A run that writes nothing cannot prove
+write permissions. These jobs start no CI; apply the release gate before
+publishing a new version.
 Rotate keys by installing and validating the replacement before revoking the old
 key. Production credentials remain separately managed by the consumer.
 
