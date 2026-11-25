@@ -125,6 +125,14 @@
     :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-close:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
   }
 
+  /* Continuous (default) layout in the browser: the page lies over the sidebar, so its left corners are
+     rounded where it meets the sidebar. The pane host already clips its panes, so rounding it rounds the
+     page surface and its content together. Native tab strips draw their own top-left join instead.
+     The radius follows the selected shape (形态与密度) through --radius-card. */
+  :root[data-layout='continuous']:not(.compact-layout) .app-shell:not(.sidebar-hidden):not(:has(.workspace-native-tabs)) .workspace-panes {
+    border-radius: var(--radius-card) 0 0 var(--radius-card);
+  }
+
   .layout-document-caption { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .layout-document-filename { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
