@@ -1,5 +1,6 @@
 import { startupCopy } from '@tano/workbench/startup-copy';
 import { applyTheme, readThemePreference } from '@tano/workbench/theme';
+import { installInterfaceFont } from '@tano/workbench/interface-font';
 import { applyUiLocale, readUiLocale } from '@tano/workbench/locale';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { startupPaint } from './startup-paint';
@@ -8,6 +9,8 @@ import { startupPaint } from './startup-paint';
 applyTheme(readThemePreference());
 const locale = readUiLocale();
 applyUiLocale(locale);
+// After the locale: the bundled Chinese face is preloaded only for zh-CN/English UI.
+installInterfaceFont();
 // Keep startup recovery independent of Vue and the workbench message catalog.
 const startupText = startupCopy(locale);
 

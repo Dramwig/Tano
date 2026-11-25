@@ -70,6 +70,7 @@ export function buildSettingSearchEntries(options: {
             : []),
         ]
       : []),
+    settingSearchEntry('appearance', 'appearance-interface-font', '界面字体', '用于侧栏、标签、菜单和对话框，不影响文档正文。仅保存在当前设备。', 'interface UI font Inter Noto 思源黑体 system sidebar menu 界面 字体 侧栏 菜单'),
     ...(!splitFontsEnabled
       ? [
           settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom'),

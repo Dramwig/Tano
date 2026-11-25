@@ -6,6 +6,8 @@ The Inter font uses the SIL Open Font License in `apps/client/public/INTER-LICEN
 
 The Literata font uses the SIL Open Font License in `apps/client/public/LITERATA-LICENSE.txt`.
 
+The interface bundles Noto Sans CJK SC Regular, Medium and Bold (copyright 2014-2021 Adobe, Reserved Font Name "Source") under the SIL Open Font License in `apps/client/public/NOTO-SANS-CJK-LICENSE.txt`. They are Modified Versions: subset to GB2312 characters, converted to WOFF2, and renamed "Tano UI Sans SC" (`packages/workbench/src/fonts/TanoUISansSC-*.woff2`, rebuilt by `scripts/fonts/subset-ui-cjk.py`).
+
 The open workspace button embeds the [Bootstrap Icons folder-symlink SVG](https://github.com/twbs/icons/blob/main/icons/folder-symlink.svg), copyright (c) 2019-2024 The Bootstrap Authors, under MIT. Its source reference and license are retained in [packages/workbench/src/assets/bootstrap/](../packages/workbench/src/assets/bootstrap/README.md) and the client distribution notices.
 
 The source mode button embeds the [Tabler Icons source-code outline SVG](https://github.com/tabler/tabler-icons/blob/main/icons/outline/source-code.svg), copyright (c) 2020-2026 Paweł Kuna, under MIT. Its source and license are retained in [packages/workbench/src/assets/tabler/](../packages/workbench/src/assets/tabler/README.md) and the generated client distribution notices.

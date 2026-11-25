@@ -15,6 +15,7 @@
     "./markdown-demo-routes": "./src/workspace/markdown-demo-routes.ts",
     "./platform": "./src/platform/platform.ts",
     "./theme": "./src/appearance/theme.ts",
+    "./interface-font": "./src/appearance/interface-font.ts",
     "./i18n": "./src/i18n/i18n.ts",
     "./shortcuts": "./src/shell/shortcuts.ts",
     "./document-print": "./src/documents/document-print.ts",
