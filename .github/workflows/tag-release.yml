@@ -20,6 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - run: npm ci --ignore-scripts
       - run: node scripts/release/release-plan.mjs check
       - uses: ./.github/actions/release-token
         id: identity
