@@ -51,6 +51,7 @@ import {
   DataTablePage,
   DocumentComments,
   EditorTools,
+  MailWorkspaceView,
   MarkdownEditor,
   PluginInstaller,
   RelationGraph,
@@ -150,6 +151,9 @@ const {
   PLUGINS_TAB_ID,
   extensionViews,
   settingsTabView,
+  MAIL_TAB_ID,
+  mailEnabled,
+  mailTabView,
   touchLayout,
   showOutline,
   touchOutlineOpen,
@@ -505,7 +509,7 @@ const ownsFullscreenAssistant = computed(() => {
                     >{{ t('插件') }}</span
                   ></template
                 ><template
-                  v-for="view in [...extensionViews, settingsTabView].filter((view) => view.id === pane.activeId)"
+                  v-for="view in [...extensionViews, settingsTabView, ...(mailEnabled ? [mailTabView] : [])].filter((view) => view.id === pane.activeId)"
                   :key="view.id"
                   ><component :is="view.icon" :size="14" /><span
                     class="breadcrumb-current"
@@ -927,6 +931,7 @@ const ownsFullscreenAssistant = computed(() => {
             </template>
 
             <WorkbenchSettings v-if="pane.activeId === SETTINGS_TAB_ID" tabbed />
+            <MailWorkspaceView v-else-if="mailEnabled && pane.activeId === MAIL_TAB_ID" />
             <PluginDetailPage v-if="tab?.pluginDetail" :plugin-id="tab.pluginDetail.id" />
             <PluginView v-else-if="pane.activeId.startsWith('plugin:')" :view-key="pane.activeId" />
             <main
@@ -1280,6 +1285,7 @@ const ownsFullscreenAssistant = computed(() => {
                 pane.activeId !== PLUGINS_TAB_ID &&
                 pane.activeId !== CALENDAR_TAB_ID &&
                 pane.activeId !== SETTINGS_TAB_ID &&
+                (!mailEnabled || pane.activeId !== MAIL_TAB_ID) &&
                 !isTableTab(pane.activeId) &&
                 !pane.activeId.startsWith('workspace-view:') &&
                 !pane.activeId.startsWith('plugin:') &&

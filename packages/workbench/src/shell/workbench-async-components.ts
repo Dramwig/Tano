@@ -58,6 +58,14 @@ export const CalendarView = loadingComponent(
   () => import('../plans/components/CalendarView.vue'),
   'document',
 );
+export const MailWorkspaceView = loadingComponent(
+  () => import('../mail/components/MailWorkspaceView.vue'),
+  'document',
+);
+export const SidebarMail = loadingComponent(
+  () => import('../mail/components/SidebarMail.vue'),
+  'tree',
+);
 export const DataTablePage = loadingComponent(
   () => import('../data-tables/components/DataTablePage.vue'),
   'spreadsheet',

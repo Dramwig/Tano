@@ -26,6 +26,8 @@ The optional standalone [vscode-icons plugin](../examples/plugins/vscode-icons/R
 
 The assistant model picker bundles 18 unmodified SVGs from [Lobe Icons](https://github.com/lobehub/lobe-icons), distributed under MIT. The license, package version, integrity hash, and asset paths are retained in [packages/workbench/src/assets/model-icons/](../packages/workbench/src/assets/model-icons/README.md) and the generated client distribution notices.
 
+The mail provider selectors bundle the original Gmail SVG and SVG adaptations of official artwork for the other mail services. Source and trademark notices are retained in the [mail provider asset notice](../packages/workbench/src/assets/mail-provider-icons/NOTICE.txt) and the client distribution notices.
+
 The code block language picker bundles SVGs from [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme) and [Devicon](https://github.com/devicons/devicon). Both sets are distributed under MIT; their license texts and source versions are recorded in `packages/editor/src/language-icons/`.
 
 Callout titles bundle five duotone SVGs from [Phosphor Icons](https://github.com/phosphor-icons/core), distributed under MIT. The license text, pinned source revision, and asset paths are recorded in [packages/editor/src/callout-icons/](../packages/editor/src/callout-icons/README.md).

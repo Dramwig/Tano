@@ -10,7 +10,9 @@ import {
   watch,
 } from 'vue';
 import { storeToRefs } from 'pinia';
-import { Bot, Settings2 } from 'lucide-vue-next';
+import { Bot, Mail, Settings2 } from 'lucide-vue-next';
+import { isFeatureEnabled } from '../features';
+import { MAIL_TAB_ID } from '../mail/types';
 import { version as appVersion } from '../../package.json';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
 import {
@@ -238,9 +240,20 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     scope: 'account',
     detachable: true,
   };
+  const mailEnabled = isFeatureEnabled('desktopMailClient') && native && !mobile;
+  const mailTabView: WorkbenchViewTab = {
+    id: MAIL_TAB_ID,
+    get label() {
+      return t('邮箱');
+    },
+    icon: Mail,
+    scope: 'account',
+    detachable: false,
+  };
   store.registerViews([
     ...extensionViews,
     settingsTabView,
+    ...(mailEnabled ? [mailTabView] : []),
     { id: ASSISTANT_TAB_ID, label: t('助手'), icon: Bot },
   ]);
   store.setBeforeWorkspaceChange(async () => {
@@ -385,6 +398,24 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     ]),
   );
 
+  function openMail() {
+    if (!mailEnabled) return;
+    if (navigationContext.value === 'home') personalPlanScope = plans.view;
+    calendar.rememberCalendar();
+    navigation.openInHome(MAIL_TAB_ID);
+    calendar.restoreCalendar();
+    if (!store.workspace) homeContent.value = MAIL_TAB_ID;
+    else store.openViewTab(MAIL_TAB_ID);
+    if (compactPanes.value) sidebar.value = false;
+  }
+  watch(
+    () => navigation.homeModule.value,
+    (mod) => {
+      if (!mailEnabled && mod === MAIL_TAB_ID) navigation.homeModule.value = 'plan';
+    },
+    { immediate: true },
+  );
+
   // Header / toolbar visibility item descriptors
   const sidebarNavigationItems = computed(() => [
     {
@@ -393,6 +424,16 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
         return t('计划');
       },
     },
+    ...(mailEnabled
+      ? [
+          {
+            id: MAIL_TAB_ID,
+            get label() {
+              return t('邮箱');
+            },
+          },
+        ]
+      : []),
     ...extensionViews
       .filter((view) => view.sidebar)
       .map((view) => ({ id: view.id, label: view.label })),
@@ -1691,6 +1732,10 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     showCalendarMonth: calendar.showCalendarMonth,
     openAssistantPage,
     SETTINGS_TAB_ID,
+    MAIL_TAB_ID,
+    mailEnabled,
+    mailTabView,
+    openMail,
     selectedVisualFontFamily: prefs.selectedVisualFontFamily,
     visualFontSize: prefs.visualFontSize,
     setPaneSearch: docs.setPaneSearch,

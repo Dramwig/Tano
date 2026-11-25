@@ -8,6 +8,8 @@ pub mod error;
 #[cfg(desktop)]
 mod import;
 mod ipc;
+#[cfg(desktop)]
+pub mod mail;
 mod plans;
 #[cfg(desktop)]
 mod plugins;
@@ -160,6 +162,8 @@ pub fn configure_with_commands(
     let builder = builder.manage(plugin_native::PluginNativeState::default());
     #[cfg(desktop)]
     let builder = builder.manage(plugin_oauth::PluginOAuthState::default());
+    #[cfg(desktop)]
+    let builder = builder.manage(mail::MailState::default());
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

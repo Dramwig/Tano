@@ -14,6 +14,7 @@ import {
   FolderPlus,
   GitFork,
   House,
+  Mail,
   PanelLeftOpen,
   RefreshCw,
   Search,
@@ -53,7 +54,9 @@ import WindowScope from './windows/WindowScope.vue';
 import {
   CalendarView,
   InlineAssistantInput,
+  MailWorkspaceView,
   SidebarAssistant,
+  SidebarMail,
   SidebarPlan,
 } from './shell/workbench-async-components';
 import { workbenchContextKey } from './shell/workbench-context';
@@ -108,6 +111,9 @@ const {
   modal,
   settingsPanel,
   SETTINGS_TAB_ID,
+  MAIL_TAB_ID,
+  mailEnabled,
+  openMail,
   repositoryActionItems,
   showModal,
   activeId,
@@ -378,6 +384,21 @@ const brandButton = ref<HTMLElement | null>(null);
             ><span>{{ t('计划') }}</span></span
           >
         </button>
+        <button
+          v-if="mailEnabled && isVisible(MAIL_TAB_ID)"
+          type="button"
+          class="sidebar-navigation-button"
+          :aria-label="t('邮箱')"
+          :data-tooltip="t('邮箱')"
+          :aria-controls="`sidebar-${MAIL_TAB_ID}`"
+          :aria-pressed="sidebarView === MAIL_TAB_ID"
+          @click="openMail()"
+        >
+          <Mail :size="18" :stroke-width="1.6" aria-hidden="true" />
+          <span :aria-hidden="sidebarView !== MAIL_TAB_ID"
+            ><span>{{ t('邮箱') }}</span></span
+          >
+        </button>
         <template v-for="view in extensionViews" :key="view.id">
           <button
             v-if="
@@ -527,6 +548,11 @@ const brandButton = ref<HTMLElement | null>(null);
         :date="sidebarCalendarDate"
         @select-date="openCalendar"
         @select-event="showPlanEvent"
+      />
+      <SidebarMail
+        v-if="mailEnabled && sidebarView === MAIL_TAB_ID"
+        :id="`sidebar-${MAIL_TAB_ID}`"
+        @open-mail="openMail"
       />
       <template v-for="view in extensionViews" :key="view.id">
         <div
@@ -931,6 +957,7 @@ const brandButton = ref<HTMLElement | null>(null);
         </template>
         <template #default="{ pane }">
           <WorkbenchSettings v-if="pane.activeId === SETTINGS_TAB_ID" tabbed />
+          <MailWorkspaceView v-else-if="mailEnabled && pane.activeId === MAIL_TAB_ID" />
           <template v-for="view in extensionViews" :key="view.id"
             ><component
               v-if="pane.activeId === view.id"
@@ -953,6 +980,7 @@ const brandButton = ref<HTMLElement | null>(null);
           @select-month="showCalendarMonth"
           @select-event="showPlanEvent"
         />
+        <MailWorkspaceView v-else-if="mailEnabled && homeContent === MAIL_TAB_ID" />
         <component
           v-else-if="homeExtension"
           :is="homeExtension.component"
