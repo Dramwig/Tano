@@ -104,7 +104,7 @@ it('enforces delivery review lock on both completed flag and done status', () =>
   expect(() => validateObjectProperties('event', approved.properties)).not.toThrow();
 });
 
-it('validates extended event fields and allows project contains event relations', () => {
+it('validates extended event fields and core relations for events', () => {
   expect(() =>
     validateObjectProperties('event', {
       checkable: true,
@@ -153,11 +153,22 @@ it('validates extended event fields and allows project contains event relations'
     validateRelation(
       {
         id: 'e00001',
+        type: 'assigned',
+        source: { type: 'person', id: 'a00001' },
+        target: { type: 'event', id: 'a00002' },
+      },
+      coreRelationTypes,
+    ),
+  ).not.toThrow();
+  expect(() =>
+    validateRelation(
+      {
+        id: 'e00002',
         type: 'contains',
         source: { type: 'project', id: 'a00001' },
         target: { type: 'event', id: 'a00002' },
       },
       coreRelationTypes,
     ),
-  ).not.toThrow();
+  ).toThrow();
 });

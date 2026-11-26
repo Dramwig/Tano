@@ -14,7 +14,7 @@ export interface ObjectViewQuery {
   /** Optional relationship query. The endpoint remains an ID, never a copied record. */
   relatedTo?: ReferenceIdentity;
 }
-export const defaultObjectViewQuery = (): ObjectViewQuery => ({ layout: 'table', types: ['task', 'project', 'experiment'], includeArchived: false,
+export const defaultObjectViewQuery = (): ObjectViewQuery => ({ layout: 'table', types: [], includeArchived: false,
   filters: [], sort: { field: 'name', direction: 'asc' }, groupBy: 'property:status' });
 export function validateObjectViewQuery(query: ObjectViewQuery) {
   const field = (value: unknown) => typeof value === 'string' && /^(name|type|description|archived|property:[\s\S]{1,100})$/.test(value);

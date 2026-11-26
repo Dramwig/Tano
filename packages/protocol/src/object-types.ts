@@ -16,8 +16,6 @@ export interface ObjectTypeDefinition {
   storage: 'record' | 'resource';
   /** Retained for existing files and references; not offered for new objects. */
   legacy?: boolean;
-  /** Compatibility metadata only; excluded from available types and all mutations. */
-  retired?: boolean;
   plugin?: string;
   fields: readonly ObjectField[];
 }
@@ -30,18 +28,6 @@ export const coreObjectTypes: readonly ObjectTypeDefinition[] = [
       { key: 'completed', label: '已完成', type: 'boolean' },
     ],
   },
-  { type: 'project', label: '项目', level: 2, category: 'core', storage: 'record', fields: [
-    { key: 'status', label: '状态', type: 'text' },
-    { key: 'goal', label: '项目目标', type: 'text' },
-    { key: 'due', label: '截止日期', type: 'text' },
-  ] },
-  { type: 'experiment', label: '实验', level: 2, category: 'core', storage: 'record', fields: [
-    { key: 'status', label: '状态', type: 'text' },
-    { key: 'hypothesis', label: '假设', type: 'text' },
-    { key: 'result', label: '实验结果', type: 'text' },
-    { key: 'metric', label: '指标', type: 'number' },
-    { key: 'runAt', label: '运行时间', type: 'datetime' },
-  ] },
   { type: 'person', label: '人物', level: 2, category: 'core', storage: 'record', fields: [] },
   { type: 'document', label: '文档', level: 2, category: 'core', storage: 'resource', fields: [] },
   {
@@ -192,8 +178,6 @@ export function validateObjectProperties(
   }
   const definition = registry.get(type);
   if (!definition) throw new Error(`类型 ${type} 未启用，请先注册对应领域插件；原文件已保留`);
-  if (definition.retired)
-    throw new Error('项目对象已停用；请使用工作区文件夹和 Markdown 文档组织项目，旧记录只读保留');
   if (definition.storage !== 'record')
     throw new Error('文档和资产来自工作区文件，不创建重复内容对象');
   for (const field of definition.fields) {
@@ -215,7 +199,7 @@ export function validateObjectProperties(
         `${field.label}格式无效${field.type === 'datetime' ? '，请使用带时区的日期时间' : ''}`,
       );
   }
-  if (['task', 'project'].includes(type) && properties.due !== undefined && properties.due !== '' && !validEventDate(properties.due)) throw new Error('截止日期格式无效，请使用 YYYY-MM-DD');
+  if (type === 'task' && properties.due !== undefined && properties.due !== '' && !validEventDate(properties.due)) throw new Error('截止日期格式无效，请使用 YYYY-MM-DD');
   if (type === 'event') {
     const hasStart = properties.start !== undefined && properties.start !== '';
     const hasEnd = properties.end !== undefined && properties.end !== '';

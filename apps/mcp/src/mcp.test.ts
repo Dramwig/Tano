@@ -44,7 +44,7 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 function open() {
-  const store = new AgentWorkspace(root, data, { access: 'write', directories: [''], objectTypes: ['task', 'project', 'experiment', 'person', 'event'] });
+  const store = new AgentWorkspace(root, data, { access: 'write', directories: [''], objectTypes: ['task', 'person', 'event'] });
   handles.push(store);
   return store;
 }

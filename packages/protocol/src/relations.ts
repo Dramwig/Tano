@@ -11,10 +11,8 @@ export interface RelationTypeDefinition {
   plugin?: string;
 }
 export const coreRelationTypes: readonly RelationTypeDefinition[] = [
-  { type: 'member', label: '成员', sourceTypes: ['person'], targetTypes: ['project'], level: 2 },
-  { type: 'contains', label: '包含', sourceTypes: ['project'], targetTypes: ['event', 'task', 'experiment', 'document', 'asset'], level: 2 },
   { type: 'related', label: '关联', sourceTypes: ['*'], targetTypes: ['*'], level: 2 },
-  { type: 'assigned', label: '负责', sourceTypes: ['person'], targetTypes: ['event', 'task', 'project', 'experiment'], level: 2 },
+  { type: 'assigned', label: '负责', sourceTypes: ['person'], targetTypes: ['event', 'task'], level: 2 },
   { type: 'authored', label: '撰写', sourceTypes: ['person'], targetTypes: ['document'], level: 2 },
   { type: 'attends', label: '参加', sourceTypes: ['person'], targetTypes: ['event'], level: 2 },
   { type: 'attachment', label: '附有资产', sourceTypes: ['*'], targetTypes: ['asset'], level: 2 },
@@ -71,8 +69,6 @@ export function validateRelation(
 ) {
   const definition = definitions.find((item) => item.type === row.type);
   if (!definition) throw new Error('关系类型未启用，请先启用对应插件');
-  if ([row.source, row.target].some((endpoint) => objectTypeRegistry.get(endpoint.type)?.retired))
-    throw new Error('项目对象已停用，不能新增关系；已有关系仍保留');
   if (
     !acceptsRelationType(definition.sourceTypes, row.source.type) ||
     !acceptsRelationType(definition.targetTypes, row.target.type)

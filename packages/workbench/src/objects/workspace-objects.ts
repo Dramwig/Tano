@@ -26,7 +26,7 @@ export async function loadObjects(adapter: Pick<ObjectStorage, 'read'>, workspac
       const snapshot = await adapter.read(file.path);
       const object = parseObject(snapshot.content);
       const definition = objectTypeRegistry.get(object.type);
-      if (definition && !definition.retired) {
+      if (definition) {
         try {
           validateObjectProperties(object.type, object.properties);
         } catch (error) {

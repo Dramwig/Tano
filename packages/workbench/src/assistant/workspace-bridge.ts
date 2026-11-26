@@ -305,7 +305,7 @@ export function createWorkspaceAssistantBridge(deps: WorkspaceAssistantBridgeDep
     let content = proposal.content;
     const validateAgentObject = (object: WorkspaceObject, base?: WorkspaceObject) => {
       const definition = objectTypeRegistry.get(object.type);
-      if (!definition || definition.storage !== 'record' || definition.retired)
+      if (!definition || definition.storage !== 'record')
         throw new Error('对象类型不可编辑');
       if (
         base &&
