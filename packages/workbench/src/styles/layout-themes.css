@@ -202,51 +202,53 @@
      and a quiet stepped double-bezel frame on standalone cards — no internal wash or bloom. Every
      layout keeps its own geometry and tab connection unchanged. */
   :root[data-material='builtin:raised'] {
-    --raised-back: color-mix(in srgb, var(--sidebar) 94%, var(--text) 6%);
+    --raised-back: color-mix(in srgb, var(--sidebar) 97.5%, var(--text) 2.5%);
     /* Uniform perimeter border avoids 45° rounded-corner miter notches; subtle depth stays strictly on the rim. */
-    --raised-edge: color-mix(in srgb, var(--text) 13%, var(--line));
+    --raised-edge: color-mix(in srgb, var(--text) 3.5%, var(--line));
+    --raised-focus-edge: color-mix(in srgb, var(--text) 8%, var(--line));
     --raised-highlight: #ffffff;
-    --raised-underside: color-mix(in srgb, var(--text) 7%, transparent);
-    /* Stepped double-bezel tray (outer rim + quiet recessed groove) for standalone cards. */
-    --raised-groove: color-mix(in srgb, var(--text) 5.5%, var(--sidebar));
-    --raised-outer-rim: color-mix(in srgb, var(--text) 13%, var(--line));
-    --raised-moat-shadow: color-mix(in srgb, var(--text) 11%, transparent);
+    --raised-underside: color-mix(in srgb, var(--text) 3%, transparent);
+    /* Stepped double-bezel tray (whisper-light outer rim + airy 3.5px recessed groove) for standalone cards. */
+    --raised-groove: color-mix(in srgb, var(--sidebar) 92%, var(--paper) 8%);
+    --raised-outer-rim: color-mix(in srgb, var(--line) 85%, var(--paper) 15%);
+    --raised-moat-shadow: color-mix(in srgb, var(--text) 3.5%, transparent);
     --raised-bevel:
       inset 0 1px 0 var(--raised-highlight),
       inset 0 -1px 0 var(--raised-underside);
     --raised-card-outer-shadow:
-      0 1px 0 color-mix(in srgb, var(--text) 6%, transparent),
-      0 2px 6px -1px color-mix(in srgb, var(--text) 9%, transparent),
-      0 8px 18px -8px color-mix(in srgb, var(--text) 11%, transparent);
+      0 1px 0 color-mix(in srgb, var(--text) 3%, transparent),
+      0 2px 6px -1px color-mix(in srgb, var(--text) 4.5%, transparent),
+      0 8px 18px -8px color-mix(in srgb, var(--text) 5.5%, transparent);
     --raised-card-shadow:
       var(--raised-bevel),
       var(--raised-card-outer-shadow);
     --raised-tray-shadow:
       var(--raised-bevel),
       0 1px 2px 0 var(--raised-moat-shadow),
-      0 0 0 3px var(--raised-groove),
-      0 0 0 4px var(--raised-outer-rim),
-      0 4px 10px -2px color-mix(in srgb, var(--text) 9%, transparent),
-      0 10px 20px -10px color-mix(in srgb, var(--text) 12%, transparent);
+      0 0 0 3.5px var(--raised-groove),
+      0 0 0 4.5px var(--raised-outer-rim),
+      0 3px 8px -2px color-mix(in srgb, var(--text) 3.5%, transparent),
+      0 8px 18px -6px color-mix(in srgb, var(--text) 3%, transparent);
     --raised-dialog-shadow:
       var(--raised-bevel),
-      0 2px 5px 0 var(--raised-moat-shadow),
-      0 0 0 3px var(--raised-groove),
-      0 0 0 4px var(--raised-outer-rim),
-      0 8px 20px -4px color-mix(in srgb, var(--text) 13%, transparent),
-      0 22px 48px -16px color-mix(in srgb, var(--text) 20%, transparent);
+      0 1.5px 3px 0 var(--raised-moat-shadow),
+      0 0 0 3.5px var(--raised-groove),
+      0 0 0 4.5px var(--raised-outer-rim),
+      0 6px 16px -4px color-mix(in srgb, var(--text) 6%, transparent),
+      0 18px 40px -14px color-mix(in srgb, var(--text) 9%, transparent);
     --raised-control-shadow:
       inset 0 1px 0 var(--raised-highlight),
-      inset 0 -1px 0 color-mix(in srgb, var(--text) 6%, transparent),
-      0 1px 2px color-mix(in srgb, var(--text) 8%, transparent);
+      inset 0 -1px 0 color-mix(in srgb, var(--text) 3%, transparent),
+      0 1px 2px color-mix(in srgb, var(--text) 4.5%, transparent);
     --raised-tab-shadow:
       inset 0 1px 0 var(--raised-highlight),
-      inset 0 -1px 0 color-mix(in srgb, var(--text) 7%, transparent),
-      0 1px 3px -1px color-mix(in srgb, var(--text) 12%, transparent);
+      inset 0 -1px 0 color-mix(in srgb, var(--text) 3.5%, transparent),
+      0 1px 3px -1px color-mix(in srgb, var(--text) 6%, transparent);
   }
   :root[data-theme='dark'][data-material='builtin:raised'] {
     --raised-back: color-mix(in srgb, var(--sidebar) 70%, #000000 30%);
     --raised-edge: color-mix(in srgb, #ffffff 10%, var(--paper));
+    --raised-focus-edge: color-mix(in srgb, #ffffff 22%, var(--paper));
     --raised-highlight: rgb(255 255 255 / 13%);
     --raised-underside: rgb(0 0 0 / 34%);
     --raised-groove: color-mix(in srgb, var(--sidebar) 56%, #000000 44%);
@@ -264,8 +266,8 @@
     --raised-tray-shadow:
       var(--raised-bevel),
       0 1px 3px 0 var(--raised-moat-shadow),
-      0 0 0 3px var(--raised-groove),
-      0 0 0 4px var(--raised-outer-rim),
+      0 0 0 3.5px var(--raised-groove),
+      0 0 0 4.5px var(--raised-outer-rim),
       0 6px 14px -4px rgb(0 0 0 / 46%);
     --raised-dialog-shadow:
       var(--raised-bevel),
@@ -520,12 +522,12 @@
     box-shadow: var(--raised-tray-shadow);
   }
   :root[data-material='builtin:raised'][data-layout] .assistant-composer:focus-within {
-    border-color: color-mix(in srgb, var(--green) 55%, var(--raised-edge));
+    border-color: var(--raised-focus-edge);
   }
   :root[data-material='builtin:raised'][data-layout] .theme-preset-card:not(.theme-preset-card-borderless, :disabled):hover,
   :root[data-material='builtin:raised'][data-layout] .theme-preset-more:hover,
   :root[data-material='builtin:raised'][data-layout] .theme-preset-more[aria-expanded='true'] {
-    border-color: color-mix(in srgb, var(--green) 55%, var(--raised-edge));
+    border-color: var(--raised-focus-edge);
   }
   :root.compact-layout[data-material='builtin:raised'][data-layout] .settings-backdrop:not(.settings-tabbed, .settings-windowed) > .settings-dialog {
     border: 0;

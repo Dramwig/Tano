@@ -101,19 +101,19 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 [data-preview-structure='document'] .theme-preview-paragraph-short { display: flex; }
 /* Raised card: clean flat surfaces with crisp 1px edge bevels and quiet double-bezel tray (see layout-themes.css). */
 .theme-preview[data-preview-surface='raised'] .theme-preview-scene {
-  --preview-raised-edge: color-mix(in srgb, var(--preview-text) 14%, var(--preview-line));
+  --preview-raised-edge: color-mix(in srgb, var(--preview-text) 5%, var(--preview-line));
   --preview-raised-highlight: #ffffff;
-  --preview-raised-underside: color-mix(in srgb, var(--preview-text) 9%, transparent);
-  --preview-raised-groove: color-mix(in srgb, var(--preview-text) 6%, var(--preview-sidebar));
-  --preview-raised-outer: color-mix(in srgb, var(--preview-text) 14%, var(--preview-line));
+  --preview-raised-underside: color-mix(in srgb, var(--preview-text) 4%, transparent);
+  --preview-raised-groove: color-mix(in srgb, var(--preview-sidebar) 92%, var(--preview-paper) 8%);
+  --preview-raised-outer: color-mix(in srgb, var(--preview-line) 85%, var(--preview-paper) 15%);
   --preview-raised-shadow:
     inset 0 1px 0 var(--preview-raised-highlight),
     inset 0 -1px 0 var(--preview-raised-underside),
-    0 1px 2px 0 color-mix(in srgb, var(--preview-text) 12%, transparent),
+    0 1px 2px 0 color-mix(in srgb, var(--preview-text) 4.5%, transparent),
     0 0 0 2px var(--preview-raised-groove),
     0 0 0 2.5px var(--preview-raised-outer),
-    0 3px 6px -2px color-mix(in srgb, var(--preview-text) 14%, transparent);
-  background: color-mix(in srgb, var(--preview-sidebar) 94%, var(--preview-text) 6%);
+    0 3px 6px -2px color-mix(in srgb, var(--preview-text) 5%, transparent);
+  background: color-mix(in srgb, var(--preview-sidebar) 97.5%, var(--preview-text) 2.5%);
 }
 .theme-preview[data-preview-surface='raised'] .theme-preview-scene[data-preview-mode='dark'] {
   --preview-raised-edge: color-mix(in srgb, #ffffff 11%, var(--preview-paper));
