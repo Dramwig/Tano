@@ -172,11 +172,11 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
 .plan-date-picker { position: relative; }
 .plan-date-picker.with-leading { padding-left: 20px; border-left: 1px solid var(--line); }
 .plan-date-field .plan-schedule-trigger { gap: 10px; min-height: 36px; padding: 4px 6px; border-radius: 6px; font-size: 15px; color: var(--text-secondary); }
-.plan-date-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 5; min-width: 176px; padding: 5px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); box-shadow: 0 6px 24px #0f0f0f1c; }
+.plan-date-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 5; min-width: 176px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); box-shadow: var(--overlay-shadow, 0 6px 24px #0f0f0f1c); }
 .with-leading .plan-date-menu { left: 20px; }
-.plan-date-field .plan-date-menu button { display: flex; width: 100%; padding: 9px; gap: 10px; color: var(--text-secondary); font-size: 13px; text-align: left; }
+.plan-date-field .plan-date-menu button { display: flex; width: 100%; padding: 8px 9px; gap: 10px; border-radius: 6px; color: var(--text-secondary); font-size: 13px; text-align: left; }
 .plan-date-menu button span { flex: 1; }
-.plan-date-field .plan-date-menu button[aria-checked='true'] { background: var(--accent); color: var(--green); }
+.plan-date-field .plan-date-menu button[aria-checked='true'] { background: var(--accent); color: var(--text); font-weight: 500; }
 .plan-date-field button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .plan-date-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 16px; margin-top: 22px; }
 .plan-date-inputs > label, .plan-date-input { display: grid; gap: 8px; min-width: 0; }
@@ -184,7 +184,9 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
 .plan-date-precision { flex-shrink: 0; white-space: nowrap; }
 .plan-date-field input { box-sizing: border-box; width: 100%; min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--paper); font: inherit; font-size: 14px; }
 .plan-date-field :is(input, button):disabled { opacity: 0.55; cursor: not-allowed; }
-.plan-date-field :is(input, button):focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.plan-date-field button:focus-visible { outline: 2px solid var(--focus-ring, var(--green)); outline-offset: 2px; }
+.plan-date-field input:hover:not(:disabled) { border-color: var(--control-border); }
+.plan-date-field input:focus-visible { outline: none; border-color: color-mix(in srgb, var(--text) 40%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 8%, transparent); }
 .plan-date-field.is-compact .plan-date-heading { justify-content: space-between; gap: 8px; min-height: 28px; }
 .plan-date-field.is-compact .plan-schedule-trigger { padding: 0; gap: 7px; min-height: 28px; font-size: 12px; }
 .plan-date-field.is-compact .plan-schedule-trigger > svg:first-child { width: 15px; height: 15px; }

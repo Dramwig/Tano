@@ -197,6 +197,342 @@
   :root[data-layout-theme][data-surface='paper'] .document-main { background-image: radial-gradient(color-mix(in srgb, var(--text) 2.5%, transparent) .6px, transparent .9px); background-size: 5px 5px; }
   :root[data-layout-theme][data-surface='paper'] :is(.settings-dialog, .modal, .dropdown) { border-radius: var(--radius-dialog); border: 1px solid var(--layout-edge); box-shadow: var(--overlay-shadow); }
 
+  /* Raised card (立体卡片, builtin:raised) keeps clean flat opaque surfaces with subtle edge-only
+     dimensionality: a crisp 1px overhead rim highlight, subtle 1px underside lip, gentle drop shadow,
+     and a quiet stepped double-bezel frame on standalone cards — no internal wash or bloom. Every
+     layout keeps its own geometry and tab connection unchanged. */
+  :root[data-material='builtin:raised'] {
+    --raised-back: color-mix(in srgb, var(--sidebar) 94%, var(--text) 6%);
+    /* Uniform perimeter border avoids 45° rounded-corner miter notches; subtle depth stays strictly on the rim. */
+    --raised-edge: color-mix(in srgb, var(--text) 13%, var(--line));
+    --raised-highlight: #ffffff;
+    --raised-underside: color-mix(in srgb, var(--text) 7%, transparent);
+    /* Stepped double-bezel tray (outer rim + quiet recessed groove) for standalone cards. */
+    --raised-groove: color-mix(in srgb, var(--text) 5.5%, var(--sidebar));
+    --raised-outer-rim: color-mix(in srgb, var(--text) 13%, var(--line));
+    --raised-moat-shadow: color-mix(in srgb, var(--text) 11%, transparent);
+    --raised-bevel:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 0 -1px 0 var(--raised-underside);
+    --raised-card-outer-shadow:
+      0 1px 0 color-mix(in srgb, var(--text) 6%, transparent),
+      0 2px 6px -1px color-mix(in srgb, var(--text) 9%, transparent),
+      0 8px 18px -8px color-mix(in srgb, var(--text) 11%, transparent);
+    --raised-card-shadow:
+      var(--raised-bevel),
+      var(--raised-card-outer-shadow);
+    --raised-tray-shadow:
+      var(--raised-bevel),
+      0 1px 2px 0 var(--raised-moat-shadow),
+      0 0 0 3px var(--raised-groove),
+      0 0 0 4px var(--raised-outer-rim),
+      0 4px 10px -2px color-mix(in srgb, var(--text) 9%, transparent),
+      0 10px 20px -10px color-mix(in srgb, var(--text) 12%, transparent);
+    --raised-dialog-shadow:
+      var(--raised-bevel),
+      0 2px 5px 0 var(--raised-moat-shadow),
+      0 0 0 3px var(--raised-groove),
+      0 0 0 4px var(--raised-outer-rim),
+      0 8px 20px -4px color-mix(in srgb, var(--text) 13%, transparent),
+      0 22px 48px -16px color-mix(in srgb, var(--text) 20%, transparent);
+    --raised-control-shadow:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 0 -1px 0 color-mix(in srgb, var(--text) 6%, transparent),
+      0 1px 2px color-mix(in srgb, var(--text) 8%, transparent);
+    --raised-tab-shadow:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 0 -1px 0 color-mix(in srgb, var(--text) 7%, transparent),
+      0 1px 3px -1px color-mix(in srgb, var(--text) 12%, transparent);
+  }
+  :root[data-theme='dark'][data-material='builtin:raised'] {
+    --raised-back: color-mix(in srgb, var(--sidebar) 70%, #000000 30%);
+    --raised-edge: color-mix(in srgb, #ffffff 10%, var(--paper));
+    --raised-highlight: rgb(255 255 255 / 13%);
+    --raised-underside: rgb(0 0 0 / 34%);
+    --raised-groove: color-mix(in srgb, var(--sidebar) 56%, #000000 44%);
+    --raised-outer-rim: color-mix(in srgb, #ffffff 8.5%, var(--sidebar));
+    --raised-moat-shadow: rgb(0 0 0 / 50%);
+    --raised-bevel:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 0 -1px 0 var(--raised-underside);
+    --raised-card-outer-shadow:
+      0 1px 2px rgb(0 0 0 / 34%),
+      0 6px 16px -6px rgb(0 0 0 / 48%);
+    --raised-card-shadow:
+      var(--raised-bevel),
+      var(--raised-card-outer-shadow);
+    --raised-tray-shadow:
+      var(--raised-bevel),
+      0 1px 3px 0 var(--raised-moat-shadow),
+      0 0 0 3px var(--raised-groove),
+      0 0 0 4px var(--raised-outer-rim),
+      0 6px 14px -4px rgb(0 0 0 / 46%);
+    --raised-dialog-shadow:
+      var(--raised-bevel),
+      0 2px 6px 0 var(--raised-moat-shadow),
+      0 0 0 3.5px var(--raised-groove),
+      0 0 0 4.5px var(--raised-outer-rim),
+      0 12px 26px -6px rgb(0 0 0 / 56%),
+      0 24px 56px -16px rgb(0 0 0 / 68%);
+    --raised-control-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 12%),
+      inset 0 -1px 0 rgb(0 0 0 / 32%),
+      0 1px 2px rgb(0 0 0 / 34%);
+    --raised-tab-shadow:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 0 -1px 0 rgb(0 0 0 / 34%),
+      0 1px 4px -1px rgb(0 0 0 / 42%);
+  }
+
+  /* Quiet desk backdrop across every layout so crisp edge bevels read cleanly without surface wash. */
+  :root[data-material='builtin:raised'] {
+    --workbench-back: var(--raised-back);
+    --workbench-back-paint: var(--raised-back);
+  }
+  :root[data-material='builtin:raised'][data-layout='continuous'] { --workbench-sidebar: var(--raised-back); }
+  :root[data-material='builtin:raised'][data-layout='document'] { --workbench-sidebar: var(--raised-back); }
+
+  /* Islands & inset: keep tab-bar and card bounds unchanged while giving single-pane drop shadows room inside --island-gap. */
+  :root[data-layout='islands'][data-material='builtin:raised'] { --island-lift: var(--raised-card-shadow); }
+  :root[data-layout='islands'][data-material='builtin:raised']:not(.compact-layout) .app-shell {
+    --raised-bleed-x: min(5px, var(--island-gap));
+    --raised-bleed-bottom: min(6px, var(--island-gap));
+  }
+  :root[data-layout='islands'][data-material='builtin:raised']:not(.compact-layout) .workspace-panes:not(.workspace-panes-multiple) {
+    margin: 0 calc(1px - var(--raised-bleed-x)) calc(2px - var(--raised-bleed-bottom));
+  }
+  :root[data-layout='islands'][data-material='builtin:raised']:not(.compact-layout) .workspace-panes:not(.workspace-panes-multiple) > .workspace-pane {
+    padding: 0 var(--raised-bleed-x) var(--raised-bleed-bottom);
+  }
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset'])[data-material='builtin:raised'] .sidebar-surface {
+    border: 1px solid var(--raised-edge);
+    box-shadow: var(--raised-card-shadow);
+  }
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset'])[data-material='builtin:raised'] .sidebar-bottom {
+    margin: auto -7px 1px;
+    padding: 7px 7px 6px;
+    border-radius: 0 0 max(0px, calc(var(--radius-card) - 1px)) max(0px, calc(var(--radius-card) - 1px));
+  }
+  /* Paint the 1px inner top/bottom rim via ::after so scrolled content and tabbed settings never cover it. */
+  :root[data-layout='islands'][data-material='builtin:raised'] .workspace-card {
+    position: relative;
+    border: 1px solid var(--raised-edge);
+    box-shadow: var(--raised-card-outer-shadow);
+  }
+  :root[data-layout='islands'][data-material='builtin:raised'] .workspace-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: max(0px, calc(var(--radius-card) - 1px));
+    box-shadow: var(--raised-bevel);
+    pointer-events: none;
+  }
+
+  /* Continuous (edge-to-edge) layout: keep geometry unchanged with a crisp 1px rim along the seam. */
+  :root[data-layout='continuous'][data-material='builtin:raised']:not(.compact-layout) .app-shell:not(.sidebar-hidden):not(:has(.workspace-native-tabs)) .workspace-panes {
+    border: 1px solid var(--raised-edge);
+    border-right: 0;
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised']:not(.compact-layout) .app-shell:not(.sidebar-hidden):not(:has(.workspace-native-tabs)) .workspace-panes::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: max(0px, calc(var(--radius-card) - 1px)) 0 0 max(0px, calc(var(--radius-card) - 1px));
+    box-shadow: var(--raised-bevel);
+    pointer-events: none;
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised'] .app-shell:has(.workspace-native-tabs) .workspace-pane-surface {
+    border-top: 1px solid var(--raised-edge);
+    border-left: 1px solid var(--raised-edge);
+    box-shadow: inset 0 1px 0 var(--raised-highlight);
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised'] .app-shell.sidebar-hidden:has(.workspace-native-tabs) .workspace-pane-surface {
+    border-left: 0;
+    box-shadow: inset 0 1px 0 var(--raised-highlight);
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised']:not(.compact-layout) .app-shell:not(.sidebar-hidden) .main-column.workspace-card {
+    border-left: 1px solid var(--raised-edge);
+  }
+
+  /* Paper (document) layout: the centred sheet adopts the stepped double-bezel tray while keeping its flat paper surface and tooth. */
+  :root[data-layout='document'][data-material='builtin:raised'] .document-main {
+    border-color: var(--raised-edge);
+    box-shadow: var(--raised-tray-shadow);
+  }
+  :root[data-layout='document'][data-material='builtin:raised'] .workspace-pane-surface {
+    border-top: 1px solid var(--raised-edge);
+    box-shadow: inset 0 1px 0 var(--raised-highlight);
+  }
+
+  /* Desktop tabs keep each layout's own tab geometry:
+     - islands/inset/continuous keep the active tab joined seamlessly to the page below, continuing both the
+       1px outer border (--raised-edge) and 1px inner top highlight (--raised-highlight) smoothly around the
+       concave feet with flat --workbench-front interiors and zero seam;
+     - paper (document) keeps its detached slip tab with crisp raised edge bevels. */
+  :root[data-material='builtin:raised']:not([data-layout='document']) :is(.workspace-pane-tabbars, .workspace-tabbar) {
+    z-index: 2;
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-list {
+    height: calc(100% + 4px);
+    padding-bottom: 4px;
+    margin-bottom: -4px;
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging)::before {
+    inset: 0 0 8px 0;
+    border: 1px solid var(--raised-edge);
+    border-bottom: 0;
+    border-radius: 8px 8px 0 0;
+    box-shadow: inset 0 1px 0 var(--raised-highlight);
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging)::after {
+    content: '';
+    position: absolute;
+    z-index: 3;
+    left: 1px;
+    right: 1px;
+    bottom: -3px;
+    height: 3px;
+    background: var(--workbench-front);
+    pointer-events: none;
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners::before,
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners::after {
+    bottom: -3px;
+    width: 10px;
+    height: 11px;
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners::before {
+    left: -8px;
+    background: radial-gradient(
+      circle at top left,
+      transparent 7.65px,
+      var(--raised-edge) 8px,
+      var(--raised-edge) 8.95px,
+      var(--workbench-front) 9.25px
+    );
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners::after {
+    right: -8px;
+    background: radial-gradient(
+      circle at top right,
+      transparent 7.65px,
+      var(--raised-edge) 8px,
+      var(--raised-edge) 8.95px,
+      var(--workbench-front) 9.25px
+    );
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners > span {
+    z-index: 1;
+    bottom: -3px;
+    width: 10px;
+    height: 11px;
+    border: 0;
+    border-radius: 0;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, transparent 25%, #000 80%);
+    mask-image: linear-gradient(180deg, transparent 0%, transparent 25%, #000 80%);
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corner-outline-left {
+    left: -8px;
+    background: radial-gradient(
+      circle at top left,
+      transparent 8.7px,
+      var(--raised-highlight) 9px,
+      var(--raised-highlight) 9.85px,
+      transparent 10.15px
+    );
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corner-outline-right {
+    right: -8px;
+    background: radial-gradient(
+      circle at top right,
+      transparent 8.7px,
+      var(--raised-highlight) 9px,
+      var(--raised-highlight) 9.85px,
+      transparent 10.15px
+    );
+  }
+  :root[data-material='builtin:raised'][data-layout='document'] :is(.desktop-tab-active, .desktop-tab-active:hover) {
+    border: 1px solid var(--raised-edge);
+    box-shadow: var(--raised-tab-shadow);
+  }
+  :root[data-material='builtin:raised'][data-layout='document'] .desktop-tab.desktop-tab-dragging {
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  /* Compact/mobile drawer sidebar gets a clean raised card edge. */
+  :root.compact-layout[data-material='builtin:raised'] .sidebar-surface {
+    display: block;
+    inset: 0;
+    border-right: 1px solid var(--raised-edge);
+    box-shadow:
+      inset 0 1px 0 var(--raised-highlight),
+      8px 0 24px -8px rgb(0 0 0 / 24%);
+  }
+
+  /* Settings, cards, composers, modals and floating surfaces share the stepped double-bezel tray without inner bloom. */
+  :root[data-layout='islands'][data-material='builtin:raised'] .settings-backdrop:not(.settings-tabbed) .settings-main {
+    border: 1px solid var(--raised-edge);
+    box-shadow: var(--raised-card-shadow);
+  }
+  :root[data-layout='islands'][data-material='builtin:raised'] .settings-backdrop:not(.settings-tabbed) .settings-nav-scroll button.selected {
+    border: 1px solid var(--raised-edge);
+    box-shadow: var(--raised-tab-shadow);
+  }
+  :root[data-layout='islands'][data-material='builtin:raised'] .settings-backdrop:not(.settings-tabbed) :is(.settings-search, .settings-workspace-icon) {
+    border-color: var(--raised-edge);
+    box-shadow: var(--raised-control-shadow);
+  }
+  :root[data-material='builtin:raised'][data-layout] .settings-backdrop.settings-tabbed,
+  :root[data-material='builtin:raised'][data-layout] .settings-tabbed :is(.settings-dialog, .settings-nav) {
+    background: transparent;
+  }
+  :root[data-material='builtin:raised'][data-layout] :is(.settings-row select, .settings-button) {
+    border-color: var(--raised-edge);
+    box-shadow: var(--raised-control-shadow);
+  }
+  :root[data-material='builtin:raised'][data-layout] :is(
+    .modal, .object-detail-panel, .import-dialog, .plugin-dialog,
+    .command-palette, .document-history-dialog, .selection-todo-dialog,
+    .plan-detail-panel, .plan-connections, .assistant-connection-dialog, .assistant-panel-floating,
+    .new-tab-picker
+  ),
+  :root[data-material='builtin:raised'][data-layout] .settings-backdrop:not(.settings-tabbed, .settings-windowed) > .settings-dialog {
+    border: 1px solid var(--raised-edge);
+    box-shadow: var(--raised-dialog-shadow);
+  }
+  :root[data-material='builtin:raised'][data-layout] :is(
+    .dropdown, .tano-slash-menu, .tano-code-language-menu, .tano-editor-panel,
+    .selection-format-toolbar, .page-search, .assistant-popover, .breadcrumb-menu,
+    .annotation-popup, .workspace-icon-picker, .help-popover, .help-submenu, .help-bubble,
+    .help-preview, .calendar-day-popover, .plan-date-menu, .reference-graph-popover, .plan-scope-menu,
+    .theme-preset-popover, .search-input-wrap, .search-results,
+    .assistant-composer, .assistant-question-card, .review-card,
+    .graph-topbar .topbar-navigation, .graph-topbar .topbar-right,
+    .theme-preset-card:not(.theme-preset-card-borderless), .theme-preset-more
+  ) {
+    border-color: var(--raised-edge);
+    box-shadow: var(--raised-tray-shadow);
+  }
+  :root[data-layout='islands'][data-material='builtin:raised'] :is(.folder-view-entry, .review-card) {
+    border-color: var(--raised-edge);
+    box-shadow: var(--raised-tray-shadow);
+  }
+  :root[data-material='builtin:raised'][data-layout] .assistant-composer:focus-within {
+    border-color: color-mix(in srgb, var(--green) 55%, var(--raised-edge));
+  }
+  :root[data-material='builtin:raised'][data-layout] .theme-preset-card:not(.theme-preset-card-borderless, :disabled):hover,
+  :root[data-material='builtin:raised'][data-layout] .theme-preset-more:hover,
+  :root[data-material='builtin:raised'][data-layout] .theme-preset-more[aria-expanded='true'] {
+    border-color: color-mix(in srgb, var(--green) 55%, var(--raised-edge));
+  }
+  :root.compact-layout[data-material='builtin:raised'][data-layout] .settings-backdrop:not(.settings-tabbed, .settings-windowed) > .settings-dialog {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
   /* Frosted glass (磨砂玻璃) is a material (data-material) that works on every layout structure.
      Glass only reads as glass when there is something behind it, so the window background ("desk") is
      bright and carries a few large, soft orbs of colour — or the user's background image. Sheets over it

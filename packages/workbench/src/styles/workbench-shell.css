@@ -1118,44 +1118,52 @@ button:hover {
   justify-content: center;
   gap: 5px;
   min-height: 28px;
-  padding: 0 9px;
+  padding: 0 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 7px;
   color: var(--text-secondary);
   font-size: 12px;
   white-space: nowrap;
 }
 .calendar-topbar-today:hover,
 .calendar-topbar-events:hover,
-.calendar-topbar-mode:hover { background: var(--hover); color: var(--text); }
+.calendar-topbar-mode:hover,
+.calendar-topbar-mode[aria-expanded='true'] {
+  border-color: var(--control-border);
+  background: var(--hover);
+  color: var(--text);
+}
+.calendar-topbar-controls > .icon-button { width: 28px; height: 28px; border-radius: 7px; }
 .calendar-view-picker { position: relative; }
-.calendar-topbar-mode { min-width: 58px; }
+.calendar-topbar-mode { min-width: 62px; }
+.calendar-topbar-mode > svg { color: var(--muted); }
+.calendar-topbar-mode[aria-expanded='true'] > svg { rotate: 180deg; }
 .calendar-view-menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 6px);
   right: 0;
-  width: 154px;
-  padding: 5px;
+  width: 160px;
+  padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--paper);
-  box-shadow: 0 8px 24px #0002;
+  box-shadow: var(--overlay-shadow, 0 8px 24px #0002);
 }
 .calendar-view-menu button {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 34px;
-  padding: 0 9px;
-  border-radius: 5px;
-  color: var(--text);
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text-secondary);
   font-size: 12px;
   text-align: left;
 }
 .calendar-view-menu button:hover,
-.calendar-view-menu button:focus-visible { background: var(--hover); }
+.calendar-view-menu button:focus-visible { background: var(--hover); color: var(--text); }
 .calendar-view-menu button[aria-checked='true'] { color: var(--text); font-weight: 500; }
 @media (max-width: 900px) {
   .calendar-topbar-period { display: none; }

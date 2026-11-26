@@ -624,6 +624,48 @@ test('switching glass material preserves the layout’s cards and docked tabs', 
   }
 });
 
+test('raised card material preserves each layout’s geometry and joined tabs while adding beveled borders', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await prepare(page);
+  await page.evaluate(() => window.workbench.openSettingsTab('appearance'));
+  await expect(page.locator('.desktop-tab-list-animating, .desktop-tab-list-slotting')).toHaveCount(0);
+  const settings = page.locator('.settings-tabbed');
+  const layout = settings.getByRole('combobox', { name: '布局风格', exact: true });
+  const material = settings.getByRole('combobox', { name: '材质', exact: true });
+  const root = page.locator('html');
+  const activeTab = page.locator('.workspace-tabbar .desktop-tab-active').first();
+  const activeTabCorners = activeTab.locator('.desktop-tab-corners');
+
+  for (const [id, structure] of [
+    ['builtin:islands', 'islands'],
+    ['builtin:inset', 'islands'],
+    ['builtin:tano', 'continuous'],
+    ['builtin:paper', 'document'],
+  ]) {
+    await layout.selectOption(id);
+    await material.selectOption('builtin:tano');
+    const flatTab = await activeTab.boundingBox();
+    const flatCornersDisplay = await activeTabCorners.evaluate(el => getComputedStyle(el).display);
+    const flatCard = structure === 'islands'
+      ? await page.locator('.workspace-page-content.workspace-card:visible').boundingBox()
+      : null;
+
+    await material.selectOption('builtin:raised');
+    await expect(root).toHaveAttribute('data-material', 'builtin:raised');
+    await expect(root).toHaveAttribute('data-layout', structure);
+    await expect(settings.getByRole('group', { name: '背景图片' })).toHaveCount(0);
+    expect(await activeTab.boundingBox()).toEqual(flatTab);
+    expect(await activeTabCorners.evaluate(el => getComputedStyle(el).display)).toBe(flatCornersDisplay);
+    if (structure === 'islands') {
+      const card = page.locator('.workspace-page-content.workspace-card:visible');
+      expect(await card.boundingBox()).toEqual(flatCard);
+      await expect(card).toHaveCSS('border-top-width', '1px');
+      const bevel = await card.evaluate(el => getComputedStyle(el, '::after').boxShadow);
+      expect(bevel).toContain('inset');
+    }
+  }
+});
+
 test('inset layout keeps the island content bounds and puts the sidebar on the desk', async ({ page }) => {
   await prepare(page);
   await page.evaluate(() => window.workbench.openSettingsTab('appearance'));

@@ -8,13 +8,19 @@ import type { InstalledObjectPlugin } from '../plugins/workspace-plugins';
 export const appearanceKinds = ['color', 'icons', 'layout', 'material', 'shape'] as const;
 /** Kinds a theme plugin may set. Materials are drawn by the host, so plugins cannot contribute or reference them. */
 const pluginPresetKinds = ['color', 'icons', 'layout', 'shape'] as const;
+/** Raised card: flat opaque surfaces with sculpted bevels and dimensional edges. */
+export const raisedCardMaterial = 'builtin:raised';
 /** The frosted-glass material turns the sidebar and page sheets of any layout into translucent glass. */
 export const glassMaterial = 'builtin:frost';
 /** Liquid glass: the same layers, but clear glass whose thick edges catch the light. */
 export const liquidGlassMaterial = 'builtin:liquid';
 /** Glass materials share the desk, the background image and the layer structure. */
 export const glassMaterials: readonly string[] = [glassMaterial, liquidGlassMaterial];
-const materialSurface: Record<string, NonNullable<AppearancePreset['material']>> = { [glassMaterial]: 'frost', [liquidGlassMaterial]: 'liquid' };
+const materialSurface: Record<string, NonNullable<AppearancePreset['material']>> = {
+  [raisedCardMaterial]: 'raised',
+  [glassMaterial]: 'frost',
+  [liquidGlassMaterial]: 'liquid',
+};
 export type AppearanceKind = typeof appearanceKinds[number];
 export const builtinDefault = 'builtin:tano';
 export const insetLayout = 'builtin:inset';
@@ -26,7 +32,11 @@ export const builtinAppearance: AppearanceBuiltins = {
     { id: 'builtin:paper', label: '纸感', structure: 'document', surface: 'paper', gap: 24, pageWidth: 800 },
   ],
   colors: builtinColors,
-  materials: [{ id: glassMaterial, label: '磨砂玻璃' }, { id: liquidGlassMaterial, label: '液态玻璃' }],
+  materials: [
+    { id: raisedCardMaterial, label: '立体卡片' },
+    { id: glassMaterial, label: '磨砂玻璃' },
+    { id: liquidGlassMaterial, label: '液态玻璃' },
+  ],
   shapes: [
     { id: 'builtin:rounded', label: '圆润宽松', tokens: { 'radius-control': '10px', 'radius-card': '16px', 'radius-dialog': '20px', 'space-panel': '22px', 'space-row-gap': '6px',
       'overlay-shadow': '0px 1px 2px #1b263a14, 0px 8px 24px #1b263a14', 'dialog-shadow': '0px 24px 64px #1b263a33' } },
@@ -68,8 +78,8 @@ export interface AppearancePreset extends AppearanceChoice {
   missing?: { kind: AppearanceKind; id: string }[];
   previews?: AppearancePreview[];
   structure?: LayoutThemeDefinition['structure'];
-  /** Set when the preset shows a glass material, so the preview can draw it. */
-  material?: 'frost' | 'liquid';
+  /** Set when the preset uses a non-flat material, so the preview can draw it. */
+  material?: 'raised' | 'frost' | 'liquid';
 }
 export interface AppearanceSnapshot {
   workspaceId: string;

@@ -1003,6 +1003,12 @@ it('selects colors and icons independently and explains unavailable selections',
   expect(layout.selectedOptions[0]?.textContent).toBe('贴边布局');
   layout.value = 'builtin:paper'; layout.dispatchEvent(new Event('change')); await nextTick();
   expect(appearanceSelections.at(-1)).toEqual({ workspaceId: 'one', kind: 'layout', id: 'builtin:paper' });
+  appearance.value = { ...appearance.value, materials: [...builtinAppearance.materials!] };
+  await nextTick();
+  const material = root.querySelector<HTMLSelectElement>('[aria-label="材质"]')!;
+  expect([...material.options].map(option => option.textContent)).toEqual(['平面', '立体卡片', '磨砂玻璃', '液态玻璃']);
+  material.value = 'builtin:raised'; material.dispatchEvent(new Event('change')); await nextTick();
+  expect(appearanceSelections.at(-1)).toEqual({ workspaceId: 'one', kind: 'material', id: 'builtin:raised' });
 });
 
 beforeAll(async () => {

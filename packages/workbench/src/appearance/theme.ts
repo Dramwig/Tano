@@ -42,7 +42,7 @@ function writeThemeStyle(resolved: ResolvedTheme['mode'], tokens: Record<string,
 }
 
 /** Only validated contract tokens reach the host. Empty maps restore built-in CSS. */
-/** `material` is a host-drawn card material (e.g. builtin:frost); undefined is the flat default. */
+/** `material` is a host-drawn card material (e.g. builtin:raised, builtin:frost, builtin:liquid); undefined is the flat default. */
 export function applyAppearance(value?: ColorAppearance, layoutValue?: LayoutThemeDefinition, shapeValue?: ShapeThemeDefinition, mode = currentPreference, material?: string): void {
   appearance = value ?? { light: {}, dark: {} };
   layout = layoutValue ? { ...layoutValue } : undefined;

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ObjectPluginManifest } from '@tano/protocol';
-import { AppearanceController, builtinAppearance } from './appearance';
+import { AppearanceController, builtinAppearance, glassMaterials, raisedCardMaterial } from './appearance';
 import { FileIconRegistry } from '../file-icons/registry';
 import { applyAppearance, applyTheme, readThemePreference, resolvedTheme } from './theme';
 import { WorkspacePluginHost } from '../plugins/workspace-plugins';
@@ -93,7 +93,11 @@ it('treats frosted glass as a material that combines freely with every layout an
   const root = document.documentElement;
   const controller = new AppearanceController(new FileIconRegistry(), 'device', undefined, applyAppearance); controller.sync('one', []);
   expect(controller.state.value.layouts.map(layout => layout.id)).toEqual(['builtin:inset', 'builtin:islands', 'builtin:paper']);
-  expect(controller.state.value.materials).toEqual([{ id: 'builtin:frost', label: '磨砂玻璃' }, { id: 'builtin:liquid', label: '液态玻璃' }]);
+  expect(controller.state.value.materials).toEqual([
+    { id: 'builtin:raised', label: '立体卡片' },
+    { id: 'builtin:frost', label: '磨砂玻璃' },
+    { id: 'builtin:liquid', label: '液态玻璃' },
+  ]);
   const preset = controller.state.value.presets.find(p => p.id === 'builtin:frost');
   expect(preset).toMatchObject({ unavailable: false, structure: 'islands', material: 'frost',
     selected: { color: 'builtin:haze', layout: 'builtin:islands', material: 'builtin:frost' } });
@@ -138,6 +142,29 @@ it('offers liquid glass as a second glass material with its own preset and previ
   expect(controller.state.value.active).toMatchObject({ layout: 'builtin:paper', material: 'builtin:liquid' });
   expect(controller.state.value.currentPreset).toMatchObject({ id: 'current', structure: 'document', material: 'liquid' });
   controller.dispose();
+  expect(root.dataset.material).toBeUndefined();
+});
+it('offers raised card as a non-glass material that previews and persists across layouts', () => {
+  const root = document.documentElement;
+  expect(glassMaterials).not.toContain(raisedCardMaterial);
+  const controller = new AppearanceController(new FileIconRegistry(), 'device', localStorage, applyAppearance);
+  controller.sync('one', []);
+  controller.select({ workspaceId: 'one', kind: 'layout', id: 'builtin:islands' });
+  controller.select({ workspaceId: 'one', kind: 'material', id: raisedCardMaterial });
+  expect([root.dataset.layout, root.dataset.material]).toEqual(['islands', 'builtin:raised']);
+  expect(controller.state.value.currentPreset).toMatchObject({ id: 'current', structure: 'islands', material: 'raised' });
+  controller.select({ workspaceId: 'one', kind: 'save-preset' });
+  const savedId = controller.state.value.presetId!;
+  expect(controller.state.value.presets.find(p => p.id === savedId)).toMatchObject({ material: 'raised', structure: 'islands' });
+  controller.select({ workspaceId: 'one', kind: 'layout', id: 'builtin:tano' });
+  expect([root.dataset.layout, root.dataset.material]).toEqual(['continuous', 'builtin:raised']);
+  expect(controller.state.value.currentPreset).toMatchObject({ structure: 'continuous', material: 'raised' });
+  controller.dispose();
+  const reload = new AppearanceController(new FileIconRegistry(), 'device', localStorage, applyAppearance);
+  reload.sync('one', []);
+  expect(reload.state.value.active.material).toBe('builtin:raised');
+  expect(root.dataset.material).toBe('builtin:raised');
+  reload.dispose();
   expect(root.dataset.material).toBeUndefined();
 });
 it('reads older saved choices without a material as flat', () => {
