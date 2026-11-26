@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './plugin-center.css';
 import { computed, ref, watch } from 'vue';
 import { ArrowUpRight, Download, LoaderCircle, ShieldCheck } from 'lucide-vue-next';
 import { checkPluginCompatibility, type PluginMode } from '@tano/protocol';
@@ -398,7 +399,6 @@ const modeLabels: Record<PluginMode, string> = {
     </section>
   </article>
 </template>
-<style scoped src="./plugin-center.css"></style>
 <style scoped>
 .plugin-detail-page {
   padding: 28px;

@@ -40,7 +40,7 @@ function preserveDraft() {
   try {
     if (current.dirty) localStorage.setItem(draftKey, JSON.stringify({ base: current.base, content: current.content }));
     else localStorage.removeItem(draftKey);
-  } catch { error.value = '本地草稿无法保存，请保存文件或另存副本后再关闭。'; }
+  } catch { error.value = t('本地草稿无法保存，请保存文件或另存副本后再关闭。'); }
 }
 watch(() => session.value?.content, () => {
   clearTimeout(draftTimer);
@@ -62,7 +62,7 @@ async function save() {
   try {
     const saved = await session.value.save((content, expected) => invoke<WriteResult>('standalone_write', { content, expected }));
     preserveDraft();
-    if (saved) status.value = '已保存';
+    if (saved) status.value = t('已保存');
     return saved;
   } catch (cause) { error.value = String(cause); return false; }
   finally { saving.value = false; }
@@ -76,7 +76,7 @@ async function copy() {
     });
     if (!destination) return;
     await invoke('standalone_copy', { path: destination, content: session.value.content });
-    status.value = '副本已保存，原文件保持不变';
+    status.value = t('副本已保存，原文件保持不变');
   } catch (cause) { error.value = String(cause); }
 }
 async function printCurrentDocument() {
@@ -141,11 +141,11 @@ onMounted(async () => {
         model.base = parsed.base;
         model.content = parsed.content;
         model.acceptExternal(opened.snapshot);
-        status.value = '已恢复本地草稿';
+        status.value = t('已恢复本地草稿');
       } catch {
         // Keep the unreadable bytes before normal draft persistence resumes.
         localStorage.setItem(`${draftKey}.unreadable.${Date.now()}`, draft);
-        error.value = '本地草稿损坏，原记录已备份，当前显示磁盘文件。';
+        error.value = t('本地草稿损坏，原记录已备份，当前显示磁盘文件。');
       }
     }
     session.value = model;
@@ -210,7 +210,7 @@ button:disabled { opacity: .45; cursor: default; }
 .standalone-print { display: inline-flex; align-items: center; gap: 6px; }
 button[aria-pressed="true"] { background: var(--sidebar); }
 .standalone-message { margin: 8px 24px; font-size: 13px; }
-.standalone-conflict { padding: 12px 24px; background: #fff2cc; color: #654913; }
+.standalone-conflict { padding: 12px 24px; background: color-mix(in srgb, var(--warning, #d97706) 14%, var(--paper)); color: var(--text); border-bottom: 1px solid color-mix(in srgb, var(--warning, #d97706) 35%, var(--line)); }
 .standalone-conflict p { margin: 6px 0; }
 .standalone-conflict pre { max-height: 180px; overflow: auto; white-space: pre-wrap; }
 .standalone-document { flex: 1; min-height: 0; overflow: auto; padding: 32px max(32px, calc((100% - 820px) / 2)); }

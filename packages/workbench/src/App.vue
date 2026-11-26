@@ -2,7 +2,6 @@
 import { provide, proxyRefs, ref, shallowReactive, toRefs } from 'vue';
 import {
   ArrowDownToLine,
-  Bot,
   CalendarDays,
   Check,
   ChevronDown,
@@ -153,7 +152,6 @@ const {
   openSettings,
   updates,
   recyclePanel,
-  agentPanel,
   createNewWorkspace,
   openWorkspaceEntryContextMenu,
   helpContext,
@@ -714,7 +712,7 @@ function runPluginCommandById(commandId: string) {
                 <div
                   v-if="
                     extensions.regions['mode-switch'] ||
-                    workspace ||
+                    (mobile && workspace) ||
                     extensions.regions['workspace-history'] ||
                     extensions.regions['sign-out']
                   "
@@ -734,16 +732,6 @@ function runPluginCommandById(commandId: string) {
                   "
                 >
                   <Trash2 :size="16" />{{ t('手机回收站') }}
-                </button>
-                <button
-                  v-if="workspace"
-                  role="menuitem"
-                  @click="
-                    workspaceMenu = false;
-                    agentPanel = true;
-                  "
-                >
-                  <Bot :size="16" />{{ t('与 Agent 一起工作') }}
                 </button>
                 <component
                   :is="extensions.regions['workspace-history']"

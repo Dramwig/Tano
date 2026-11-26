@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './plugin-center.css';
 import { recordHelpCompleted } from '../../help/help-checklist';
 import { usePluginActions, matchesPlugin } from '../use-plugin-actions';
 import LoadingSkeleton from '../../shell/components/LoadingSkeleton.vue';
@@ -311,8 +312,3 @@ watch(
     </div>
   </div>
 </template>
-
-<style scoped src="./plugin-center.css"></style>
-
-<style scoped>
-</style>

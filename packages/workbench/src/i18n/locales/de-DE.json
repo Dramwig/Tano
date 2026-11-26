@@ -3967,5 +3967,12 @@
   "邮箱账号": "E-Mail-Konto",
   "邮箱账号管理": "E-Mail-Konten verwalten",
   "附件（{0}）": "Anhänge ({0})",
-  "（无主题）": "(Kein Betreff)"
+  "（无主题）": "(Kein Betreff)",
+  "技术详情": "Technische Details",
+  "导入 .ics 文件中的待办任务。": "Aufgaben aus einer .ics-Datei importieren.",
+  "内置模板与当前工作区模板": "Integrierte Vorlagen und Vorlagen dieses Arbeitsbereichs",
+  "副本已保存，原文件保持不变": "Kopie gespeichert; die Originaldatei blieb unverändert",
+  "已恢复本地草稿": "Lokaler Entwurf wiederhergestellt",
+  "本地草稿损坏，原记录已备份，当前显示磁盘文件。": "Der lokale Entwurf war beschädigt. Eine Sicherung wurde behalten und die Datei auf der Festplatte wird angezeigt.",
+  "本地草稿无法保存，请保存文件或另存副本后再关闭。": "Der lokale Entwurf konnte nicht gespeichert werden. Bitte speichere die Datei oder eine Kopie vor dem Schließen."
 }

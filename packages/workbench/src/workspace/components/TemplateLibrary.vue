@@ -171,7 +171,7 @@ onMounted(async () => {
             <div v-else class="template-custom-empty"><Files :size="26" /><div><strong>{{ t('把常用的内容，留作下一次的起点') }}</strong><p>{{ t('将文档保存为模板，在这个工作区重复使用。') }}</p></div><button class="template-button" :disabled="disabled" @click="edit(true)"><Plus :size="15" />{{ t('创建模板') }}</button></div>
           </section>
           <div v-if="!visibleBuiltins.length && !visibleCustom.length && (query.trim() || !['all', 'custom'].includes(category))" class="template-no-results" role="status"><Search :size="28" /><h2>{{ t('没有找到匹配的模板') }}</h2><p>{{ t('试试其他关键词，或查看全部模板。') }}</p><button class="template-button" @click="query = ''; category = 'all'">{{ t('查看全部模板') }}</button></div>
-          <p class="template-library-note">{{ t('内置模板与当前工作区模板 · 暂不支持在线模板市场') }}</p>
+          <p class="template-library-note">{{ t('内置模板与当前工作区模板') }}</p>
         </template>
 
         <template v-else-if="mode === 'edit'">

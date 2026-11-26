@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../../styles/mail.css';
 import { onMounted } from 'vue';
 import {
   Archive,

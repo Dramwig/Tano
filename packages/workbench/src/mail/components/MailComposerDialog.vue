@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import '../../styles/mail.css';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { AlertTriangle, Paperclip, Send, X } from 'lucide-vue-next';
 import { t } from '../../i18n/i18n';

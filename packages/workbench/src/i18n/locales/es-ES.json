@@ -3967,5 +3967,12 @@
   "邮箱账号": "Cuenta de correo",
   "邮箱账号管理": "Gestión de cuentas de correo",
   "附件（{0}）": "Adjuntos ({0})",
-  "（无主题）": "(Sin asunto)"
+  "（无主题）": "(Sin asunto)",
+  "技术详情": "Detalles técnicos",
+  "导入 .ics 文件中的待办任务。": "Importar tareas pendientes desde un archivo .ics.",
+  "内置模板与当前工作区模板": "Plantillas integradas y del espacio de trabajo actual",
+  "副本已保存，原文件保持不变": "Copia guardada; el archivo original no ha cambiado",
+  "已恢复本地草稿": "Borrador local restaurado",
+  "本地草稿损坏，原记录已备份，当前显示磁盘文件。": "El borrador local estaba dañado. Se conservó una copia de seguridad y se muestra el archivo del disco.",
+  "本地草稿无法保存，请保存文件或另存副本后再关闭。": "No se pudo guardar el borrador local. Guarda el archivo o una copia antes de cerrar."
 }
