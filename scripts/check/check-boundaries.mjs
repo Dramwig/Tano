@@ -167,6 +167,20 @@ for (const [pkgRel, allowedInternal] of workspaceDag) {
     }
   }
 
+  if (pkgRel.startsWith('packages/') && manifest.exports && typeof manifest.exports === 'object') {
+    for (const [exportKey, exportTarget] of Object.entries(manifest.exports)) {
+      if (exportKey.includes('*')) {
+        failures.push(`${pkgRel}/package.json: wildcard export "${exportKey}" is forbidden; declare explicit subpaths`);
+      }
+      if (typeof exportTarget === 'string' && !exportTarget.includes('*')) {
+        const resolved = path.resolve(pkgDir, exportTarget);
+        if (!fs.existsSync(resolved)) {
+          failures.push(`${pkgRel}/package.json: export "${exportKey}" target does not exist (${exportTarget})`);
+        }
+      }
+    }
+  }
+
   for (const f of walk(path.join(pkgDir, 'src'))) {
     if (/\.(test|spec)(\.[^/\\]+)?\.(ts|tsx|mjs|js)$/.test(f)) continue;
     if (!/\.(ts|vue|mjs|css)$/.test(f)) continue;
@@ -194,5 +208,52 @@ for (const [pkgRel, allowedInternal] of workspaceDag) {
   }
 }
 
+// 3. Workbench stores static import cycle guard (both runtime and type-only imports).
+const storesDir = path.join(root, 'packages/workbench/src/stores');
+if (fs.existsSync(storesDir)) {
+  const storeFiles = fs
+    .readdirSync(storesDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.ts') && !/\.(test|spec)\.ts$/.test(entry.name))
+    .map((entry) => path.join(storesDir, entry.name));
+  const storeFileSet = new Set(storeFiles);
+  const storeGraph = new Map();
+  for (const f of storeFiles) {
+    const deps = new Set();
+    const text = fs.readFileSync(f, 'utf8');
+    for (const { specifier } of collectModuleSpecifiers(f, text)) {
+      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue;
+      const base = path.resolve(path.dirname(f), specifier);
+      const candidates = [base, `${base}.ts`, path.join(base, 'index.ts')];
+      const hit = candidates.find((candidate) => storeFileSet.has(candidate));
+      if (hit) deps.add(hit);
+    }
+    storeGraph.set(f, [...deps].sort());
+  }
+
+  const state = new Map(); // 0/undefined = unvisited, 1 = visiting, 2 = visited
+  const stack = [];
+  const visitStore = (node) => {
+    state.set(node, 1);
+    stack.push(node);
+    for (const next of storeGraph.get(node) ?? []) {
+      const nextState = state.get(next) ?? 0;
+      if (nextState === 1) {
+        const start = stack.indexOf(next);
+        const chain = [...stack.slice(start), next]
+          .map((item) => path.relative(storesDir, item).replaceAll('\\', '/'))
+          .join(' -> ');
+        failures.push(`packages/workbench/src/stores: cyclic import detected (${chain})`);
+      } else if (nextState === 0) {
+        visitStore(next);
+      }
+    }
+    stack.pop();
+    state.set(node, 2);
+  };
+  for (const f of storeFiles.sort()) {
+    if ((state.get(f) ?? 0) === 0) visitStore(f);
+  }
+}
+
 if (failures.length) throw new Error([...new Set(failures)].join('\n'));
-console.log('Public, DAG, phantom-dependency, and protocol-barrel boundaries verified.');
+console.log('Public, DAG, explicit-exports, phantom-dependency, store-acyclic, and protocol-barrel boundaries verified.');
