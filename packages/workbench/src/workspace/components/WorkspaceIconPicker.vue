@@ -24,9 +24,10 @@ const props = withDefaults(defineProps<{
   label?: string;
   triggerClass?: string;
   align?: 'start' | 'end';
+  allowIcons?: boolean;
   allowUpload?: boolean;
   extraTab?: WorkspaceIconPickerExtraTab;
-}>(), { align: 'end', allowUpload: true });
+}>(), { align: 'end', allowIcons: true, allowUpload: true });
 const label = computed(() => props.label ?? t('工作区图标'));
 const emit = defineEmits<{ select: [value: string]; upload: []; pasteImage: [file: File]; 'update:open': [value: boolean] }>();
 const pickerId = useId();
@@ -46,7 +47,7 @@ const baseTabs = [
 ] as const;
 const visibleTabs = computed(() => [
   ...(props.extraTab ? [{ id: props.extraTab.id, label: props.extraTab.label }] : []),
-  ...baseTabs.filter(item => props.allowUpload || item.id !== 'upload'),
+  ...baseTabs.filter(item => (props.allowIcons || item.id !== 'icons') && (props.allowUpload || item.id !== 'upload')),
 ]);
 type Tab = string;
 const tab = ref<Tab>('emoji');
@@ -118,8 +119,8 @@ async function toggle() {
   if (props.disabled) return;
   if (open.value) { close(); return; }
   if (props.extraTab?.matches?.(props.icon)) tab.value = props.extraTab.id;
-  else if (props.icon.startsWith('icon:')) tab.value = 'icons';
-  else if ((!props.icon || props.icon.startsWith('data:')) && props.extraTab?.defaultOpen) tab.value = props.extraTab.id;
+  else if (props.allowIcons && props.icon.startsWith('icon:')) tab.value = 'icons';
+  else if ((!props.icon || props.icon.startsWith('data:') || (!props.allowIcons && props.icon.startsWith('icon:'))) && props.extraTab?.defaultOpen) tab.value = props.extraTab.id;
   else tab.value = 'emoji';
   query.value = ''; focusedIcon.value = '';
   anchorRect = trigger.value?.getBoundingClientRect();
