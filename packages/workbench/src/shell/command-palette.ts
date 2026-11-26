@@ -39,7 +39,7 @@ export function editorPaletteCommands(options: {
   if (!options.editable || options.source) return [];
   const { context, features, run } = options;
   const blocks = blockTypes.flatMap<WorkbenchCommand>(item => {
-    if (formCommands.has(item.command) || !commandEnabled(item.command, undefined, features)) return [];
+    if (formCommands.has(item.command) || !commandEnabled(item.command, features)) return [];
     if (!context.canTransform && !insertionCommands.has(item.command) && !wrappingCommands.has(item.command)) return [];
     if (item.command === 'heading') return Array.from({ length: 6 }, (_, index) => ({
       id: `editor.heading.${index + 1}`, category: t('格式'), label: t('转换为 {0} 级标题', [index + 1]),
@@ -52,13 +52,13 @@ export function editorPaletteCommands(options: {
       run: () => run(item.command) }];
   });
   const inline = inlineTypes.filter(item => !formCommands.has(item.command)
-    && commandEnabled(item.command, undefined, features)
+    && commandEnabled(item.command, features)
     && (!context.inlineSource || ['bold', 'italic', 'code'].includes(item.command))
     && (context.canStyleText || !['bold', 'italic', 'code'].includes(item.command)))
     .map(item => ({ id: `editor.${item.command}`, category: t('格式'), label: t(item.label),
       keywords: item.type, run: () => run(item.command) }));
   const styles = context.canStyleText && !context.inlineSource
-    ? extraStyles.filter(item => commandEnabled(item.command, undefined, features))
+    ? extraStyles.filter(item => commandEnabled(item.command, features))
       .map(item => ({ id: `editor.${item.command}`, category: t('格式'), label: t(item.label), run: () => run(item.command) }))
     : [];
   return [...blocks, ...inline, ...styles];

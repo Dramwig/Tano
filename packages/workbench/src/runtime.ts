@@ -158,8 +158,9 @@ export interface WorkbenchExtensions {
   documentStatus?(id: string): DocumentSyncStatus | undefined;
   /**
    * workspace-menu-layout can wrap built-in workspace actions through its default slot.
-   * plugin-publishing receives WorkbenchActions in the plugin center's My submissions view.
-   * plugin-forge receives WorkbenchActions + { canPublish } in the plugin center's Forge & Overlay view.
+   * plugin-customize receives WorkbenchActions in the plugin center's user-facing customization tab.
+   * plugin-forge receives WorkbenchActions + { canPublish, developerMode } inside the Developer Area.
+   * plugin-publishing receives WorkbenchActions inside the Developer Area's submissions view.
    */
   regions: Record<string, Component>;
   views?: readonly WorkbenchView[];

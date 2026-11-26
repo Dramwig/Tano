@@ -46,7 +46,6 @@ export interface BlockMenuControllerOptions {
   getView: () => EditorView | undefined;
   isDisposed: () => boolean;
   readonly: () => boolean;
-  enabledLevels: () => readonly number[] | undefined;
   policy: () => WorkspaceCapabilities;
   defaultCopyAction: ComputedRef<string>;
   clipboardContent: (
@@ -80,7 +79,6 @@ export function createBlockMenuController(options: BlockMenuControllerOptions) {
     getView,
     isDisposed,
     readonly,
-    enabledLevels,
     policy,
     defaultCopyAction,
     clipboardContent,
@@ -289,7 +287,6 @@ export function createBlockMenuController(options: BlockMenuControllerOptions) {
       (name === 'unwrap' ||
         commandEnabled(
           name.startsWith('wrap-') ? name.slice(5) : name,
-          enabledLevels(),
           policy().features,
         )) &&
       !!blockMenuStructure(bridgeView.state, name)

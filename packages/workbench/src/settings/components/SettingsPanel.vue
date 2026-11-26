@@ -97,8 +97,12 @@ const displayModeDescription = computed(() =>
       ? '当前配色主题仅支持深色。'
       : '选择浅色、深色或跟随系统，偏好在工作区间共用。',
 );
-const showDeveloperMode = computed(() => props.native && !props.mobile);
-const developerModeDescription = '开启后，右键单击顶部标签栏的空白处，即可打开调试窗口。';
+const showDeveloperMode = computed(() => !props.mobile);
+const developerModeDescription = computed(() =>
+  props.native
+    ? '开启后，可在插件中心访问开发者区（导入、工坊、调试与投稿），也可右键顶部标签栏空白处打开调试窗口。'
+    : '开启后，可在插件中心访问开发者区（导入插件、工坊、开发监听、运行日志与投稿）。',
+);
 const rules = computed(() => props.capabilities ?? defaultCapabilities);
 const splitFonts = computed(
   () =>
@@ -189,7 +193,7 @@ const settingSearchEntries = computed<SettingSearchEntry[]>(() =>
     frostActive: frostActive.value,
     splitFontsEnabled: splitFonts.value.enabled,
     showDeveloperMode: showDeveloperMode.value,
-    developerModeDescription,
+    developerModeDescription: developerModeDescription.value,
   }),
 );
 const availableExtraPages = computed(() =>
@@ -398,6 +402,7 @@ function keydown(event: KeyboardEvent) {
     <section
       ref="settingsDialog"
       class="settings-dialog workbench-modal-surface"
+      :class="{ 'settings-tabbed-dialog': tabbed }"
       tabindex="-1"
       :role="tabbed ? 'region' : 'dialog'"
       :aria-modal="!windowed && !tabbed ? true : undefined"

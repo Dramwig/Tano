@@ -7,7 +7,7 @@ import WorkspacePanes from '../../shell/components/WorkspacePanes.vue';
 import { dockLayout, layoutPanes, newPane } from '../../shell/pane-layout';
 import { finishedTabDrag, tabDragMetaType } from '../tab-docking';
 import { animate } from 'motion/mini';
-import { workbenchContextKey, type WorkbenchContext } from '../../shell/workbench-context';
+import { workbenchPrefsKey, type WorkbenchPrefsContext } from '../../shell/workbench-context';
 
 vi.mock('motion/mini', () => ({
   animate: vi.fn(() => ({ finished: new Promise<void>(() => {}), cancel: vi.fn() })),
@@ -106,7 +106,7 @@ beforeEach(() => {
     '<header class="desktop-window-titlebar"><div class="desktop-window-tab-slot"></div><div class="desktop-window-drag"></div></header>';
   document.body.append(root);
   app = createApp(DesktopTabs);
-  app.provide(workbenchContextKey, workbench as WorkbenchContext);
+  app.provide(workbenchPrefsKey, workbench as WorkbenchPrefsContext);
   app.mount(root.querySelector('.desktop-window-tab-slot')!);
   const list = root.querySelector<HTMLElement>('.desktop-tab-list')!;
   list.getBoundingClientRect = () => ({ left: 0, right: 600, top: 0, bottom: 36 }) as DOMRect;

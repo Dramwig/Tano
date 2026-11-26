@@ -1,16 +1,29 @@
 <script setup lang="ts">
 import { inject, toRefs } from 'vue';
+import { mobile } from '../../platform/platform';
 import { SettingsPanel } from '../../shell/workbench-async-components';
-import { workbenchContextKey } from '../../shell/workbench-context';
+import {
+  workbenchDocumentsKey,
+  workbenchModalsKey,
+  workbenchPrefsKey,
+  workbenchShellKey,
+} from '../../shell/workbench-context';
 import { useWindowContext } from '../../windows/context';
+import { native } from '../../workspace/adapter';
 defineProps<{ tabbed?: boolean; windowed?: boolean }>();
-const context = inject(workbenchContextKey);
-if (!context) throw new Error('Workbench context is required');
+const shell = inject(workbenchShellKey);
+const prefs = inject(workbenchPrefsKey);
+const documents = inject(workbenchDocumentsKey);
+const modals = inject(workbenchModalsKey);
+if (!shell || !prefs || !documents || !modals) throw new Error('Workbench context is required');
 const windowContext = useWindowContext();
-const { native, mobile, workspace, shortcuts, store, tabsEnabled, extensions, updates, editorPreferences, showPageTitle, showDocumentProperties, showOutline, outlineOnLeft, active, openingSettingsWindow, openSettingsTab, openSettingsInNewWindow, settingsPage, workspaceExporting, workspaceExportError, workspaceDeletionError, deleteWorkspace, exportWorkspace, defaultSource, theme, appearance, appearanceController, visualFontChoice, customFontName, splitFontSettings, revealMarkdown, toolbarMode, showDocumentDiscussion, visualFontSize, sourceFontSize, appVersion, documentationBaseUrl, assistant, settingsAction, settingsContext } = toRefs(context);
+const { workspace, store, extensions, updates, active, appVersion, documentationBaseUrl, assistant } = toRefs(shell);
+const { shortcuts, tabsEnabled, editorPreferences, showPageTitle, showDocumentProperties, defaultSource, theme, appearance, appearanceController, visualFontChoice, customFontName, splitFontSettings, revealMarkdown, toolbarMode, showDocumentDiscussion, visualFontSize, sourceFontSize } = toRefs(prefs);
+const { showOutline, outlineOnLeft } = toRefs(documents);
+const { openingSettingsWindow, openSettingsTab, openSettingsInNewWindow, settingsPage, workspaceExporting, workspaceExportError, workspaceDeletionError, deleteWorkspace, exportWorkspace, settingsAction, settingsContext } = toRefs(modals);
 function closeSettings() {
-  if (windowContext.id === 'settings') void context!.auxiliaryWindows.close('settings');
-  else context!.settingsPanel = false;
+  if (windowContext.id === 'settings') void shell!.auxiliaryWindows.close('settings');
+  else modals!.settingsPanel = false;
 }
 </script>
 <template>
@@ -45,7 +58,7 @@ function closeSettings() {
       :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
       :native="native"
       :mobile="mobile"
-      v-model:developer-mode="context.developerMode"
+      v-model:developer-mode="prefs.developerMode"
       :default-source="defaultSource"
       :theme="theme"
       :appearance="appearance"

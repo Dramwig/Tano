@@ -30,6 +30,10 @@
     "./search": "./src/core/search.ts",
     "./surface-motion": "./src/primitives/surface-motion.ts",
     "./motion": "./src/primitives/motion.ts",
+    "./document-mentions": "./src/domain/document-mentions.ts",
+    "./agent-task-context": "./src/domain/agent-task-context.ts",
+    "./content-references": "./src/domain/content-references.ts",
+    "./workspace-objects": "./src/domain/workspace-objects.ts",
     "./styles.css": "./src/styles/index.css"
   },
   "dependencies": {
@@ -38,6 +42,7 @@
     "@codemirror/view": "^6.43.13",
     "@milkdown/kit": "^7.22.1",
     "@milkdown/plugin-prism": "^7.22.1",
+    "@tano/markdown": "^0.15.0",
     "@tano/protocol": "^0.15.0",
     "diff": "^8.0.2",
     "dompurify": "^3.4.16",

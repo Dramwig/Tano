@@ -5,6 +5,7 @@ import type { PluginPackageUsage } from '@tano/protocol';
 import { useWorkspaceStore } from '../../stores/workspace';
 const props = defineProps<{ pluginId?: string }>();
 const store = useWorkspaceStore(), usage = ref<PluginPackageUsage>(), pending = ref(false), error = ref(''), status = ref('');
+const opened = ref(false);
 const entries = computed(() => usage.value?.entries.filter(entry => !props.pluginId || entry.pluginId === props.pluginId) ?? []);
 const size = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MiB` : `${(bytes / 1024).toFixed(1)} KiB`;
 let generation = 0;
@@ -14,9 +15,10 @@ async function load(current: number) {
   const result = await store.loadPluginPackageUsage(store.workspace.id);
   if (current === generation) usage.value = result;
 }
-watch([() => props.pluginId, () => store.workspace?.id, () => store.canManagePlugins,
+watch([opened, () => props.pluginId, () => store.workspace?.id, () => store.canManagePlugins,
   () => JSON.stringify(store.installedPlugins.map(plugin => plugin.rule))], async (_current, _previous, cleanup) => {
   const current = ++generation; cleanup(() => { generation++; }); usage.value = undefined; error.value = ''; status.value = ''; pending.value = false;
+  if (!opened.value) return;
   try { await load(current); } catch (cause) { if (current === generation) error.value = String(cause); }
 }, { immediate: true });
 async function run(integrity?: string) {
@@ -31,7 +33,7 @@ async function run(integrity?: string) {
 }
 </script>
 <template>
-  <details v-if="store.pluginRepositoryAvailable && store.canManagePlugins" class="plugin-repository-storage">
+  <details v-if="store.pluginRepositoryAvailable && store.canManagePlugins" class="plugin-repository-storage" @toggle="opened = ($event.target as HTMLDetailsElement).open">
     <summary>{{ t('工作区云端包存储') }}</summary>
     <p v-if="error" role="alert">{{ error }}</p><p v-if="status" role="status">{{ status }}</p>
     <button :disabled="pending" @click="run()">{{ t('刷新云端容量') }}</button>

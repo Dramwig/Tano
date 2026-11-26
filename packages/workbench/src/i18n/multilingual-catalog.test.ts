@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
+import { loadAssistantLocale } from '@tano/protocol/assistant-language';
 import englishMessages from './locales/en-US.json';
 import { localeRegistry } from './locale';
 import { startupCopy } from '../shell/startup-copy';
@@ -24,7 +25,7 @@ for (const entry of localeRegistry) {
       check(Object.fromEntries(Object.keys(englishMessages).map(key => [key, key])), await entry.loadMessages(), locale);
       check(read('./locales/icon-labels-en.json'), await entry.loadIcons(), `icons.${locale}`);
     }
-    check(read('../assistant/locales/en-US.json'), await entry.loadAssistant(), `assistant.${locale}`);
+    check(await loadAssistantLocale('en-US'), await entry.loadAssistant(), `assistant.${locale}`);
     const plurals: PluralCatalog = await entry.loadPlurals();
     for (const [key, plural] of Object.entries(plurals)) {
       expect(key in englishMessages).toBe(true);

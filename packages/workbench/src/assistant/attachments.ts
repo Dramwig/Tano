@@ -3,7 +3,7 @@ import { t } from '../i18n/i18n';
 
 export const maxAssistantAttachments = 10;
 export const assistantAttachmentBytes = { text: 128 * 1024, media: 4 * 1024 * 1024 };
-export const assistantClipboardSeparator = '\n\nClipboard attachments (reference data):\n';
+export { assistantClipboardSeparator } from '@tano/protocol/assistant-language';
 
 const mediaTypes: Readonly<Record<string, string>> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',

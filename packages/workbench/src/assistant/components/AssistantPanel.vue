@@ -791,7 +791,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
         <LoadingSkeleton v-if="assistant.loading && !assistant.session?.messages.length" :rows="5" />
         <div v-else-if="!assistant.session?.messages.length" class="assistant-welcome">
           <!-- Reserved for platform AI settings; currently greets with a flutter. -->
-          <button type="button" class="assistant-welcome-mark" :aria-label="t('同页 AI 设置（即将推出）')" :data-tooltip="t('同页 AI 设置（即将推出）')" @click="welcomeButterfly?.flutter()">
+          <button type="button" class="assistant-welcome-mark" :aria-label="t('同页助手')" :data-tooltip="t('同页助手')" @click="welcomeButterfly?.flutter()">
             <AssistantButterfly ref="welcomeButterfly" class="assistant-welcome-butterfly" />
           </button>
           <h3>{{ t('今天想从哪里开始？') }}</h3>

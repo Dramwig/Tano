@@ -8,7 +8,7 @@ import { customCalloutIcon, customCalloutMarker } from '../markdown/callout';
 export function customCalloutWidget(pos: number, marker: string, readonly: boolean, component?: Component,
   stopHistoryCapture?: () => void) {
   return Decoration.widget(pos + 1, (view, getPos) => {
-    const title = document.createElement('div');
+    const title = view.dom.ownerDocument.createElement('div');
     title.className = 'tano-callout-title tano-custom-callout-icon';
     title.contentEditable = 'false';
     const icon = customCalloutIcon(marker);

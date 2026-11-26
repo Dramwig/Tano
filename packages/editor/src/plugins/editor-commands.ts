@@ -56,7 +56,6 @@ export interface EditorCommandsOptions {
   isDisposed: () => boolean;
   readonly: () => boolean;
   revealMarkdown: () => boolean;
-  enabledLevels: () => readonly number[] | undefined;
   policy: () => WorkspaceCapabilities;
   referencesEnabled: () => boolean;
   extension: () => EditorExtension | undefined;
@@ -86,7 +85,6 @@ export function createEditorCommandsApi(options: EditorCommandsOptions) {
     isDisposed,
     readonly,
     revealMarkdown,
-    enabledLevels,
     policy,
     referencesEnabled,
     extension,
@@ -112,7 +110,7 @@ export function createEditorCommandsApi(options: EditorCommandsOptions) {
   function command(name: string, value?: string) {
     const editor = getEditor();
     if (!editor || readonly()) return;
-    if (!commandEnabled(name, enabledLevels(), policy().features)) return;
+    if (!commandEnabled(name, policy().features)) return;
     if (name === 'reference' || name === 'object-reference') {
       if (!referencesEnabled()) return;
       editor.action((ctx) => {

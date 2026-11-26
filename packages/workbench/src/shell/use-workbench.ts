@@ -1,8 +1,6 @@
 import {
   computed,
   nextTick,
-  onBeforeUnmount,
-  onMounted,
   provide,
   ref,
   shallowReactive,
@@ -10,23 +8,13 @@ import {
   watch,
 } from 'vue';
 import { storeToRefs } from 'pinia';
-import { Bot, Mail, Settings2 } from 'lucide-vue-next';
-import { isFeatureEnabled } from '../features';
-import { MAIL_TAB_ID } from '../mail/types';
 import { version as appVersion } from '../../package.json';
-import { defaultSelectionContext } from '@tano/editor/selection-context';
 import {
   fileHandlers,
-  isDataTableFilePath,
-  isMarkdown,
   isObjectPath,
   isPlanObject,
   isPlanObjectType,
-  isWorkspaceInternalPath,
-  parentPath,
-  relativeWorkspaceReference,
   resolveReference,
-  safeRemoteImage,
   type FileEntry,
   type ReferenceIdentity,
 } from '@tano/protocol';
@@ -34,59 +22,45 @@ import { native } from '../workspace/adapter';
 import { agentInboxKey, useAgentInboxController } from '../assistant/agent-controller';
 import { butterflyScope } from '../assistant/butterfly';
 import { butterflyPerchDirective, provideButterflyController } from '../assistant/butterfly-vue';
-import { ASSISTANT_TAB_ID, openAssistantPage } from '../assistant/navigation';
 import { useAssistantStore, useInlineAssistantStore } from '../assistant/store';
 import type { AttachmentStatusUpdate } from '../files/attachment-status';
-import { nativeAttachments, openExternalUrl } from '../files/attachments';
-import { CALENDAR_TAB_ID } from '../plans/calendar';
+import { nativeAttachments } from '../files/attachments';
+import type FileTree from '../files/components/FileTree.vue';
 import type { ImportRecord } from '../workspace/components/ImportPanel.vue';
 import { useDocumentActions } from '../composables/use-document-actions';
 import { useFileTreeController } from '../composables/use-file-tree-controller';
 import { useInlineAssistant } from '../composables/use-inline-assistant';
-import { useWorkbenchCalendar } from '../composables/use-workbench-calendar';
+import { useWorkbenchHelp } from '../composables/use-workbench-help';
 import { useWorkbenchHistory } from '../composables/use-workbench-history';
+import { useWorkbenchLifecycle } from '../composables/use-workbench-lifecycle';
 import { useWorkbenchModals } from '../composables/use-workbench-modals';
 import { useWorkbenchOutline } from '../composables/use-workbench-outline';
 import { useWorkbenchPreferences } from '../composables/use-workbench-preferences';
+import { useWorkbenchSettings } from '../composables/use-workbench-settings';
 import { useWorkbenchShortcuts } from '../composables/use-workbench-shortcuts';
-import { isTableTab, tableFileId } from '../data-tables/data-tables';
+import { useWorkbenchViews } from '../composables/use-workbench-views';
+import { isTableTab } from '../data-tables/data-tables';
 import { appearanceText } from '../documents/document-appearance';
 import { useDocumentFavicon } from '../documents/document-favicon';
-import { GRAPH_TAB_ID } from '../documents/document-graph';
-import type { HelpAvailability, HelpContext } from '../help/help-content';
-import { t, uiLocale } from '../i18n/i18n';
+import { t } from '../i18n/i18n';
 import { planKey } from '../plans/personal-plans';
-import { expandRecurringPlans } from '../plans/recurrence';
-import { LocalReminderScheduler } from '../plans/local-reminders';
+import { planDocumentSource } from '../plans/selection-todo';
 import { mobile } from '../platform/platform';
-import { nativeListen as listen } from '../platform/native-bridge';
-import { pluginPreviewStatus, pluginViewHeader } from '../plugins/view-header';
 import {
   createLocalExtensions,
   useWorkbenchRuntime,
   type WorkbenchActions,
-  type WorkbenchViewTab,
 } from '../runtime';
-import { planDocumentSource } from '../plans/selection-todo';
-import { readSettingsPage } from '../settings/settings-preference';
-import type { SettingsPageId } from '../settings/settings-window';
-import { shortcutAriaLabel, shortcutKeys } from './shortcuts';
 import { usePlanSyncStore } from '../stores/plan-sync';
 import { usePlanStore } from '../stores/plans';
 import { useSuggestionStore } from '../stores/suggestions';
 import { useUpdatesStore } from '../stores/updates';
 import { useWorkspaceStore } from '../stores/workspace';
-import { useViewport } from './viewport';
+import type { ObjectRecord } from '../objects/workspace-objects';
 import { useWindowContext } from '../windows/context';
 import { useAuxiliaryWindows } from '../windows/manager';
-import {
-  resolvePluginSidebar,
-  useWorkbenchNavigation,
-  type WorkspaceSidebarView,
-} from './workbench-navigation';
+import { useViewport } from './viewport';
 import { retainWorkbenchSession } from './workbench-session';
-import type { ObjectRecord } from '../objects/workspace-objects';
-import { PLUGINS_TAB_ID } from '../plugins/workspace-plugins';
 
 export interface WorkbenchProps {
   initialWorkspace?: string;
@@ -130,7 +104,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
   watch(agentInbox.error, (error) => {
     if (error) store.report(error);
   });
-  // Keep the panel mounted until its closing transition releases the layout space.
   const assistantPanelMounted = ref(assistant.opened);
   watch(
     () => assistant.opened,
@@ -178,7 +151,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
 
   const plans = usePlanStore();
   usePlanSyncStore();
-  // Document tabs belong to the desktop app. Mobile and web use page navigation.
   const tabsEnabled = native && !mobile;
   const { width: viewportWidth, touch: touchLayout, compact: compactPanes } = useViewport(mobile);
   const isAuxiliaryWindow = false;
@@ -188,7 +160,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
   const workspaceAdapter = useWorkbenchRuntime().adapter;
   const documentationBaseUrl = useWorkbenchRuntime().documentationBaseUrl;
   const extensions = useWorkbenchRuntime().extensions?.() ?? createLocalExtensions();
-  const extensionViews = extensions.views ?? [];
   const editing = extensions.editing;
 
   const { workspace, active, activeId, activities, fatal, busy } = storeToRefs(store);
@@ -230,33 +201,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     if (compact) sidebar.value = false;
   });
 
-  // Navigation & view tabs
-  const SETTINGS_TAB_ID = 'view:settings';
-  const settingsTabView: WorkbenchViewTab = {
-    id: SETTINGS_TAB_ID,
-    get label() {
-      return t('设置');
-    },
-    icon: Settings2,
-    scope: 'account',
-    detachable: true,
-  };
-  const mailEnabled = isFeatureEnabled('desktopMailClient') && native && !mobile;
-  const mailTabView: WorkbenchViewTab = {
-    id: MAIL_TAB_ID,
-    get label() {
-      return t('邮箱');
-    },
-    icon: Mail,
-    scope: 'account',
-    detachable: false,
-  };
-  store.registerViews([
-    ...extensionViews,
-    settingsTabView,
-    ...(mailEnabled ? [mailTabView] : []),
-    { id: ASSISTANT_TAB_ID, label: t('助手'), icon: Bot },
-  ]);
   store.setBeforeWorkspaceChange(async () => {
     if (!(await auxiliaryWindows.closeAll()))
       throw new Error(t('还有未保存的修改，请先处理保存错误。'));
@@ -264,322 +208,31 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     await inlineRunner.settle();
     await agentInbox.settle();
   });
-  const activeExtensionView = computed(() =>
-    extensionViews.find((view) => view.id === store.activeId),
-  );
-  watch(
-    activeExtensionView,
-    (view) => {
-      if (view?.collapseSidebarOnOpen) sidebar.value = false;
-    },
-    { immediate: true },
-  );
 
-  const navigation = useWorkbenchNavigation(
-    () => store.workspace?.id,
-    isAuxiliaryWindow
-      ? undefined
-      : {
-          getItem: (key) => localStorage.getItem(key),
-          setItem: (key, value) => localStorage.setItem(key, value),
-        },
-  );
-  const { context: navigationContext, module: navigationModule, workspaceView, sidebarView } =
-    navigation;
-  let personalPlanScope: typeof plans.view = 'all';
-  // Migrate the former workspace plan mode to the workspace view switcher.
-  watch(
-    [navigationContext, navigationModule],
-    ([context, module]) => {
-      if (context === 'workspace' && module === 'plan') navigation.selectWorkspaceView('events');
-    },
-    { immediate: true },
-  );
-
-  const homeContent = ref<string>();
-  const homeExtension = computed(() =>
-    extensionViews.find((view) => view.id === homeContent.value),
-  );
-
-  const calendar = useWorkbenchCalendar({
+  // Views, sidebar navigation, calendar & toolbar visibility items
+  const views = useWorkbenchViews({
     store,
     plans,
-    navigationContext,
-    navigationModule,
-    sidebarView,
-    homeContent,
+    extensions,
+    attachments,
+    isAuxiliaryWindow,
     compactPanes,
     sidebar,
-    selectModule: (id) => selectModule(id),
+    workspaceMenu,
+    openSettings: (page) => settingsCtrl.openSettings(page),
   });
-
-  function selectContext(context: 'home' | 'workspace') {
-    calendar.rememberCalendar();
-    if (navigationContext.value === 'home') personalPlanScope = plans.view;
-    navigation.selectContext(context);
-    plans.view = navigationContext.value === 'home' ? personalPlanScope : 'workspace';
-    calendar.restoreCalendar();
-    workspaceMenu.value = false;
-  }
-  watch(navigationContext, (context) => {
-    plans.view = context === 'home' ? personalPlanScope : 'workspace';
-  });
-  function selectWorkspaceView(id: string) {
-    calendar.rememberCalendar();
-    if (navigationContext.value === 'home') personalPlanScope = plans.view;
-    navigation.selectWorkspaceView(id as WorkspaceSidebarView);
-    calendar.restoreCalendar();
-    if (id === 'events') plans.view = 'workspace';
-  }
-  function selectModule(id: string) {
-    calendar.rememberCalendar();
-    if (navigationContext.value === 'home') personalPlanScope = plans.view;
-    if (id === 'plan' && navigationContext.value === 'workspace')
-      navigation.selectWorkspaceView('events');
-    else navigation.selectModule(id);
-    calendar.restoreCalendar();
-    plans.view = navigationContext.value === 'home' ? personalPlanScope : 'workspace';
-    sidebar.value = true;
-  }
-  watch(
-    () => store.activePluginSidebar,
-    (key) => {
-      if (key) {
-        sidebarView.value = `plugin-sidebar:${key}`;
-        sidebar.value = true;
-      }
-    },
-  );
-  watch(
-    [
-      () => store.workspaceLoading.plugins || store.installedPluginWorkspace !== store.workspace?.id,
-      () => store.pluginViews,
-      sidebarView,
-    ],
-    ([loading, views, current]) => {
-      const resolved = resolvePluginSidebar(current, loading, views);
-      if (resolved !== current) sidebarView.value = resolved;
-    },
-  );
-  watch(sidebarView, (current) => {
-    if (store.activePluginSidebar && current !== `plugin-sidebar:${store.activePluginSidebar}`)
-      store.activePluginSidebar = '';
-  });
-  watch(
-    () => store.pluginSettingsRequest,
-    (request) => {
-      if (request) openSettings(request.key);
-    },
-  );
-
-  function openExtensionView(id: string) {
-    if (navigationContext.value === 'home') personalPlanScope = plans.view;
-    calendar.rememberCalendar();
-    if (extensionViews.find((view) => view.id === id)?.sidebar) navigation.openInHome(id);
-    else navigation.selectContext('home');
-    calendar.restoreCalendar();
-    if (!store.workspace) homeContent.value = id;
-    else store.openViewTab(id);
-    if (compactPanes.value) sidebar.value = false;
-  }
-
-  const viewActions = Object.fromEntries(
-    extensionViews.map((view) => [
-      view.id,
-      {
-        open: () => {
-          openExtensionView(view.id);
-          if (compactPanes.value) sidebar.value = false;
-        },
-        showSidebar: () => {
-          selectModule(view.id);
-          sidebar.value = true;
-        },
-      },
-    ]),
-  );
-
-  function openMail() {
-    if (!mailEnabled) return;
-    if (navigationContext.value === 'home') personalPlanScope = plans.view;
-    calendar.rememberCalendar();
-    navigation.openInHome(MAIL_TAB_ID);
-    calendar.restoreCalendar();
-    if (!store.workspace) homeContent.value = MAIL_TAB_ID;
-    else store.openViewTab(MAIL_TAB_ID);
-    if (compactPanes.value) sidebar.value = false;
-  }
-  watch(
-    () => navigation.homeModule.value,
-    (mod) => {
-      if (!mailEnabled && mod === MAIL_TAB_ID) navigation.homeModule.value = 'plan';
-    },
-    { immediate: true },
-  );
-
-  // Header / toolbar visibility item descriptors
-  const sidebarNavigationItems = computed(() => [
-    {
-      id: 'plan',
-      get label() {
-        return t('计划');
-      },
-    },
-    ...(mailEnabled
-      ? [
-          {
-            id: MAIL_TAB_ID,
-            get label() {
-              return t('邮箱');
-            },
-          },
-        ]
-      : []),
-    ...extensionViews
-      .filter((view) => view.sidebar)
-      .map((view) => ({ id: view.id, label: view.label })),
-  ]);
-  const sidebarHeaderItems = computed(() => [
-    ...(navigationModule.value === 'workspace'
-      ? [
-          {
-            id: 'search',
-            get label() {
-              return t('查找文档');
-            },
-          },
-          ...(store.workspaceSettings.showGraph
-            ? [
-                {
-                  id: 'graph',
-                  get label() {
-                    return t('关系图谱');
-                  },
-                },
-              ]
-            : []),
-        ]
-      : []),
-    ...extensionViews
-      .filter((view) => view.header)
-      .map((view) => ({ id: view.id, label: view.label })),
-  ]);
-  const repositoryActionItems = computed(() => [
-    {
-      id: 'create',
-      get label() {
-        return t('新建文档');
-      },
-    },
-    {
-      id: 'folder',
-      get label() {
-        return t('新建文件夹');
-      },
-    },
-  ]);
-  const documentToolItems = [
-    {
-      id: 'markdown-reveal',
-      get label() {
-        return t('光标展开源码');
-      },
-    },
-    {
-      id: 'source-mode',
-      get label() {
-        return t('源码模式');
-      },
-    },
-  ];
-  const topbarItems = [
-    {
-      id: 'breadcrumb',
-      get label() {
-        return t('面包屑');
-      },
-    },
-  ];
-  const calendarToolItems = [
-    {
-      id: 'calendar-period',
-      get label() {
-        return t('日历日期');
-      },
-    },
-    {
-      id: 'calendar-today',
-      get label() {
-        return t('今天');
-      },
-    },
-    {
-      id: 'calendar-previous',
-      get label() {
-        return t('上一时段');
-      },
-    },
-    {
-      id: 'calendar-next',
-      get label() {
-        return t('下一时段');
-      },
-    },
-    {
-      id: 'calendar-mode',
-      get label() {
-        return t('日历视图');
-      },
-    },
-    {
-      id: 'calendar-events',
-      get label() {
-        return t('已归档事项');
-      },
-    },
-  ];
-  function topbarVisibilityItems(tabId: string, hasDocument: boolean, activePane: boolean) {
-    return [
-      ...topbarItems.filter(
-        (item) => item.id !== 'breadcrumb' || (tabId !== CALENDAR_TAB_ID && tabId !== GRAPH_TAB_ID),
-      ),
-      ...(hasDocument || tabId.startsWith('attachment:')
-        ? [
-            {
-              id: 'document-status',
-              get label() {
-                return t('文章状态');
-              },
-            },
-          ]
-        : []),
-      ...(activePane && extensions.regions['editing-status']
-        ? [
-            {
-              id: 'editing-status',
-              get label() {
-                return t('同步状态');
-              },
-            },
-          ]
-        : []),
-      ...(tabId === CALENDAR_TAB_ID ? calendarToolItems : []),
-      ...(tabId.startsWith('attachment:') && attachments
-        ? [
-            {
-              id: 'attachment-export',
-              get label() {
-                return t('导出附件');
-              },
-            },
-          ]
-        : []),
-      ...(hasDocument ? documentToolItems : []),
-    ].map((item, index, items) => ({
-      ...item,
-      separatorBefore: items[index - 1]?.id === 'document-status',
-    }));
-  }
+  const {
+    extensionViews,
+    navigation,
+    navigationContext,
+    navigationModule,
+    workspaceView,
+    sidebarView,
+    calendar,
+    selectContext,
+    selectWorkspaceView,
+    selectModule,
+  } = views;
 
   // Attachment status
   const attachmentStates = ref<Record<string, AttachmentStatusUpdate>>({});
@@ -617,7 +270,7 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     store.workspace?.readOnly ? t('只读权限') : store.isDemo ? t('浏览器演示') : null,
   );
 
-  // Workbench session & git/system sync
+  // Workbench session
   const workbenchSession = retainWorkbenchSession(store, () => {
     void extensions.disconnect().catch(store.report);
     assistant.stop();
@@ -625,30 +278,8 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     void editing.dispose().catch(store.report);
     store.dispose();
   });
-  let unmounted = false;
   assistant.setManaged((id) => editing.isManaging(id));
   inlineRunner.setManaged((id) => editing.isManaging(id));
-
-  let reminderTimer: ReturnType<typeof setInterval> | undefined;
-  const reminderScheduler = new LocalReminderScheduler({
-    onRemind: (item) => {
-      store.report(t('日程提醒：{0}', [item.record.object.name]));
-    },
-  });
-  function checkPlanReminders() {
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-    const now = new Date();
-    const windowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-    const windowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
-    const records = expandRecurringPlans(plans.recordsFor('all'), windowStart, windowEnd);
-    reminderScheduler.check(records, now.getTime());
-  }
-  onMounted(() => {
-    reminderTimer = setInterval(checkPlanReminders, 60_000);
-  });
-  onBeforeUnmount(() => {
-    clearInterval(reminderTimer);
-  });
 
   const updates = useUpdatesStore();
   const updateLock = computed(() => ['downloading', 'installing'].includes(updates.state.phase));
@@ -672,7 +303,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     templatePaneId.value = store.activePaneId;
     templateSource.value = store.active?.content ?? '';
     templateInitialization.value = undefined;
-    // Let the captured pane settle before showing the page; the editor stays mounted.
     void nextTick(() => {
       templateLibraryOpen.value = true;
     });
@@ -940,9 +570,10 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
       return;
     }
     if (identity.type === 'document' || identity.type === 'asset') {
-      const file = workspace.value?.files.find(
-        (file) => file.id === identity.id && file.path === result.target!.path,
-      ) ?? workspace.value?.files.find((file) => file.id === identity.id);
+      const file =
+        workspace.value?.files.find(
+          (file) => file.id === identity.id && file.path === result.target!.path,
+        ) ?? workspace.value?.files.find((file) => file.id === identity.id);
       if (file) await openEntry(file);
       return;
     }
@@ -977,116 +608,27 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
       await docs.revealAssistantSelection(docSource);
   }
 
-  // Settings window / tab / modal
-  const settingsPage = ref<SettingsPageId>(readSettingsPage());
-  // A loaded workspace keeps its session, but only the workspace navigation owns its settings.
-  const settingsWorkspace = computed(() =>
-    navigationContext.value === 'workspace' ? workspace.value : null,
-  );
-  function openSettingsTab(page: SettingsPageId) {
-    settingsPage.value = page;
-    store.openViewTab(SETTINGS_TAB_ID);
-    settingsPanel.value = false;
-    if (compactPanes.value) sidebar.value = false;
-  }
-  const openingSettingsWindow = ref(false);
-  async function openSettingsInNewWindow(page: SettingsPageId) {
-    if (!native || mobile || !tabsEnabled) return;
-    settingsPage.value = page;
-    if (openingSettingsWindow.value) return;
-    openingSettingsWindow.value = true;
-    settingsPanel.value = false;
-    try {
-      activeWindow.value = (
-        await auxiliaryWindows.open('settings', 'settings', t('设置') + ' — Tano / 同页')
-      ).context;
-    } catch (error) {
-      settingsPanel.value = true;
-      store.report(error);
-    } finally {
-      openingSettingsWindow.value = false;
-    }
-  }
-  function openSettings(page: SettingsPageId = readSettingsPage(settingsPage.value)) {
-    menu.value = false;
-    workspaceMenu.value = false;
-    settingsPage.value = page === 'preferences' ? 'appearance' : page;
-    const pane = store.panes.find((pane) => pane.tabs.includes(SETTINGS_TAB_ID));
-    if (pane) {
-      store.focusPane(pane.id);
-      openSettingsTab(settingsPage.value);
-      return;
-    }
-    settingsPanel.value = true;
-  }
-  function settingsAction(
-    action: 'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' | 'sign-out',
-  ) {
-    if (!settingsWorkspace.value && ['reveal', 'agent', 'history', 'recycle'].includes(action))
-      return;
-    settingsPanel.value = false;
-    if (action === 'open-folder') void store.openWorkspace();
-    else if (action === 'reveal') void store.reveal();
-    else if (action === 'agent') agentPanel.value = true;
-    else if (action === 'history') extensions.showHistory?.();
-    else if (action === 'recycle') recyclePanel.value = true;
-  }
-  const settingsContext = computed(() => ({
-    pluginPages: settingsWorkspace.value ? store.pluginSettingsPages : [],
-    workspace: settingsWorkspace.value
-      ? {
-          id: settingsWorkspace.value.id,
-          name: settingsWorkspace.value.name,
-          path: settingsWorkspace.value.path,
-          readOnly: settingsWorkspace.value.readOnly,
-          canDelete: settingsWorkspace.value.canDelete,
-          canManageSettings: settingsWorkspace.value.canManageSettings,
-        }
-      : null,
-    activeFile:
-      settingsWorkspace.value && store.active
-        ? { id: store.active.id, path: store.active.path }
-        : null,
-    workspaceSettings: store.workspaceSettings,
-    workspacePages:
-      settingsWorkspace.value?.files
-        .filter(
-          (file) =>
-            file.kind === 'file' && isMarkdown(file.path) && !isWorkspaceInternalPath(file.path),
-        )
-        .map((file) => ({ id: file.id, path: file.path })) ?? [],
-    workspaceSettingsError: store.workspaceSettingsError,
-    workspaceSettingsSaving: store.workspaceSettingsSaving,
-    workspaceExporting: modals.workspaceExporting.value,
-    workspaceExportError: modals.workspaceExportError.value,
-    workspaceDeletionSupported: !!workspaceAdapter.deleteWorkspace,
-    workspaceDeleting: modals.workspaceDeleting.value || store.busy,
-    workspaceDeletionError: modals.workspaceDeletionError.value,
-    mode: store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local',
-    defaultSource: prefs.defaultSource.value,
-    theme: prefs.theme.value,
-    appearance: prefs.appearance.value,
-    visualFontChoice: prefs.visualFontChoice.value,
-    customFontName: prefs.customFontName.value,
-    splitFontSettings: prefs.splitFontSettings.value,
-    revealMarkdown: prefs.revealMarkdown.value,
-    toolbarMode: prefs.toolbarMode.value,
-    shortcuts: prefs.shortcuts.value,
-    showPageTitle: prefs.showPageTitle.value,
-    showDocumentProperties: prefs.showDocumentProperties.value,
-    showDocumentDiscussion: prefs.showDocumentDiscussion.value,
-    showOutline: outlineCtrl.showOutline.value,
-    outlineOnLeft: outlineCtrl.outlineOnLeft.value,
-    visualFontSize: prefs.visualFontSize.value,
-    sourceFontSize: prefs.sourceFontSize.value,
-    editorPreferences: prefs.editorPreferences.value,
-    historyEnabled: !!extensions.historyEnabled,
-    capabilities: store.capabilities,
-    capabilityError: store.capabilityError,
-    capabilitySaving: store.capabilitySaving,
-    version: updates.state.status?.currentVersion ?? appVersion,
-    updates: updates.state,
-  }));
+  // Settings controller
+  const settingsCtrl = useWorkbenchSettings({
+    store,
+    updates,
+    workspaceAdapter,
+    extensions,
+    auxiliaryWindows,
+    activeWindow,
+    navigationContext,
+    compactPanes,
+    sidebar,
+    tabsEnabled,
+    menu,
+    workspaceMenu,
+    settingsPanel,
+    agentPanel,
+    recyclePanel,
+    prefs,
+    outlineCtrl,
+    modals,
+  });
 
   const extensionActions: WorkbenchActions = {
     closeMenus: () => {
@@ -1096,7 +638,7 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     createWorkspace: () => {
       void modals.createNewWorkspace();
     },
-    openSettings,
+    openSettings: settingsCtrl.openSettings,
     showDiff: (value) => {
       selectedDiff.value = value;
     },
@@ -1125,13 +667,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     if (activeWindow.value.id !== 'main') return;
     sidebar.value = !sidebar.value;
     workspaceMenu.value = false;
-  }
-  async function dragPaneWindow(event: MouseEvent) {
-    if (event.button !== 0 || event.detail !== 1) return;
-    await activeWindow.value.native?.startDragging();
-  }
-  async function maximizePaneWindow() {
-    await activeWindow.value.native?.toggleMaximize();
   }
 
   // Commands, shortcuts, window listeners & auxiliary window event bindings
@@ -1217,7 +752,7 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     toggleWorkspaceMenu,
     selectModule,
     openCalendar: calendar.openCalendar,
-    openSettings,
+    openSettings: settingsCtrl.openSettings,
     closeFileContextMenu: tree.closeFileContextMenu,
     closeDirectoryContextMenu: tree.closeDirectoryContextMenu,
     closeWorkspaceEntryContextMenu: tree.closeWorkspaceEntryContextMenu,
@@ -1233,574 +768,445 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     constrainSidebarToViewport: prefs.constrainSidebarToViewport,
   });
 
-  // Cross-domain watchers & lifecycle
-  watch(
-    () => store.workspace?.id,
-    (id, previous) => {
-      agentPanel.value = false;
-      selectedDiff.value = undefined;
-      recyclePanel.value = false;
-      if (navigationModule.value === 'workspace') {
-        if (previous) calendar.rememberCalendar(previous);
-        calendar.restoreCalendar(id);
-      }
-      calendar.calendarModeOpen.value = false;
-      workspaceMenu.value = false;
-      settingsPanel.value = false;
-    },
-  );
-  watch(activeId, (id) => {
-    calendar.calendarModeOpen.value = false;
-    if (id === ASSISTANT_TAB_ID && compactPanes.value) sidebar.value = false;
-    docs.closePageContextMenu();
-    const treeId = activeId.value.startsWith('table:')
-      ? tableFileId(activeId.value)
-      : activeId.value;
-    if (!tree.pendingTreeOpenIds.has(treeId) || !tree.selectedEntryIds.value.has(treeId))
-      tree.selectActiveFileInTree();
-    historyPanel.value = false;
-    menu.value = false;
-    outlineCtrl.resetOnActiveChange();
-  });
-  watch(
-    () => [store.activeId, assistant.loading, store.busy] as const,
-    ([id, loading, switching]) => {
-      if (id === ASSISTANT_TAB_ID && !loading && !switching) openAssistantPage(store, assistant);
-    },
-  );
-  watch(sidebar, (visible) => {
-    if (!visible) {
-      tree.closeFileContextMenu();
-      tree.closeDirectoryContextMenu();
-      outlineCtrl.closeOutlineContextMenu();
-    }
-  });
-
-  const noteCount = computed(
-    () =>
-      workspace.value?.files.filter(
-        (f) =>
-          f.kind === 'file' &&
-          !isWorkspaceInternalPath(f.path) &&
-          (isMarkdown(f.path) || isDataTableFilePath(f.path)),
-      ).length ?? 0,
-  );
-
   // Help guidance state
-  const helpContext = computed<HelpContext>(() => {
-    if (activeId.value === ASSISTANT_TAB_ID || sidebarView.value === 'assistant')
-      return 'assistant';
-    if (isTableTab(activeId.value)) return 'tables';
-    if (activeId.value === GRAPH_TAB_ID) return 'graph';
-    if (activeId.value === PLUGINS_TAB_ID) return 'plugins';
-    if (activeId.value === CALENDAR_TAB_ID || sidebarView.value === 'plan') return 'plan';
-    if (!active.value) return 'welcome';
-    if (docs.editorReadonly.value) return 'reading';
-    if (docs.source.value) return 'source';
-    return active.value.content.trim() ? 'document' : 'empty-document';
-  });
-  const helpAvailability = computed<HelpAvailability>(() => ({
-    'document-write': !!active.value && !docs.editorReadonly.value,
-    'workspace-write': !!workspace.value && !workspace.value.readOnly,
-    plans: plans.personalWritable || plans.workspaceWritable,
-    comments: !!active.value && !docs.editorReadonly.value,
-    templates: !!workspace.value && !workspace.value.readOnly,
-    import: !!workspace.value && !workspace.value.readOnly,
-    duplicate: !!workspace.value && !workspace.value.readOnly && !!workspaceAdapter.duplicate,
-    'folder-home': !!workspace.value && !!store.workspaceSettings.folderHomeFileName,
-    'folder-conversion':
-      !!workspace.value &&
-      !workspace.value.readOnly &&
-      store.canConvertFolderDocuments &&
-      !!store.workspaceSettings.folderHomeFileName,
-    panes: !!workspace.value && !compactPanes.value,
-    assistant: !!workspace.value && assistant.available,
-    'assistant-configure':
-      !!workspace.value && assistant.available && assistant.canConfigure && !assistant.demo,
-    suggestions:
-      !!active.value && !docs.editorReadonly.value && !editing.isManaging(active.value.id),
-    math: !!active.value && !docs.editorReadonly.value && store.capabilities.features.math,
-    mermaid: !!active.value && !docs.editorReadonly.value && store.capabilities.features.mermaid,
-  }));
-  const helpBlocked = computed(
-    () =>
-      !!(
-        activeExtensionView.value ||
-        activeId.value === SETTINGS_TAB_ID ||
-        activeId.value.startsWith('attachment:') ||
-        (assistant.opened && assistant.displayMode === 'fullscreen') ||
-        busy.value ||
-        fatal.value ||
-        store.pending ||
-        active.value?.conflict ||
-        active.value?.error ||
-        workspaceMenu.value ||
-        menu.value ||
-        modals.modal.value ||
-        settingsPanel.value ||
-        importPanel.value ||
-        templateLibraryOpen.value ||
-        agentPanel.value ||
-        objectDetail.value ||
-        planArchiveOpen.value ||
-        selectedDiff.value ||
-        inlineAssist.selectionTodo.value ||
-        recyclePanel.value ||
-        docs.referenceGraphOpened.value ||
-        tree.fileContextMenu.value ||
-        tree.directoryContextMenu.value ||
-        docs.pageContextMenu.value ||
-        outlineCtrl.outlineContextMenu.value ||
-        prefs.resizingSidebar.value ||
-        tree.draggedEntry.value ||
-        updateLock.value
-      ),
-  );
-
-  // Startup & native window lifecycle
-  let unlistenClose: (() => void) | undefined;
-  let unlistenWatchError: (() => void) | undefined;
-
-  onMounted(async () => {
-    if (history.webPageRouting) {
-      history.initializePageHistory();
-      window.addEventListener('popstate', history.handlePagePopState);
-    }
-    try {
-      await workbenchSession.initialize(async () => {
-        if (props.createWorkspace) await modals.createNewWorkspace();
-        else
-          await store.initialize(
-            history.initialPageRoute?.workspaceId ??
-              (props.resolveInitialWorkspace
-                ? await props.resolveInitialWorkspace()
-                : props.initialWorkspace),
-          );
-      });
-    } finally {
-      navigation.restore();
-      if (
-        navigation.homeModule.value !== 'plan' &&
-        !extensionViews.some(
-          (view) => view.id === navigation.homeModule.value && view.sidebar,
-        )
-      )
-        navigation.homeModule.value = 'plan';
-      plans.view = navigationContext.value === 'home' ? personalPlanScope : 'workspace';
-      startupPending.value = false;
-    }
-    if (unmounted) return;
-    emit('ready');
-    await nextTick();
-
-    await history.finishInitialPageRouting(props.createWorkspace);
-    if (native && !mobile) {
-      void updates.initialize();
-    }
-    if (native) {
-      if (localNative)
-        unlistenWatchError = await listen<string>('workspace-watch-error', (event) => {
-          store.enableWorkspacePolling();
-          store.report(t('文件监听遇到错误：{0}。目录仍会定期自动检查。', [event.payload]));
-        });
-      if (!mobile)
-        unlistenClose = await mainWindow.native!.onCloseRequested(async (event) => {
-          event.preventDefault();
-          if (updates.state.phase === 'installing') return;
-          try {
-            await editing.flush();
-            if (await store.flush()) {
-              await assistant.settle();
-              await inlineRunner.settle();
-              await agentInbox.settle();
-              if (!(await auxiliaryWindows.closeAll())) {
-                agentInbox.resume();
-                return;
-              }
-              await editing.suspendAll();
-              await mainWindow.native!.destroy();
-            } else store.report(t('还有未保存的内容，窗口已保留。请先保存或另存副本。'));
-          } catch (error) {
-            agentInbox.resume();
-            store.report(error);
-          }
-        });
-    }
-  });
-
-  onBeforeUnmount(() => {
-    unmounted = true;
-    document.documentElement.style.removeProperty('--sidebar-width');
-    workbenchSession.release();
-    window.removeEventListener('popstate', history.handlePagePopState);
-    unlistenClose?.();
-    unlistenWatchError?.();
-  });
-
-  return {
-    auxiliaryWindows,
-    activeWindow,
-    detachedTitle: modals.detachedTitle,
-    native,
-    mobile,
-    workspace,
-    compactPanes,
-    isAuxiliaryWindow,
-    sidebar,
-    t,
-    shortcuts: prefs.shortcuts,
-    toggleSidebar,
-    sessionPending,
-    tabFileDrag: tree.tabFileDrag,
-    fileDragEnd: tree.fileDragEnd,
+  const help = useWorkbenchHelp({
     store,
-    createNewDocument: modals.createNewDocument,
-    detachTab: modals.detachTab,
-    resizingSidebar: prefs.resizingSidebar,
-    moveSidebarResize: prefs.moveSidebarResize,
-    finishSidebarResize: prefs.finishSidebarResize,
-    butterfly,
-    fileMetadataTarget: tree.fileMetadataTarget,
-    switchingWorkspace,
-    mainColumn,
-    returnHome: modals.returnHome,
-    sidebarHeaderItems,
-    closeButtonVisibilityMenus,
-    extensionViews,
-    viewActions,
-    navigationContext,
-    sidebarNavigationItems,
-    navigationModule,
-    selectModule,
+    assistant,
+    plans,
+    workspaceAdapter,
+    editing,
+    compactPanes,
     sidebarView,
-    draggedEntry: tree.draggedEntry,
-    dropFolder: tree.dropFolder,
-    dropPlaceholders: tree.dropPlaceholders,
-    fileDragOver: tree.fileDragOver,
-    fileDragLeave: tree.fileDragLeave,
-    fileDrop: tree.fileDrop,
-    workspaceView,
-    selectWorkspaceView,
+    activeExtensionView: views.activeExtensionView,
+    editorReadonly: docs.editorReadonly,
+    source: docs.source,
     workspaceMenu,
+    menu,
     modal: modals.modal,
     settingsPanel,
-    repositoryActionItems,
-    showModal: modals.showModal,
-    activeId,
-    GRAPH_TAB_ID,
-    busy,
-    openDirectoryContextMenu: tree.openDirectoryContextMenu,
-    startupPending,
-    filesPending,
-    treeFiles: tree.treeFiles,
-    fileTree: tree.fileTree,
-    revealedHomeId: tree.revealedHomeId,
-    treeDocumentIcons: tree.treeDocumentIcons,
-    loadTreeDocumentIcon: tree.loadTreeDocumentIcon,
-    selectedEntryIds: tree.selectedEntryIds,
-    fileContextMenu: tree.fileContextMenu,
-    canDragEntry: tree.canDragEntry,
-    treeRename: tree.treeRename,
-    renameTreeEntry: tree.renameTreeEntry,
-    openTreeEntry: tree.openTreeEntry,
-    selectFileTreeEntry: tree.selectFileTreeEntry,
-    openFileContextMenu: tree.openFileContextMenu,
-    fileDragStart: tree.fileDragStart,
-    finishTreeRename: tree.finishTreeRename,
-    noteCount,
-    createPluginObject,
-    sidebarCalendarDate: calendar.sidebarCalendarDate,
-    openCalendar: calendar.openCalendar,
-    showPlanEvent,
-    multipleContextEntries: tree.multipleContextEntries,
-    contextEntries: tree.contextEntries,
-    fileContextKeydown: tree.fileContextKeydown,
-    localNative,
-    selectionDeleteDisabled: tree.selectionDeleteDisabled,
-    fileContextAction: tree.fileContextAction,
-    shortcutHint: prefs.shortcutHint,
-    contextFolderHome: tree.contextFolderHome,
-    folderHomeContextAction: tree.folderHomeContextAction,
-    fileMutationDisabled: tree.fileMutationDisabled,
-    directoryHasManagedFile: tree.directoryHasManagedFile,
-    isMarkdown,
-    isDataTableFilePath,
-    attachments,
-    tabsEnabled,
-    canDuplicateEntry: tree.canDuplicateEntry,
-    isWorkspaceInternalPath,
-    folderConversionIssue: tree.folderConversionIssue,
-    convertDocumentStructure: tree.convertDocumentStructure,
-    closeFileContextMenu: tree.closeFileContextMenu,
-    fileDeleteDisabled: tree.fileDeleteDisabled,
-    directoryContextMenu: tree.directoryContextMenu,
-    directoryContextAction: tree.directoryContextAction,
-    directoryContextDuplicateDisabled: tree.directoryContextDuplicateDisabled,
-    directoryContextRenameDisabled: tree.directoryContextRenameDisabled,
-    directoryContextDeleteDisabled: tree.directoryContextDeleteDisabled,
-    workspaceEntryContextMenu: tree.workspaceEntryContextMenu,
-    workspaceEntryContextMenuElement: tree.workspaceEntryContextMenuElement,
-    workspaceEntryContextKeydown: tree.workspaceEntryContextKeydown,
-    workspaceEntryContextAction: tree.workspaceEntryContextAction,
-    toggleWorkspaceMenu,
-    workspaceDropdownContextMenu: tree.workspaceDropdownContextMenu,
-    selectContext,
-    extensions,
-    extensionActions,
-    commandPaletteOpened,
-    openImport,
-    openTemplateLibrary,
-    openSettings,
-    updates,
-    recyclePanel,
-    agentPanel,
-    createNewWorkspace: modals.createNewWorkspace,
-    openWorkspaceEntryContextMenu: tree.openWorkspaceEntryContextMenu,
-    helpContext,
-    helpAvailability,
-    helpBlocked,
-    documentationBaseUrl,
-    menu,
-    openExternalUrl,
-    sidebarWidth: prefs.sidebarWidth,
-    defaultSidebarWidth: prefs.defaultSidebarWidth,
-    SIDEBAR_MIN_WIDTH: prefs.SIDEBAR_MIN_WIDTH,
-    sidebarWidthLimit: prefs.sidebarWidthLimit,
-    startSidebarResize: prefs.startSidebarResize,
-    resizeSidebarWithKeyboard: prefs.resizeSidebarWithKeyboard,
-    referenceGraphTarget: docs.referenceGraphTarget,
-    referenceGraphOpened: docs.referenceGraphOpened,
-    referenceGraphAnchor: docs.referenceGraphAnchor,
-    openReference,
-    assistantTab,
-    dragPaneWindow,
-    maximizePaneWindow,
-    assistant,
-    assistantPanelMounted,
-    assistantHosts,
-    ASSISTANT_TAB_ID,
-    revealAssistantSelection: docs.revealAssistantSelection,
-    templateLibraryOpen,
-    templatePaneId,
-    templateSource,
-    templateInitialization,
-    workspaceStatusLabel,
-    openEntry,
-    openBreadcrumbDirectory,
-    setAssistantHost,
-    topbarVisibilityItems,
-    canNavigatePage: history.canNavigatePage,
-    navigatePage: history.navigatePage,
-    CALENDAR_TAB_ID,
-    paneButterflyScope,
-    pluginViewHeader,
-    pluginPreviewStatus,
-    paneDocumentStatus: docs.paneDocumentStatus,
-    attachmentStatus,
-    currentAttachmentStatus,
-    PLUGINS_TAB_ID,
-    settingsTabView,
-    touchLayout,
-    showOutline: outlineCtrl.showOutline,
-    touchOutlineOpen: outlineCtrl.touchOutlineOpen,
-    isTableTab,
-    calendarToolItems,
-    calendarPeriod: calendar.calendarPeriod,
-    calendarDate: calendar.calendarDate,
-    moveCalendarPeriod: calendar.moveCalendarPeriod,
-    calendarModeOpen: calendar.calendarModeOpen,
-    calendarModeLabel: calendar.calendarModeLabel,
-    calendarModeOptions: calendar.calendarModeOptions,
-    calendarMode: calendar.calendarMode,
-    selectCalendarMode: calendar.selectCalendarMode,
-    openPlanArchive,
-    documentSuggestions,
-    editing,
-    suggestionModeBusy,
-    toggleSuggestionMode,
-    documentToolItems,
-    revealMarkdown: prefs.revealMarkdown,
-    paneSource: docs.paneSource,
-    shortcutAriaLabel,
-    shortcutKeys,
-    setPaneSource: docs.setPaneSource,
-    documentMenuElement: docs.documentMenuElement,
-    toggleDocumentMenu: docs.toggleDocumentMenu,
-    documentMenuTriggerKeydown: docs.documentMenuTriggerKeydown,
-    documentMenuKeydown: docs.documentMenuKeydown,
-    openPaneSearch: docs.openPaneSearch,
-    editorReadonly: docs.editorReadonly,
-    documentUndoAvailable: docs.documentUndoAvailable,
-    undoDocument: docs.undoDocument,
-    documentRedoAvailable: docs.documentRedoAvailable,
-    redoDocument: docs.redoDocument,
-    canAddDocumentProperty: docs.canAddDocumentProperty,
-    addDocumentProperty: docs.addDocumentProperty,
-    paneComments: docs.paneComments,
-    openDocumentDiscussion: docs.openDocumentDiscussion,
-    paneReadonly: docs.paneReadonly,
-    showReferenceGraph: docs.showReferenceGraph,
-    limitPageWidth: prefs.limitPageWidth,
-    pageWidthWritable: prefs.pageWidthWritable,
-    setLimitPageWidth: prefs.setLimitPageWidth,
-    workspaceLocked: prefs.workspaceLocked,
-    pageLocked: prefs.pageLocked,
-    togglePageLock: prefs.togglePageLock,
-    historyPage,
-    historyPanel,
-    editorPreferences: prefs.editorPreferences,
-    showPageTitle: prefs.showPageTitle,
-    showDocumentProperties: prefs.showDocumentProperties,
-    showAllLineNumbers: prefs.showAllLineNumbers,
-    togglePageOption: docs.togglePageOption,
-    toggleWorkspaceLock: prefs.toggleWorkspaceLock,
-    exportBusy: docs.exportBusy,
-    exportDocument: docs.exportDocument,
-    printBusy: docs.printBusy,
-    printActiveDocument: docs.printActiveDocument,
-    sessionBlocksFileMutation: docs.sessionBlocksFileMutation,
-    removeDocument: modals.removeDocument,
-    tableFileId,
-    openAssistant: inlineAssist.openAssistant,
-    parentPath,
-    calendarScope: calendar.calendarScope,
-    plans,
-    showCalendarDay: calendar.showCalendarDay,
-    showCalendarMonth: calendar.showCalendarMonth,
-    openAssistantPage,
-    SETTINGS_TAB_ID,
-    MAIL_TAB_ID,
-    mailEnabled,
-    mailTabView,
-    openMail,
-    selectedVisualFontFamily: prefs.selectedVisualFontFamily,
-    visualFontSize: prefs.visualFontSize,
-    setPaneSearch: docs.setPaneSearch,
-    paneSourceEditors: docs.paneSourceEditors,
-    paneEditors: docs.paneEditors,
-    paneSearchRevisions: docs.paneSearchRevisions,
-    setPaneElement: docs.setPaneElement,
-    toolbarMode: prefs.toolbarMode,
-    scheduleActiveHeading: outlineCtrl.scheduleActiveHeading,
-    appearance: prefs.appearance,
-    assistantTaskActive: inlineAssist.assistantTaskActive,
-    beginSelectionTodo: inlineAssist.beginSelectionTodo,
-    paneEditorScrolls: docs.paneEditorScrolls,
-    paneSelections: docs.paneSelections,
-    defaultSelectionContext,
-    showSourceTodo: inlineAssist.showSourceTodo,
-    selectedDiff,
-    sourceFontSize: prefs.sourceFontSize,
-    openPageContextMenu: docs.openPageContextMenu,
-    safeRemoteImage,
-    uploadFile: docs.uploadFile,
-    resourceRevision: docs.resourceRevision,
-    renameDocumentTitle: docs.renameDocumentTitle,
-    insertBlockBelowTitle: docs.insertBlockBelowTitle,
-    commentAnchors: docs.commentAnchors,
-    paneEditorReady: docs.paneEditorReady,
-    paneSourceSelections: docs.paneSourceSelections,
-    insertSourceFiles: docs.insertSourceFiles,
-    setPaneEditor: docs.setPaneEditor,
-    openDocumentLink: docs.openDocumentLink,
-    openWikiLink: docs.openWikiLink,
-    openBlankBlockAssistant: inlineAssist.openBlankBlockAssistant,
-    startDocumentDraft: inlineAssist.startDocumentDraft,
-    quickInitialize: docs.quickInitialize,
-    chooseInitialTemplate: docs.chooseInitialTemplate,
-    showDocumentDiscussion: prefs.showDocumentDiscussion,
-    setPaneComments: docs.setPaneComments,
-    discussWithAssistant: inlineAssist.discussWithAssistant,
-    capturePaneCommentSelection: docs.capturePaneCommentSelection,
-    focusPaneComment: docs.focusPaneComment,
-    paneCommentGeometry: docs.paneCommentGeometry,
-    paneScrolls: docs.paneScrolls,
-    receiveAttachmentStatus,
-    updateLock,
-    fileHandlers,
-    relativeWorkspaceReference,
-    outlineOnLeft: outlineCtrl.outlineOnLeft,
-    hoverOutline: outlineCtrl.hoverOutline,
-    outlinePinned: outlineCtrl.outlinePinned,
-    outlinePosition: outlineCtrl.outlinePosition,
-    openOutlineContextMenu: outlineCtrl.openOutlineContextMenu,
-    releaseOutlinePointerFocus: outlineCtrl.releaseOutlinePointerFocus,
-    outlineAutoCollapse: outlineCtrl.outlineAutoCollapse,
-    outlineSearchOpen: outlineCtrl.outlineSearchOpen,
-    outlineSearchInput: outlineCtrl.outlineSearchInput,
-    toggleOutlineSearch: outlineCtrl.toggleOutlineSearch,
-    toggleOutlinePin: outlineCtrl.toggleOutlinePin,
-    outlineSearch: outlineCtrl.outlineSearch,
-    visibleOutline: outlineCtrl.visibleOutline,
-    jumpToHeading: outlineCtrl.jumpToHeading,
-    outline: outlineCtrl.outline,
-    activeHeading: outlineCtrl.activeHeading,
-    activities,
-    uiLocale,
-    homeContent,
-    homeExtension,
-    inlineAssistant: inlineAssist.inlineAssistant,
-    inlineAssistantPrompt: inlineAssist.inlineAssistantPrompt,
-    inlineAssistantState: inlineAssist.inlineAssistantState,
-    inlineRunner,
-    inlineAssistantError: inlineAssist.inlineAssistantError,
-    inlineAssistantMessage: inlineAssist.inlineAssistantMessage,
-    submitInlineAssistant: inlineAssist.submitInlineAssistant,
-    continueInlineConversation: inlineAssist.continueInlineConversation,
-    undoInlineAssistant: inlineAssist.undoInlineAssistant,
-    closeInlineAssistant: inlineAssist.closeInlineAssistant,
-    pageContextMenu: docs.pageContextMenu,
-    pageContextMenuElement: docs.pageContextMenuElement,
-    pageContextKeydown: docs.pageContextKeydown,
-    outlineContextMenu: outlineCtrl.outlineContextMenu,
-    outlineContextMenuElement: outlineCtrl.outlineContextMenuElement,
-    outlineContextKeydown: outlineCtrl.outlineContextKeydown,
-    toggleOutlineSide: outlineCtrl.toggleOutlineSide,
     importPanel,
-    importRecords,
-    active,
+    templateLibraryOpen,
+    agentPanel,
     objectDetail,
     planArchiveOpen,
-    openObjectReference,
-    planDetail,
-    openPlanReference,
+    selectedDiff,
     selectionTodo: inlineAssist.selectionTodo,
-    workbenchCommands,
-    openingSettingsWindow,
-    openSettingsTab,
-    openSettingsInNewWindow,
-    settingsPage,
-    settingsContext,
-    developerMode: prefs.developerMode,
-    workspaceExporting: modals.workspaceExporting,
-    workspaceExportError: modals.workspaceExportError,
-    workspaceDeletionError: modals.workspaceDeletionError,
-    deleteWorkspace: modals.deleteWorkspace,
-    exportWorkspace: modals.exportWorkspace,
-    defaultSource: prefs.defaultSource,
-    theme: prefs.theme,
-    appearanceController: prefs.appearanceController,
-    visualFontChoice: prefs.visualFontChoice,
-    customFontName: prefs.customFontName,
-    splitFontSettings: prefs.splitFontSettings,
-    appVersion,
-    settingsAction,
-    fatal,
-    createNewEntry: modals.createNewEntry,
-    modalBusy: modals.modalBusy,
-    modalTitle: modals.modalTitle,
-    input: modals.input,
-    setModalInputElement: modals.setModalInputElement,
-    searchResults: modals.searchResults,
-    openSearchResult: modals.openSearchResult,
-    searchHighlightParts: modals.searchHighlightParts,
-    searchResultLocation: modals.searchResultLocation,
-    searching: modals.searching,
-    searchError: modals.searchError,
-    submitModal: modals.submitModal,
-    modalDeleteEntries: modals.modalDeleteEntries,
-    modalTarget: modals.modalTarget,
-    modalError: modals.modalError,
-    vButterflyPerch,
+    recyclePanel,
+    referenceGraphOpened: docs.referenceGraphOpened,
+    fileContextMenu: tree.fileContextMenu,
+    directoryContextMenu: tree.directoryContextMenu,
+    pageContextMenu: docs.pageContextMenu,
+    outlineContextMenu: outlineCtrl.outlineContextMenu,
+    resizingSidebar: prefs.resizingSidebar,
+    draggedEntry: tree.draggedEntry,
+    updateLock,
+  });
+
+  // Cross-domain watchers, reminders & native window lifecycle
+  useWorkbenchLifecycle({
+    props,
+    emitReady: () => emit('ready'),
+    mainWindow,
+    store,
+    assistant,
+    inlineRunner,
+    agentInbox,
+    plans,
+    updates,
+    editing,
+    auxiliaryWindows,
+    workbenchSession,
+    localNative,
+    startupPending,
+    compactPanes,
+    sidebar,
+    navigationContext,
+    navigationModule,
+    restoreNavigation: navigation.restore,
+    homeModule: navigation.homeModule,
+    getPersonalPlanScope: views.getPersonalPlanScope,
+    extensionViews,
+    agentPanel,
+    selectedDiff,
+    recyclePanel,
+    workspaceMenu,
+    settingsPanel,
+    historyPanel,
+    menu,
+    calendar,
+    docs,
+    tree,
+    outlineCtrl,
+    modals,
+    history,
+  });
+
+  // Explicit DOM ref setters (avoid mutating injected contexts directly).
+  const setFileTree = (el: unknown) => {
+    tree.fileTree.value = (el as InstanceType<typeof FileTree> | null) ?? undefined;
+  };
+  const setDocumentMenuElement = (el: unknown) => {
+    docs.documentMenuElement.value = (el as HTMLElement | null) ?? undefined;
+  };
+  const setOutlineSearchInput = (el: unknown) => {
+    outlineCtrl.outlineSearchInput.value = (el as HTMLInputElement | null) ?? undefined;
+  };
+  const setWorkspaceEntryContextMenuElement = (el: unknown) => {
+    tree.workspaceEntryContextMenuElement.value = (el as HTMLElement | null) ?? undefined;
+  };
+  const setPageContextMenuElement = (el: unknown) => {
+    docs.pageContextMenuElement.value = (el as HTMLElement | null) ?? undefined;
+  };
+  const setOutlineContextMenuElement = (el: unknown) => {
+    outlineCtrl.outlineContextMenuElement.value = (el as HTMLElement | null) ?? undefined;
+  };
+
+  return {
+    prefs: {
+      tabsEnabled,
+      developerMode: prefs.developerMode,
+      shortcuts: prefs.shortcuts,
+      shortcutHint: prefs.shortcutHint,
+      defaultSource: prefs.defaultSource,
+      theme: prefs.theme,
+      appearance: prefs.appearance,
+      appearanceController: prefs.appearanceController,
+      visualFontChoice: prefs.visualFontChoice,
+      customFontName: prefs.customFontName,
+      splitFontSettings: prefs.splitFontSettings,
+      revealMarkdown: prefs.revealMarkdown,
+      toolbarMode: prefs.toolbarMode,
+      showPageTitle: prefs.showPageTitle,
+      showDocumentProperties: prefs.showDocumentProperties,
+      showDocumentDiscussion: prefs.showDocumentDiscussion,
+      showAllLineNumbers: prefs.showAllLineNumbers,
+      visualFontSize: prefs.visualFontSize,
+      sourceFontSize: prefs.sourceFontSize,
+      selectedVisualFontFamily: prefs.selectedVisualFontFamily,
+      editorPreferences: prefs.editorPreferences,
+      limitPageWidth: prefs.limitPageWidth,
+      pageWidthWritable: prefs.pageWidthWritable,
+      setLimitPageWidth: prefs.setLimitPageWidth,
+      workspaceLocked: prefs.workspaceLocked,
+      pageLocked: prefs.pageLocked,
+      togglePageLock: prefs.togglePageLock,
+      toggleWorkspaceLock: prefs.toggleWorkspaceLock,
+      resizingSidebar: prefs.resizingSidebar,
+      moveSidebarResize: prefs.moveSidebarResize,
+      finishSidebarResize: prefs.finishSidebarResize,
+      sidebarWidth: prefs.sidebarWidth,
+      defaultSidebarWidth: prefs.defaultSidebarWidth,
+      SIDEBAR_MIN_WIDTH: prefs.SIDEBAR_MIN_WIDTH,
+      sidebarWidthLimit: prefs.sidebarWidthLimit,
+      startSidebarResize: prefs.startSidebarResize,
+      resizeSidebarWithKeyboard: prefs.resizeSidebarWithKeyboard,
+    },
+    shell: {
+      store,
+      workspace,
+      active,
+      activeId,
+      activities,
+      busy,
+      auxiliaryWindows,
+      activeWindow,
+      detachedTitle: modals.detachedTitle,
+      compactPanes,
+      touchLayout,
+      isAuxiliaryWindow,
+      localNative,
+      sidebar,
+      toggleSidebar,
+      mainColumn,
+      startupPending,
+      filesPending,
+      sessionPending,
+      switchingWorkspace,
+      attachments,
+      documentationBaseUrl,
+      appVersion,
+      extensions,
+      extensionActions,
+      extensionViews,
+      viewActions: views.viewActions,
+      settingsTabView: views.settingsTabView,
+      mailEnabled: views.mailEnabled,
+      mailTabView: views.mailTabView,
+      openMail: views.openMail,
+      navigationContext,
+      navigationModule,
+      workspaceView,
+      sidebarView,
+      selectContext,
+      selectWorkspaceView,
+      selectModule,
+      homeContent: views.homeContent,
+      homeExtension: views.homeExtension,
+      sidebarHeaderItems: views.sidebarHeaderItems,
+      sidebarNavigationItems: views.sidebarNavigationItems,
+      repositoryActionItems: views.repositoryActionItems,
+      documentToolItems: views.documentToolItems,
+      calendarToolItems: views.calendarToolItems,
+      topbarVisibilityItems: views.topbarVisibilityItems,
+      closeButtonVisibilityMenus,
+      workspaceMenu,
+      toggleWorkspaceMenu,
+      workspaceStatusLabel,
+      openEntry,
+      openBreadcrumbDirectory,
+      openReference,
+      openSettings: settingsCtrl.openSettings,
+      openImport,
+      openTemplateLibrary,
+      createNewDocument: modals.createNewDocument,
+      createNewEntry: modals.createNewEntry,
+      detachTab: modals.detachTab,
+      createNewWorkspace: modals.createNewWorkspace,
+      returnHome: modals.returnHome,
+      canNavigatePage: history.canNavigatePage,
+      navigatePage: history.navigatePage,
+      updates,
+      updateLock,
+      butterfly,
+      vButterflyPerch,
+      paneButterflyScope,
+      assistant,
+      assistantPanelMounted,
+      assistantHosts,
+      assistantTab,
+      setAssistantHost,
+      inlineRunner,
+      inlineAssistant: inlineAssist.inlineAssistant,
+      inlineAssistantPrompt: inlineAssist.inlineAssistantPrompt,
+      inlineAssistantState: inlineAssist.inlineAssistantState,
+      inlineAssistantError: inlineAssist.inlineAssistantError,
+      inlineAssistantMessage: inlineAssist.inlineAssistantMessage,
+      submitInlineAssistant: inlineAssist.submitInlineAssistant,
+      continueInlineConversation: inlineAssist.continueInlineConversation,
+      undoInlineAssistant: inlineAssist.undoInlineAssistant,
+      closeInlineAssistant: inlineAssist.closeInlineAssistant,
+      plans,
+      calendarScope: calendar.calendarScope,
+      calendarPeriod: calendar.calendarPeriod,
+      calendarDate: calendar.calendarDate,
+      calendarMode: calendar.calendarMode,
+      calendarModeOpen: calendar.calendarModeOpen,
+      calendarModeLabel: calendar.calendarModeLabel,
+      calendarModeOptions: calendar.calendarModeOptions,
+      sidebarCalendarDate: calendar.sidebarCalendarDate,
+      openCalendar: calendar.openCalendar,
+      moveCalendarPeriod: calendar.moveCalendarPeriod,
+      selectCalendarMode: calendar.selectCalendarMode,
+      showCalendarDay: calendar.showCalendarDay,
+      showCalendarMonth: calendar.showCalendarMonth,
+      showPlanEvent,
+      openPlanArchive,
+      createPluginObject,
+      templateLibraryOpen,
+      templatePaneId,
+      templateSource,
+      templateInitialization,
+      workbenchCommands,
+      noteCount: help.noteCount,
+      helpContext: help.helpContext,
+      helpAvailability: help.helpAvailability,
+      helpBlocked: help.helpBlocked,
+    },
+    documents: {
+      menu,
+      setDocumentMenuElement,
+      toggleDocumentMenu: docs.toggleDocumentMenu,
+      documentMenuTriggerKeydown: docs.documentMenuTriggerKeydown,
+      documentMenuKeydown: docs.documentMenuKeydown,
+      openPaneSearch: docs.openPaneSearch,
+      editorReadonly: docs.editorReadonly,
+      documentUndoAvailable: docs.documentUndoAvailable,
+      undoDocument: docs.undoDocument,
+      documentRedoAvailable: docs.documentRedoAvailable,
+      redoDocument: docs.redoDocument,
+      canAddDocumentProperty: docs.canAddDocumentProperty,
+      addDocumentProperty: docs.addDocumentProperty,
+      paneComments: docs.paneComments,
+      openDocumentDiscussion: docs.openDocumentDiscussion,
+      paneReadonly: docs.paneReadonly,
+      showReferenceGraph: docs.showReferenceGraph,
+      referenceGraphTarget: docs.referenceGraphTarget,
+      referenceGraphOpened: docs.referenceGraphOpened,
+      referenceGraphAnchor: docs.referenceGraphAnchor,
+      togglePageOption: docs.togglePageOption,
+      exportBusy: docs.exportBusy,
+      exportDocument: docs.exportDocument,
+      printBusy: docs.printBusy,
+      printActiveDocument: docs.printActiveDocument,
+      sessionBlocksFileMutation: docs.sessionBlocksFileMutation,
+      paneSource: docs.paneSource,
+      setPaneSource: docs.setPaneSource,
+      paneDocumentStatus: docs.paneDocumentStatus,
+      attachmentStatus,
+      currentAttachmentStatus,
+      receiveAttachmentStatus,
+      documentSuggestions,
+      editing,
+      suggestionModeBusy,
+      toggleSuggestionMode,
+      setPaneSearch: docs.setPaneSearch,
+      paneSourceEditors: docs.paneSourceEditors,
+      paneEditors: docs.paneEditors,
+      paneSearchRevisions: docs.paneSearchRevisions,
+      setPaneElement: docs.setPaneElement,
+      assistantTaskActive: inlineAssist.assistantTaskActive,
+      beginSelectionTodo: inlineAssist.beginSelectionTodo,
+      paneEditorScrolls: docs.paneEditorScrolls,
+      paneSelections: docs.paneSelections,
+      showSourceTodo: inlineAssist.showSourceTodo,
+      openPageContextMenu: docs.openPageContextMenu,
+      uploadFile: docs.uploadFile,
+      resourceRevision: docs.resourceRevision,
+      renameDocumentTitle: docs.renameDocumentTitle,
+      insertBlockBelowTitle: docs.insertBlockBelowTitle,
+      commentAnchors: docs.commentAnchors,
+      paneEditorReady: docs.paneEditorReady,
+      paneSourceSelections: docs.paneSourceSelections,
+      insertSourceFiles: docs.insertSourceFiles,
+      setPaneEditor: docs.setPaneEditor,
+      openDocumentLink: docs.openDocumentLink,
+      openWikiLink: docs.openWikiLink,
+      openBlankBlockAssistant: inlineAssist.openBlankBlockAssistant,
+      startDocumentDraft: inlineAssist.startDocumentDraft,
+      quickInitialize: docs.quickInitialize,
+      chooseInitialTemplate: docs.chooseInitialTemplate,
+      setPaneComments: docs.setPaneComments,
+      discussWithAssistant: inlineAssist.discussWithAssistant,
+      capturePaneCommentSelection: docs.capturePaneCommentSelection,
+      focusPaneComment: docs.focusPaneComment,
+      paneCommentGeometry: docs.paneCommentGeometry,
+      paneScrolls: docs.paneScrolls,
+      revealAssistantSelection: docs.revealAssistantSelection,
+      openAssistant: inlineAssist.openAssistant,
+      showOutline: outlineCtrl.showOutline,
+      touchOutlineOpen: outlineCtrl.touchOutlineOpen,
+      outlineOnLeft: outlineCtrl.outlineOnLeft,
+      hoverOutline: outlineCtrl.hoverOutline,
+      outlinePinned: outlineCtrl.outlinePinned,
+      outlinePosition: outlineCtrl.outlinePosition,
+      openOutlineContextMenu: outlineCtrl.openOutlineContextMenu,
+      releaseOutlinePointerFocus: outlineCtrl.releaseOutlinePointerFocus,
+      outlineAutoCollapse: outlineCtrl.outlineAutoCollapse,
+      outlineSearchOpen: outlineCtrl.outlineSearchOpen,
+      setOutlineSearchInput,
+      toggleOutlineSearch: outlineCtrl.toggleOutlineSearch,
+      toggleOutlinePin: outlineCtrl.toggleOutlinePin,
+      outlineSearch: outlineCtrl.outlineSearch,
+      visibleOutline: outlineCtrl.visibleOutline,
+      jumpToHeading: outlineCtrl.jumpToHeading,
+      outline: outlineCtrl.outline,
+      activeHeading: outlineCtrl.activeHeading,
+      scheduleActiveHeading: outlineCtrl.scheduleActiveHeading,
+      toggleOutlineSide: outlineCtrl.toggleOutlineSide,
+    },
+    treeMenus: {
+      setFileTree,
+      treeFiles: tree.treeFiles,
+      revealedHomeId: tree.revealedHomeId,
+      treeDocumentIcons: tree.treeDocumentIcons,
+      loadTreeDocumentIcon: tree.loadTreeDocumentIcon,
+      selectedEntryIds: tree.selectedEntryIds,
+      canDragEntry: tree.canDragEntry,
+      treeRename: tree.treeRename,
+      renameTreeEntry: tree.renameTreeEntry,
+      openTreeEntry: tree.openTreeEntry,
+      selectFileTreeEntry: tree.selectFileTreeEntry,
+      fileDragStart: tree.fileDragStart,
+      fileDragEnd: tree.fileDragEnd,
+      fileDragOver: tree.fileDragOver,
+      fileDragLeave: tree.fileDragLeave,
+      fileDrop: tree.fileDrop,
+      draggedEntry: tree.draggedEntry,
+      dropFolder: tree.dropFolder,
+      dropPlaceholders: tree.dropPlaceholders,
+      tabFileDrag: tree.tabFileDrag,
+      finishTreeRename: tree.finishTreeRename,
+      fileMetadataTarget: tree.fileMetadataTarget,
+      openFileContextMenu: tree.openFileContextMenu,
+      openDirectoryContextMenu: tree.openDirectoryContextMenu,
+      openWorkspaceEntryContextMenu: tree.openWorkspaceEntryContextMenu,
+      workspaceDropdownContextMenu: tree.workspaceDropdownContextMenu,
+      fileContextMenu: tree.fileContextMenu,
+      multipleContextEntries: tree.multipleContextEntries,
+      contextEntries: tree.contextEntries,
+      fileContextKeydown: tree.fileContextKeydown,
+      selectionDeleteDisabled: tree.selectionDeleteDisabled,
+      fileContextAction: tree.fileContextAction,
+      contextFolderHome: tree.contextFolderHome,
+      folderHomeContextAction: tree.folderHomeContextAction,
+      fileMutationDisabled: tree.fileMutationDisabled,
+      directoryHasManagedFile: tree.directoryHasManagedFile,
+      canDuplicateEntry: tree.canDuplicateEntry,
+      folderConversionIssue: tree.folderConversionIssue,
+      convertDocumentStructure: tree.convertDocumentStructure,
+      closeFileContextMenu: tree.closeFileContextMenu,
+      fileDeleteDisabled: tree.fileDeleteDisabled,
+      directoryContextMenu: tree.directoryContextMenu,
+      directoryContextAction: tree.directoryContextAction,
+      directoryContextDuplicateDisabled: tree.directoryContextDuplicateDisabled,
+      directoryContextRenameDisabled: tree.directoryContextRenameDisabled,
+      directoryContextDeleteDisabled: tree.directoryContextDeleteDisabled,
+      workspaceEntryContextMenu: tree.workspaceEntryContextMenu,
+      setWorkspaceEntryContextMenuElement,
+      workspaceEntryContextKeydown: tree.workspaceEntryContextKeydown,
+      workspaceEntryContextAction: tree.workspaceEntryContextAction,
+      pageContextMenu: docs.pageContextMenu,
+      setPageContextMenuElement,
+      pageContextKeydown: docs.pageContextKeydown,
+      outlineContextMenu: outlineCtrl.outlineContextMenu,
+      setOutlineContextMenuElement,
+      outlineContextKeydown: outlineCtrl.outlineContextKeydown,
+    },
+    modals: {
+      modal: modals.modal,
+      showModal: modals.showModal,
+      modalBusy: modals.modalBusy,
+      modalTitle: modals.modalTitle,
+      input: modals.input,
+      setModalInputElement: modals.setModalInputElement,
+      searchResults: modals.searchResults,
+      openSearchResult: modals.openSearchResult,
+      searchHighlightParts: modals.searchHighlightParts,
+      searchResultLocation: modals.searchResultLocation,
+      searching: modals.searching,
+      searchError: modals.searchError,
+      submitModal: modals.submitModal,
+      modalDeleteEntries: modals.modalDeleteEntries,
+      modalTarget: modals.modalTarget,
+      modalError: modals.modalError,
+      removeDocument: modals.removeDocument,
+      settingsPanel,
+      openingSettingsWindow: settingsCtrl.openingSettingsWindow,
+      openSettingsTab: settingsCtrl.openSettingsTab,
+      openSettingsInNewWindow: settingsCtrl.openSettingsInNewWindow,
+      settingsPage: settingsCtrl.settingsPage,
+      settingsContext: settingsCtrl.settingsContext,
+      settingsAction: settingsCtrl.settingsAction,
+      workspaceExporting: modals.workspaceExporting,
+      workspaceExportError: modals.workspaceExportError,
+      workspaceDeletionError: modals.workspaceDeletionError,
+      deleteWorkspace: modals.deleteWorkspace,
+      exportWorkspace: modals.exportWorkspace,
+      commandPaletteOpened,
+      importPanel,
+      importRecords,
+      recyclePanel,
+      agentPanel,
+      selectedDiff,
+      historyPanel,
+      historyPage,
+      objectDetail,
+      openObjectReference,
+      planArchiveOpen,
+      planDetail,
+      openPlanReference,
+      selectionTodo: inlineAssist.selectionTodo,
+      fatal,
+    },
   };
 }

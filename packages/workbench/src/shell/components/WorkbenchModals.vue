@@ -14,51 +14,55 @@ import {
   PlanDetailPanel,
   SelectionTodoDialog,
 } from '../workbench-async-components';
-import { workbenchContextKey } from '../workbench-context';
+import { t } from '../../i18n/i18n';
+import { mobile } from '../../platform/platform';
+import { workbenchModalsKey, workbenchShellKey } from '../workbench-context';
 import CommandPalette from './CommandPalette.vue';
 import NewTabPicker from '../../tabs/components/NewTabPicker.vue';
 import PluginUiDialog from '../../plugins/components/PluginUiDialog.vue';
 import WorkbenchSettings from '../../settings/components/WorkbenchSettings.vue';
 
-const context = inject(workbenchContextKey);
-if (!context) throw new Error('Workbench context is required');
+const shell = inject(workbenchShellKey);
+const modals = inject(workbenchModalsKey);
+if (!shell || !modals) throw new Error('Workbench context is required');
+
 const {
   activeWindow,
   workspace,
-  mobile,
-  t,
   store,
-  importPanel,
   attachments,
-  importRecords,
   extensions,
   extensionActions,
+  active,
+  activities,
+  calendarScope,
+  createNewDocument,
+  createNewEntry,
+  showPlanEvent,
+  extensionViews,
+  viewActions,
+  workbenchCommands,
+  updateLock,
+} = toRefs(shell);
+const {
+  importPanel,
+  importRecords,
   recyclePanel,
   agentPanel,
   selectedDiff,
   historyPanel,
-  active,
-  activities,
   historyPage,
   objectDetail,
   planArchiveOpen,
-  calendarScope,
   openObjectReference,
-  createNewDocument,
-  createNewEntry,
   planDetail,
   openPlanReference,
   selectionTodo,
-  showPlanEvent,
-  extensionViews,
-  viewActions,
   commandPaletteOpened,
-  workbenchCommands,
   settingsPanel,
   fatal,
   modal,
   modalBusy,
-  updateLock,
   modalTitle,
   input,
   searchResults,
@@ -72,7 +76,7 @@ const {
   modalTarget,
   modalError,
   setModalInputElement,
-} = toRefs(context);
+} = toRefs(modals);
 </script>
 
 <template>

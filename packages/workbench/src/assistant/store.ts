@@ -2,37 +2,31 @@ import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { defineStore } from 'pinia';
 import {
   isAssistantModelId,
-  isAssistantReasoningSelection,
   parseAssistantSession,
   parseAssistantAnswers,
-  isDataTableFilePath,
 } from '@tano/protocol';
 import type { AssistantQuestion, AssistantQuestionAnswer, AssistantUserInput } from '@tano/protocol';
 import type { AssistantActivity, AssistantConnection, AssistantQuotaResult, AssistantMessage, AssistantProposal, AssistantReasoningSelection, AssistantSession, AssistantSource } from '@tano/protocol';
-import type { AssistantExecutionResult } from './execution';
 import { useWorkspaceStore } from '../stores/workspace';
 import { recordHelpCompleted } from '../help/help-checklist';
-import { resolveAssistantExtension, useWorkbenchRuntime } from '../runtime';
+import { useWorkbenchRuntime } from '../runtime';
 import { demoAssistantTransport, nativeAssistantTransport } from './transport';
 import { runAssistant, AssistantWaitingError } from './engine';
 import { AssistantRunError } from './completion';
 import type { AssistantTextPhase } from './completion';
 import { assistantHistory, assistantToolLabel } from './results';
-import { useSuggestionStore } from '../stores/suggestions';
 import { t, uiLocale } from '../i18n/i18n';
 import { isFeatureEnabled } from '../features';
 import { assistantCopy, assistantTaskPrompts, formatAssistantText } from './language';
 import { assistantAttachmentBytes, describeAssistantAttachment, maxAssistantAttachments, readAssistantAttachments } from './attachments';
 import type { AssistantDraftAttachment } from './attachments';
 import {
-  canPluginToolExecute,
-  compilePluginAssistantTools,
-  createPluginToolProposal,
-  describeInstalledPluginsForAssistant,
   extractPluginContextMentions,
   runPluginAiCompletion,
-  wrapUntrustedPluginData,
 } from '../plugins/assistant-bridge';
+import { createAssistantConnectionActions } from './connection-actions';
+import { buildAssistantPluginBridge } from './plugin-bridge-builder';
+import { createAssistantProposalActions } from './proposal-actions';
 
 export type AssistantConnectionCheck = { fingerprint: string; elapsedMs?: number; checkedAt?: number; message: string; failed: boolean };
 
@@ -151,7 +145,6 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
   const replyTarget = shallowRef<{ label: string; draft: (body: string) => Promise<void> } | null>(null);
   const connection = computed(() => connections.value.find(item => item.id === connectionId.value));
   let controller: AbortController | undefined;
-  let modelController: AbortController | undefined;
   let generation = 0;
   let persistTask = Promise.resolve();
   let managed: (fileId: string) => boolean = () => false;
@@ -159,18 +152,6 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     if (!workspace.workspace) throw new Error('请先打开工作区');
     return { id: workspace.workspace.id, path: workspace.workspace.path, epoch: workspace.assistantEpoch };
   };
-  function stop() { controller?.abort(); }
-  async function settle() {
-    stop(); modelController?.abort();
-    if (busy.value || applying.value) {
-      await new Promise<void>(resolve => {
-        const unwatch = watch([busy, applying], ([running, writing]) => {
-          if (!running && !writing) { unwatch(); resolve(); }
-        });
-      });
-    }
-    await persistTask.catch(() => {});
-  }
   function newSession() {
     if (busy.value || applying.value) return;
     const now = Date.now();
@@ -198,132 +179,80 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     persistTask = saved;
     await saved;
   }
-  async function reloadConnections() {
-    if (!transport) return;
-    const epoch = generation;
-    const loaded = (await transport.connections()).map(({ managed, ...connection }) => ({ ...connection, platformProvider: connection.platformProvider ?? managed }));
-    if (epoch !== generation) return;
-    connections.value = loaded;
-    if (!connectionId.value && !session.value?.connectionId)
-      connectionId.value = connections.value.length === 1 ? connections.value[0].id : '';
-  }
-  async function refreshModels() {
-    if (busy.value || applying.value || loading.value) return;
-    modelsLoading.value = true; modelsError.value = '';
-    try { await reloadConnections(); await reloadModels(); }
-    catch (reason) { modelsError.value = reason instanceof Error ? reason.message : String(reason); }
-    finally { modelsLoading.value = false; }
-  }
-  async function reloadModels() {
-    modelController?.abort();
-    models.value = []; modelsError.value = ''; modelsLoading.value = false;
-    const selected = connection.value;
-    if (!transport || !selected || !opened.value) return;
-    const abort = new AbortController(); modelController = abort;
-    modelsLoading.value = true;
-    try {
-      const values = await transport.models(selected.id, abort.signal);
-      if (abort.signal.aborted || modelController !== abort || connectionId.value !== selected.id || !opened.value) return;
-      if (!Array.isArray(values) || values.length > 1000 || values.some(value => !isAssistantModelId(value)))
-        throw new Error('模型列表格式无效');
-      models.value = [...new Set(values)];
-      if (!models.value.length) modelsError.value = '服务未返回可用模型';
-    } catch (reason) {
-      if (!abort.signal.aborted && modelController === abort) modelsError.value = String(reason);
-    } finally { if (modelController === abort) { modelsLoading.value = false; modelController = undefined; } }
-  }
-  async function readConnectionKey(id: string) {
-    if (!canConfigure || !connections.value.some(item => item.id === id && !item.platformProvider && item.hasKey && (!item.kind || item.kind === 'api')))
-      throw new Error('此连接无法读取 API 密钥');
-    if (!transport?.readConnectionKey) throw new Error('当前环境不支持读取已保存的密钥，请更新并重启桌面版');
-    return transport.readConnectionKey(id);
-  }
-  async function queryQuota(id: string) {
-    if (!transport?.quota) throw new Error('当前环境不支持服务商额度查询，请使用桌面版');
-    if (!connections.value.some(item => item.id === id && !item.platformProvider)) throw new Error('此连接不支持个人额度查询');
-    return transport.quota(id);
-  }
-  async function saveQuota(id: string, config: import('@tano/protocol').AssistantQuotaConfig, key?: string) {
-    if (!transport?.saveQuota) throw new Error('当前环境不支持额度配置，请使用桌面版');
-    if (!connections.value.some(item => item.id === id && !item.platformProvider)) throw new Error('连接已移除或由平台管理');
-    await transport.saveQuota(id, config, key);
-    await reloadConnections();
-  }
-  async function checkConnection(id: string, signal: AbortSignal) {
-    signal.throwIfAborted();
-    if (!transport) throw new Error('当前运行环境未提供助手连接配置');
-    if (!connections.value.some(item => item.id === id)) throw new Error('模型连接已移除');
-    const values = await transport.models(id, signal);
-    signal.throwIfAborted();
-    if (!Array.isArray(values) || values.length > 1000 || values.some(value => !isAssistantModelId(value)))
-      throw new Error('模型列表格式无效');
-    return new Set(values).size;
-  }
-  async function selectConnection(id: string, reset = false) {
-    if (busy.value || applying.value || loading.value) return;
-    if (!connections.value.some(item => item.id === id)) throw new Error('模型连接已移除');
-    if (id === connectionId.value && !reset) return;
-    connectionId.value = id; modelId.value = '';
-    reasoningEffort.value = connection.value?.reasoningEffort ?? 'medium';
-    // Connection settings are personal and can be edited from the standalone
-    // settings window, where no workspace conversation is loaded.
-    if (!session.value && workspace.workspace) newSession();
-    if (session.value) {
-      session.value.connectionId = id; delete session.value.model;
-      if (connection.value?.kind === 'codex-cli') session.value.reasoningEffort = reasoningEffort.value;
-      else delete session.value.reasoningEffort;
-      await persist();
+  const connectionActions = createAssistantConnectionActions({
+    transport,
+    canConfigure,
+    opened,
+    loading,
+    busy,
+    applying,
+    connections,
+    connectionId,
+    connection,
+    modelId,
+    reasoningEffort,
+    models,
+    modelsLoading,
+    modelsError,
+    session,
+    workspace,
+    getGeneration: () => generation,
+    newSession,
+    persist,
+  });
+  const {
+    abortModels,
+    canImportCcSwitch,
+    reloadConnections,
+    reloadModels,
+    refreshModels,
+    readConnectionKey,
+    queryQuota,
+    saveQuota,
+    checkConnection,
+    selectConnection,
+    selectModel,
+    restoreModelSelection,
+    selectReasoningEffort,
+    saveConnection,
+    scanCcSwitch,
+    importCcSwitch,
+    removeConnection,
+  } = connectionActions;
+
+  const {
+    executeChange,
+    review,
+    publishSuggestions,
+    verify,
+    reject,
+    undo,
+  } = createAssistantProposalActions({
+    workspace,
+    runtime,
+    transport,
+    guard: background?.guard,
+    busy,
+    applying,
+    error,
+    progress,
+    session,
+    scope,
+    persist,
+    isManaged: (fileId: string) => managed(fileId),
+  });
+
+  function stop() { controller?.abort(); }
+  async function settle() {
+    stop(); abortModels();
+    if (busy.value || applying.value) {
+      await new Promise<void>(resolve => {
+        const unwatch = watch([busy, applying], ([running, writing]) => {
+          if (!running && !writing) { unwatch(); resolve(); }
+        });
+      });
     }
-  }
-  async function selectModel(id: string) {
-    if (busy.value || applying.value || loading.value) return;
-    const selected = id.trim();
-    if (!connection.value) throw new Error('请先选择模型连接');
-    if (!isAssistantModelId(selected)) throw new Error('模型 ID 无效');
-    if (!session.value) newSession();
-    modelId.value = selected; session.value!.model = selected; session.value!.connectionId = connectionId.value;
-    await persist();
-  }
-  function restoreModelSelection(target: AssistantSession | null) {
-    connectionId.value = target?.connectionId ?? (connections.value.length === 1 ? connections.value[0].id : '');
-    const previous = target ? [...target.messages].reverse().find(message => message.role === 'assistant' && message.model)?.model : undefined;
-    modelId.value = target?.model ?? (isAssistantModelId(previous) ? previous : '');
-    reasoningEffort.value = target?.reasoningEffort ?? connection.value?.reasoningEffort ?? (target ? 'cli-default' : 'medium');
-  }
-  async function selectReasoningEffort(value: AssistantReasoningSelection) {
-    if (busy.value || applying.value || loading.value) return;
-    if (connection.value?.kind !== 'codex-cli') throw new Error('当前连接不支持选择推理强度');
-    if (!isAssistantReasoningSelection(value)) throw new Error('推理强度无效');
-    if (!session.value) newSession();
-    reasoningEffort.value = value;
-    session.value!.reasoningEffort = value;
-    session.value!.connectionId = connectionId.value;
-    await persist();
-  }
-  async function saveConnection(config: Omit<AssistantConnection, 'hasKey'>, key?: string) {
-    if (!transport || busy.value || applying.value || loading.value) throw new Error('请先等待当前任务完成');
-    const previous = connections.value.find(item => item.id === config.id);
-    if (!canConfigure || config.platformProvider || previous?.platformProvider) throw new Error('此模型连接由平台管理员配置');
-    await transport.saveConnection(config, key);
-    recordHelpCompleted('assistant-connection');
-    await reloadConnections(); await selectConnection(config.id, previous?.endpoint !== config.endpoint ||
-      (previous?.kind ?? 'api') !== (config.kind ?? 'api') || previous?.cliPath !== config.cliPath);
-  }
-  const canImportCcSwitch = canConfigure && !!transport?.scanCcSwitch && !!transport?.importCcSwitch;
-  async function scanCcSwitch(path?: string) {
-    if (!canImportCcSwitch) throw new Error('当前环境不支持从 CC Switch 导入');
-    return transport!.scanCcSwitch!(path);
-  }
-  async function importCcSwitch(ids: string[], path?: string) {
-    if (!canImportCcSwitch || busy.value || applying.value || loading.value) throw new Error('请先等待当前任务完成');
-    await transport!.importCcSwitch!(ids, path);
-    await reloadConnections();
-  }
-  async function removeConnection(id: string) {
-    if (!transport || busy.value || applying.value || loading.value) throw new Error('请先等待当前任务完成');
-    if (!canConfigure || connections.value.find(item => item.id === id)?.platformProvider) throw new Error('此模型连接由平台管理员配置');
-    await transport.removeConnection(id);
-    await reloadConnections();
+    await persistTask.catch(() => {});
   }
   function open(fileId?: string, selected?: { text: string; from?: number; to?: number }) {
     if (!available) return;
@@ -486,128 +415,14 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
       target.updatedAt = now; prompt.value = '';
       await persist(target);
       if (epoch === generation) { attachments.value = []; pluginContextKeys.value = []; }
-      const assistantExtension = resolveAssistantExtension(runtime);
-      const extensionTools = assistantExtension
-        ? assistantExtension.listTools({
-            workspaceReadOnly: !!workspace.workspace?.readOnly,
-            inline: !!inline,
-            background: !!background,
-          })
-        : [];
-      const extensionToolNames = new Set(extensionTools.map(tool => tool.function.name));
-      const compiledPlugins = compilePluginAssistantTools(
-        workspace.installedPlugins ?? [],
-        workspace.pluginRuntime ?? [],
-        !!workspace.workspace?.readOnly,
-      );
-      const combinedExtraTools = [...extensionTools, ...compiledPlugins.tools];
-      const extensionPromptHints =
-        assistantExtension?.promptHints?.({ workspaceReadOnly: !!workspace.workspace?.readOnly }) ?? [];
-      const pluginBridge = combinedExtraTools.length || extensionPromptHints.length
-        ? {
-            tools: combinedExtraTools,
-            ...(extensionPromptHints.length ? { promptHints: extensionPromptHints } : {}),
-            isPluginTool: (name: string) =>
-              name === 'inspect_plugins' ||
-              name === 'inspect_plugin_logs' ||
-              name === 'open_plugin_view' ||
-              extensionToolNames.has(name) ||
-              compiledPlugins.pluginTools.has(name),
-            executeTool: async (call: import('@tano/protocol').AssistantToolCall, signal: AbortSignal) => {
-              signal.throwIfAborted();
-              if (workspace.workspace?.id !== expected.id || workspace.workspace.path !== expected.path)
-                throw new Error('工作区已切换');
-              const parsedArgs: unknown = JSON.parse(call.function.arguments || '{}');
-              if (!parsedArgs || typeof parsedArgs !== 'object' || Array.isArray(parsedArgs))
-                throw new Error('插件工具参数必须为对象');
-              const args = parsedArgs as Record<string, unknown>;
-              if (assistantExtension && extensionToolNames.has(call.function.name)) {
-                const extResult = await assistantExtension.executeTool(call.function.name, args, {
-                  workspaceId: expected.id,
-                  workspacePath: expected.path,
-                  runId: reply!.id,
-                  activeDocumentId: workspace.active?.id,
-                  signal,
-                });
-                if (extResult) return extResult;
-              }
-              if (call.function.name === 'inspect_plugins') {
-                if (Object.keys(args).length) throw new Error('inspect_plugins 不接受参数');
-                return {
-                  kind: 'result' as const,
-                  data: {
-                    plugins: describeInstalledPluginsForAssistant(
-                      workspace.installedPlugins,
-                      workspace.pluginRuntime,
-                      !!workspace.workspace?.readOnly,
-                    ),
-                  },
-                };
-              }
-              if (call.function.name === 'inspect_plugin_logs') {
-                if (Object.keys(args).some(key => key !== 'pluginId' && key !== 'limit'))
-                  throw new Error('inspect_plugin_logs 参数无效');
-                const pluginId = typeof args.pluginId === 'string' ? args.pluginId.trim() : '';
-                if (!pluginId) throw new Error('inspect_plugin_logs 缺少有效的 pluginId');
-                let limit = 20;
-                if (args.limit !== undefined) {
-                  if (typeof args.limit !== 'number' || !Number.isInteger(args.limit) || args.limit < 1 || args.limit > 50)
-                    throw new Error('inspect_plugin_logs 的 limit 必须为 1 至 50 的整数');
-                  limit = args.limit;
-                }
-                const installation = workspace.installedPlugins.find(item => item.manifest.id === pluginId);
-                const runtimeState = workspace.pluginRuntime.find(item => item.id === pluginId);
-                if (!installation && !runtimeState) throw new Error('未找到指定已安装插件');
-                const logs = (runtimeState?.logs ?? []).slice(-limit);
-                return {
-                  kind: 'result' as const,
-                  data: {
-                    pluginId,
-                    pluginName: installation?.manifest.name ?? runtimeState?.name ?? pluginId,
-                    enabled: installation?.enabled ?? false,
-                    authorized: installation?.authorized ?? false,
-                    status: runtimeState?.status ?? 'idle',
-                    logCount: logs.length,
-                    untrustedPluginData: wrapUntrustedPluginData(pluginId, 'runtime:logs', {
-                      status: runtimeState?.status ?? 'idle',
-                      message: runtimeState?.message ?? '',
-                      logs,
-                    }),
-                  },
-                };
-              }
-              if (call.function.name === 'open_plugin_view') {
-                if (typeof args.pluginId !== 'string' || typeof args.viewId !== 'string' || Object.keys(args).length !== 2)
-                  throw new Error('open_plugin_view 参数无效');
-                workspace.openPluginView(args.pluginId, args.viewId);
-                return { kind: 'result' as const, data: { opened: true, pluginId: args.pluginId, viewId: args.viewId } };
-              }
-              const compiled = compiledPlugins.pluginTools.get(call.function.name);
-              if (!compiled) throw new Error('插件工具不可用或未授权');
-              const installation = workspace.installedPlugins.find(item => item.manifest.id === compiled.pluginId);
-              if (!installation || !canPluginToolExecute(installation, compiled.tool, !!workspace.workspace?.readOnly))
-                throw new Error('当前工作区权限或策略不允许执行此插件工具');
-              if (compiled.tool.effect === 'read') {
-                const raw = await workspace.invokePluginAssistantTool(compiled.pluginId, compiled.tool.name, args);
-                return {
-                  kind: 'result' as const,
-                  data: {
-                    untrustedPluginData: wrapUntrustedPluginData(compiled.pluginId, `tool:${compiled.tool.name}`, raw),
-                  },
-                };
-              }
-              return {
-                kind: 'proposal' as const,
-                proposal: createPluginToolProposal({
-                  workspaceId: expected.id,
-                  runId: reply!.id,
-                  compiled,
-                  rawArgs: args,
-                }),
-              };
-            },
-          }
-        : undefined;
+      const { assistantExtension, pluginBridge } = buildAssistantPluginBridge({
+        runtime,
+        workspace,
+        expected,
+        runId: reply.id,
+        inline: !!inline,
+        background: !!background,
+      });
       let structureSnapshot: Awaited<ReturnType<typeof workspace.assistantStructures>> | undefined;
       let structureChanged = false;
       let responseActivity: Extract<AssistantActivity, { kind: 'text' }> | undefined;
@@ -723,288 +538,6 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
       if (epoch === generation) { busy.value = false; progress.value = ''; controller = undefined; }
     }
   }
-  async function executeChange(proposal: AssistantProposal, target: AssistantSession, expected: ReturnType<typeof scope>, signal: AbortSignal): Promise<AssistantExecutionResult> {
-    let submitted = false;
-    applying.value = true;
-    const assertCurrent = () => {
-      signal.throwIfAborted();
-      if (workspace.workspace?.id !== expected.id || workspace.workspace.path !== expected.path || workspace.assistantEpoch !== expected.epoch)
-        throw new Error('工作区已切换，停止执行');
-      if (proposal.fileId && managed(proposal.fileId)) throw new Error('此文档正由协作会话管理，暂时不能直接修改');
-    };
-    try {
-      await background?.guard();
-      assertCurrent();
-      if (target.messages.some(message => message.proposals?.some(item => item.id !== proposal.id &&
-          ['unknown', 'applying'].includes(item.status) && (item.path === proposal.path || !!proposal.fileId && item.fileId === proposal.fileId))))
-        throw new Error('此目标有结果待核对的操作，请先核对，不自动重试');
-      progress.value = formatAssistantText(assistantCopy(uiLocale.value).progress.executing, [proposal.path]);
-      const preview = await workspace.reviewAssistantProposal(expected, proposal, undefined, true, signal);
-      if (preview.status === 'saved') {
-        proposal.applied = preview.applied; proposal.status = 'applied';
-      } else {
-        proposal.preview = preview.preview;
-        if (preview.status !== 'preview' || !preview.preview) {
-          proposal.status = preview.status === 'conflict' ? 'conflicted' : 'ready';
-          throw new Error('修改存在冲突或文档已变化，已暂停此项操作，请核对原文与建议');
-        }
-        proposal.status = 'applying';
-        await persist(target); // A crash must leave a durable intent, never an invisible write.
-        await background?.guard();
-        assertCurrent();
-        submitted = true;
-        const result = await workspace.reviewAssistantProposal(expected, proposal, proposal.preview, true, signal);
-        if (result.status === 'saved') {
-          proposal.applied = result.applied; proposal.status = 'applied'; proposal.error = undefined;
-        } else {
-          proposal.preview = result.preview;
-          proposal.status = result.status === 'conflict' ? 'conflicted' : 'ready';
-          proposal.error = '执行前文档发生变化，已暂停此项操作，请核对后处理';
-        }
-      }
-      await persist(target);
-    } catch (reason) {
-      if (proposal.applied) {
-        proposal.status = 'applied';
-        proposal.error = `修改已完成，记录或刷新失败：${String(reason)}`;
-      } else {
-        if (proposal.status === 'applying') proposal.status = submitted ? 'unknown' : 'ready';
-        proposal.error = String(reason);
-      }
-      try { await persist(target); } catch { /* Preserve the in-memory outcome; never retry the write. */ }
-    } finally { applying.value = false; }
-    const written = proposal.status === 'applied' ? true : proposal.status === 'unknown' ? null : false;
-    const result: AssistantExecutionResult = { status: proposal.status, written, ...(proposal.error ? { error: proposal.error } : {}) };
-    if (written && proposal.applied) {
-      result.fileId = proposal.applied.fileId;
-      result.path = proposal.preview?.destination ?? proposal.preview?.path ?? proposal.path;
-      // Return committed bytes as a new immutable source; never widen an original selection.
-      if (['edit', 'create', 'rename', 'move'].includes(proposal.kind) && !target.messages.some(message => message.id === proposal.runId &&
-          message.sources?.some(source => source.fileId === proposal.fileId && source.selection)))
-        result.source = { id: '', workspaceId: expected.id, fileId: result.fileId, path: result.path,
-          content: proposal.applied.after, hash: proposal.applied.hash, origin: 'disk' };
-    }
-    return result;
-  }
-  async function review(proposal: AssistantProposal, apply = false) {
-    if (busy.value || applying.value || !transport) return;
-    if (proposal.suggestionGroupId) { error.value = '此提案已转为文档建议，请在文档中逐项审阅'; return; }
-    const expected = scope();
-    if (proposal.status === 'applied' || proposal.status === 'rejected') return;
-    if (proposal.status === 'unknown' || proposal.status === 'applying') { error.value = '请先核对待确认的写入结果'; return; }
-    if (proposal.fileId && managed(proposal.fileId)) { error.value = '此文档正由协作会话管理，暂时只能进行问答'; return; }
-    applying.value = true; error.value = '';
-    const target = session.value;
-    const originalStatus = proposal.status;
-    let submitting = false;
-    try {
-      if (proposal.kind === 'extension') {
-        const extAction = proposal.extensionAction;
-        if (!extAction) throw new Error('扩展操作元数据缺失');
-        if (!apply) {
-          proposal.preview = {
-            before: '',
-            after: proposal.content,
-            diskHash: null,
-            path: proposal.path,
-          };
-          proposal.status = 'ready';
-          await persist(target);
-          return;
-        }
-        const assistantExtension = resolveAssistantExtension(runtime);
-        if (!assistantExtension?.applyProposal) throw new Error('当前宿主未注册该扩展操作处理器');
-        proposal.status = 'applying';
-        await persist(target);
-        submitting = true;
-        const extApplied = await assistantExtension.applyProposal(proposal, extAction.payload);
-        if (!extApplied) throw new Error('当前宿主不支持执行此扩展操作');
-        proposal.applied = {
-          before: extApplied.before ?? '',
-          after: extApplied.after,
-          hash: extApplied.hash,
-          fileId: extApplied.fileId,
-          ...(extApplied.undoSnapshot !== undefined ? { undoSnapshot: extApplied.undoSnapshot } : {}),
-        };
-        proposal.status = 'applied';
-        proposal.error = undefined;
-        await persist(target);
-        return;
-      }
-      if (proposal.kind === 'plugin') {
-        const action = proposal.pluginAction;
-        if (!action) throw new Error('插件操作元数据缺失');
-        if (!apply) {
-          proposal.preview = {
-            before: '',
-            after: proposal.content,
-            diskHash: null,
-            path: proposal.path,
-          };
-          proposal.status = 'ready';
-          await persist(target);
-          return;
-        }
-        const parsedArgs = JSON.parse(proposal.content) as Record<string, unknown>;
-        const assistantExtension = resolveAssistantExtension(runtime);
-        if (assistantExtension?.applyProposal) {
-          proposal.status = 'applying';
-          await persist(target);
-          submitting = true;
-          const extApplied = await assistantExtension.applyProposal(proposal, parsedArgs);
-          if (extApplied) {
-            proposal.applied = {
-              before: extApplied.before ?? '',
-              after: extApplied.after,
-              hash: extApplied.hash,
-              fileId: extApplied.fileId,
-              ...(extApplied.undoSnapshot !== undefined ? { undoSnapshot: extApplied.undoSnapshot } : {}),
-            };
-            proposal.status = 'applied';
-            proposal.error = undefined;
-            await persist(target);
-            return;
-          }
-          submitting = false;
-        }
-        const installation = workspace.installedPlugins.find(item => item.manifest.id === action.pluginId);
-        const toolDef =
-          installation?.manifest.manifestVersion === 2
-            ? installation.manifest.assistantTools?.find(tool => tool.name === action.toolName)
-            : undefined;
-        if (!installation || !toolDef || !canPluginToolExecute(installation, toolDef, !!workspace.workspace?.readOnly))
-          throw new Error('插件已停用、未授权或受当前工作区策略限制，无法执行此操作');
-        proposal.status = 'applying';
-        await persist(target);
-        submitting = true;
-        const output = await workspace.invokePluginAssistantTool(action.pluginId, action.toolName, parsedArgs);
-        proposal.applied = {
-          before: '',
-          after: JSON.stringify(output ?? null, null, 2),
-          hash: action.toolName,
-          fileId: action.pluginId,
-        };
-        proposal.status = 'applied';
-        proposal.error = undefined;
-        await persist(target);
-        return;
-      }
-      const acceptance = apply ? proposal.preview : undefined;
-      if (apply && !acceptance) throw new Error('请先查看最新差异');
-      if (apply) {
-        proposal.status = 'applying';
-        await persist(target);
-        submitting = true;
-      }
-      const result = await workspace.reviewAssistantProposal(expected, proposal, acceptance, false, undefined, !!target?.external);
-      if (result.status === 'saved') {
-        proposal.status = 'applied'; proposal.applied = result.applied; proposal.error = undefined;
-      } else {
-        proposal.preview = result.preview;
-        proposal.status = result.status === 'conflict' ? 'conflicted' : 'ready';
-        proposal.error = result.status === 'stale' ? (result.preview ? '文档已变化，请审阅更新后的差异再应用' : '文档在保存时变化，请重新查看差异')
-          : result.status === 'conflict' ? '修改存在重叠，原文与建议均已保留' : undefined;
-      }
-      await persist(target);
-      if (target?.external && proposal.id === target.id) await transport.recordExternalResult?.(target);
-    } catch (reason) {
-      if (proposal.applied) {
-        proposal.status = 'applied';
-        proposal.error = `内容已保存，会话记录保存失败：${String(reason)}`;
-      } else {
-        proposal.status = submitting ? 'unknown' : originalStatus;
-        proposal.error = String(reason);
-      }
-      error.value = proposal.error;
-      try { await persist(target); } catch { /* Keep the in-memory result visible. */ }
-    } finally { applying.value = false; }
-  }
-  async function publishSuggestions(proposal: AssistantProposal) {
-    if (busy.value || applying.value || proposal.kind !== 'edit' || !['ready', 'conflicted'].includes(proposal.status)) return;
-    if (isDataTableFilePath(proposal.path)) { error.value = '数据表修改请在助手中查看差异并应用'; return; }
-    if (proposal.fileId && managed(proposal.fileId)) { error.value = '此文档正由协作会话管理，暂不支持建议模式'; return; }
-    applying.value = true;
-    const target = session.value;
-    try {
-      await useSuggestionStore().publish(proposal);
-      proposal.suggestionGroupId = proposal.id;
-      await persist(target);
-      error.value = '';
-    } catch (reason) { error.value = String(reason); }
-    finally { applying.value = false; }
-  }
-  async function verify(proposal: AssistantProposal) {
-    if (applying.value || busy.value || !proposal.preview) return;
-    applying.value = true; error.value = '';
-    const target = session.value;
-    try {
-      const expected = scope();
-      if (expected.id !== proposal.workspaceId) throw new Error('工作区已切换');
-      const current = await runtime.adapter.refresh();
-      if (current.id !== expected.id || current.path !== expected.path) throw new Error('工作区已切换');
-      if (['delete', 'rename', 'move'].includes(proposal.kind)) {
-        const file = current.files.find(file => file.id === proposal.fileId);
-        if (!file) throw new Error('原文件已不存在，无法确认是否由此次操作移除；请核对回收站，保留此记录');
-        const disk = await runtime.adapter.read(file.path);
-        if (proposal.kind !== 'delete' && file.path === proposal.preview.destination && disk.hash === proposal.preview.diskHash) {
-          proposal.applied = { before: proposal.preview.before, after: disk.content, hash: disk.hash, fileId: file.id };
-          proposal.status = 'applied'; proposal.error = undefined;
-        } else if (file.path === proposal.preview.path && disk.hash === proposal.preview.diskHash) {
-          proposal.status = 'ready'; proposal.preview = undefined; proposal.error = '未发现此次文件操作，请重新审阅';
-        } else throw new Error('文件位置或内容已变化，请人工核对；不自动重试');
-        await persist(target);
-        if (target?.external && proposal.id === target.id) await transport?.recordExternalResult?.(target);
-        return;
-      }
-      const file = current.files.find(file => proposal.kind === 'edit' ? file.id === proposal.fileId : file.path === proposal.path);
-      if (!file || current.id !== expected.id || current.path !== expected.path) throw new Error('原目标不存在，请保留建议并核对工作区');
-      const disk = await runtime.adapter.read(file.path);
-      if (disk.content === proposal.preview.after) {
-        proposal.applied = { before: proposal.preview.before, after: disk.content, hash: disk.hash, fileId: file.id };
-        proposal.status = 'applied'; proposal.error = undefined;
-      } else if (proposal.kind === 'edit' && disk.hash === proposal.preview.diskHash) {
-        proposal.status = 'ready'; proposal.preview = undefined; proposal.error = '未发现此次写入，请重新审阅';
-      } else throw new Error('磁盘内容与写入前后均不同，请打开文档人工核对；不自动重试');
-      await persist(target);
-      if (target?.external && proposal.id === target.id) await transport?.recordExternalResult?.(target);
-    } catch (reason) { error.value = String(reason); }
-    finally { applying.value = false; }
-  }
-  async function reject(proposal: AssistantProposal) {
-    if (applying.value || busy.value || !['ready', 'conflicted'].includes(proposal.status)) return;
-    proposal.status = 'rejected';
-    const target = session.value;
-    try { await persist(target); if (target?.external && proposal.id === target.id) await transport?.recordExternalResult?.(target); }
-    catch (reason) { error.value = String(reason); }
-  }
-  async function undo(proposal: AssistantProposal) {
-    if (!proposal.applied || applying.value || busy.value) return;
-    if (proposal.kind === 'extension' || proposal.kind === 'plugin') {
-      const undoExt = resolveAssistantExtension(runtime)?.undoProposal;
-      if (!undoExt) return;
-      applying.value = true;
-      error.value = '';
-      try {
-        await undoExt(proposal);
-      } catch (reason) {
-        error.value = String(reason);
-      } finally {
-        applying.value = false;
-      }
-      return;
-    }
-    if (!['edit', 'create'].includes(proposal.kind)) return;
-    if (proposal.kind === 'create' && isDataTableFilePath(proposal.path)) return;
-    const reply = session.value?.messages.find(message => message.id === proposal.runId);
-    if (!reply) return;
-    const reversed: AssistantProposal = { id: crypto.randomUUID(), runId: reply.id, workspaceId: proposal.workspaceId,
-      kind: 'edit', fileId: proposal.applied.fileId, path: proposal.path, base: proposal.applied.after,
-      content: proposal.applied.before, reason: `撤回内容：${proposal.reason}`, status: 'ready' };
-    reply.proposals!.push(reversed);
-    const current = reply.proposals!.at(-1)!;
-    current.execution = 'direct';
-    await executeChange(current, session.value!, scope(), new AbortController().signal);
-  }
   async function deleteSession(id: string) {
     if (!transport || busy.value || applying.value) return;
     await persistTask.catch(() => {});
@@ -1040,7 +573,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     externalSessions.value = externalSessions.value.filter(item => item.id !== target.id);
   }
   watch(() => workspace.workspace ? `${workspace.workspace.id}:${workspace.workspace.path}:${workspace.assistantEpoch}` : '', async key => {
-    stop(); modelController?.abort(); const epoch = ++generation;
+    stop(); abortModels(); const epoch = ++generation;
     if (displayMode.value === 'fullscreen') setDisplayMode('sidebar');
     busy.value = false; prompt.value = ''; files.value = []; attachments.value = []; pluginContextKeys.value = []; selection.value = null; session.value = null; sessions.value = [];
     replyTarget.value = null;
@@ -1101,7 +634,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
   onScopeDispose(() => {
     if (!inline && !background) workspace.setPluginAiRunner?.(undefined);
     stop();
-    modelController?.abort();
+    abortModels();
   });
   return { connectionCheckResults, connectionQuotaResults, canImportCcSwitch, scanCcSwitch, importCcSwitch, available, demo, canConfigure, opened, displayMode, fullscreenTabId, fullscreenPaneId, isFullscreenTab, setDisplayMode, loading, busy, applying, connections, connectionId, connection, modelId, models, modelsLoading, modelsError, reloadModels, refreshModels, selectModel, selectConnection, sessions, session, externalSessions, loadExternal, importExternal,
     files, pluginContextKeys, togglePluginContext, attachmentsEnabled, attachments, addClipboardAttachments, removeAttachment, selection, prompt, hasDraft, setBuiltInPrompt, error, progress, pendingUserInput, startDocumentDraft, submitUserInput, reasoningEffort, selectReasoningEffort, replyTarget, open, stop, settle, send, newSession, selectSession, deleteSession, review, verify,

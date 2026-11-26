@@ -14,55 +14,7 @@ pub fn resolve(root: &Path, relative: &str, must_exist: bool) -> Result<PathBuf,
 }
 
 pub fn is_workspace_data_path(relative: &str) -> bool {
-    let Some(path) = relative.strip_prefix(".tano/") else {
-        return false;
-    };
-    matches!(
-        path,
-        "capabilities.json"
-            | "settings.tano.json"
-            | "folders.tano.json"
-            | "plugins.tano.json"
-            | "relations.tano-relations.json"
-            | "rules/assistant.md"
-    ) || (path.starts_with("objects/") && path.ends_with(".tano.json"))
-        || path.strip_prefix("views/").is_some_and(|name| {
-            name.strip_suffix(".tano.json").is_some_and(|id| {
-                !id.is_empty()
-                    && id.len() <= 64
-                    && id
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-            })
-        })
-        || path.strip_prefix("templates/").is_some_and(|name| {
-            name.strip_suffix(".md").is_some_and(|id| {
-                id.len() == 6
-                    && id
-                        .bytes()
-                        .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-            })
-        })
-        || (path.starts_with("conflicts/") && path.ends_with(".json"))
-        || [
-            "annotations/",
-            "discussions/",
-            "document-layout/",
-            "suggestions/",
-            "tables/",
-            "files/",
-        ]
-        .iter()
-        .any(|prefix| {
-            path.strip_prefix(prefix).is_some_and(|name| {
-                name.strip_suffix(".tano.json").is_some_and(|id| {
-                    id.len() == 6
-                        && id
-                            .bytes()
-                            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-                })
-            })
-        })
+    tano_protocol::is_workspace_data_path(relative)
 }
 
 pub fn is_workspace_data_directory(relative: &str) -> bool {

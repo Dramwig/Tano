@@ -60,8 +60,8 @@ try {
     const report = { model, connectionName: metadata.connection.name, startedAt: new Date().toISOString(),
       scope: 'Current frontend engine through the existing native API transport; synthetic sources, no writes or saved sessions.',
       implementation: {}, results: [] };
-    for (const path of ['packages/workbench/src/assistant/prompts.ts', 'packages/workbench/src/assistant/task-prompts.json',
-      'packages/workbench/src/assistant/engine.ts', 'packages/workbench/src/assistant/language.ts', binary]) {
+    for (const path of ['packages/protocol/src/domain/assistant-prompts.ts', 'packages/protocol/src/domain/assistant-task-prompts.json',
+      'packages/protocol/src/domain/assistant-engine.ts', 'packages/protocol/src/domain/assistant-language.ts', binary]) {
       report.implementation[path] = createHash('sha256').update(await readFile(resolve(root, path))).digest('hex');
     }
     const caseArgument = process.argv.indexOf('--case');

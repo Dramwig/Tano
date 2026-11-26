@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, defineAsyncComponent, onMounted, onBeforeUnmount } from 'vue';
+import { computed, inject, ref, defineAsyncComponent, onMounted, onBeforeUnmount } from 'vue';
 import {
   Settings,
   MoreHorizontal,
@@ -19,6 +19,7 @@ import { bundledPluginCatalog } from '../plugin-catalog';
 import { retiredSystemPlugin } from '../workspace-plugins';
 import { matchesPlugin, usePluginActions } from '../use-plugin-actions';
 import PluginIcon from './PluginIcon.vue';
+import { workbenchPrefsKey } from '../../shell/workbench-context';
 import { useWindowContext } from '../../windows/context';
 const { window } = useWindowContext();
 const root = ref<HTMLElement>();
@@ -45,9 +46,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', dismissMenus);
 });
 const PluginImportDialog = defineAsyncComponent(() => import('./PluginImportDialog.vue'));
+const props = defineProps<{ developerMode?: boolean }>();
+const workbench = inject(workbenchPrefsKey, null);
+const isDeveloperMode = computed(() => props.developerMode ?? Boolean(workbench?.developerMode));
 const store = useWorkspaceStore();
 const query = ref(''),
-  menu = ref(''),
   importing = ref(false);
 const installedOpen = ref(true),
   recommendedOpen = ref(!store.installedPlugins.length);
@@ -68,7 +71,6 @@ function closeMenu(event: Event) {
 }
 function openImport() {
   importing.value = true;
-  menu.value = '';
 }
 </script>
 <template>
@@ -86,7 +88,7 @@ function openImport() {
           <MoreHorizontal :size="16" />
         </summary>
         <div class="dropdown compact-action-menu actions-menu" @click="closeMenu">
-          <button @click="openImport"><Upload :size="14" />{{ t('导入插件…') }}</button
+          <button v-if="isDeveloperMode" @click="openImport"><Upload :size="14" />{{ t('导入插件…') }}</button
           ><button @click="store.openPluginsTab()">
             <Puzzle :size="14" />{{ t('插件中心…') }}
           </button>

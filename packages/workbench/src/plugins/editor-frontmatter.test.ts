@@ -160,7 +160,7 @@ describe('Phase 1.2 protocol & frontmatter helpers', () => {
 
   it('merges external plugin slashCommands into editor slashItems search results', () => {
     const execute = vi.fn();
-    const results = slashItems('bibtex', undefined, undefined, undefined, [
+    const results = slashItems('bibtex', undefined, undefined, [
       {
         id: 'plugin:citation-helper:slash:cite',
         label: '插入文献引用',

@@ -276,3 +276,32 @@ it('supports an optional extraTab as the first tab and opens on it when matched 
   await open();
   expect(tab('icons').getAttribute('aria-selected')).toBe('true');
 });
+
+it('can hide the built-in icons tab and falls back cleanly when an existing icon value is opened', async () => {
+  const state = reactive({ icon: 'icon:book' });
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp({
+    render: () => h(
+      WorkspaceIconPicker,
+      {
+        icon: state.icon,
+        mode: 'web',
+        allowIcons: false,
+        extraTab: { id: 'avatars', label: '彩绘', defaultOpen: true, matches: (value: string) => value.startsWith('avatar:') },
+      },
+      {
+        'extra-tab': () => h('div', { class: 'workspace-icon-picker-grid' }, [
+          h('button', { type: 'button', 'data-icon-choice': '' }, '蝶翼'),
+        ]),
+      },
+    ),
+  });
+  app.mount(root);
+  await open();
+  expect([...panel()!.querySelectorAll<HTMLButtonElement>('[role="tab"]')].map(item => item.dataset.tab)).toEqual(['avatars', 'emoji', 'upload']);
+  expect(tab('avatars').getAttribute('aria-selected')).toBe('true');
+  key(tab('avatars'), 'ArrowRight'); await nextTick();
+  expect(tab('emoji').getAttribute('aria-selected')).toBe('true');
+  key(tab('emoji'), 'ArrowRight'); await nextTick();
+  expect(tab('upload').getAttribute('aria-selected')).toBe('true');
+});

@@ -40,7 +40,7 @@ import { loadObjects, saveObject, type ObjectRecord } from '../objects/workspace
 import type { InstalledObjectPlugin } from '../plugins/workspace-plugins';
 import { loadRelations, saveRelationChange, type RelationChange } from '../objects/workspace-relations';
 import { loadTemplates, saveTemplate, type DocumentTemplate } from '../workspace/workspace-templates';
-import type { Activity } from './workspace';
+import type { Activity } from './workspace-types';
 
 export interface WorkspaceKnowledgeDeps {
   adapter: WorkspaceAdapter;

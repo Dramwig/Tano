@@ -7,13 +7,13 @@ import {
   validateObjectProperties,
 } from '@tano/protocol';
 import type { ObjectRecord } from '../objects/workspace-objects';
+import { localDayKey } from '@tano/protocol/assistant-tasks';
 import { uiLocale } from '../i18n/i18n';
 
 export const CALENDAR_TAB_ID = 'view:calendar';
 export type CalendarViewMode = 'day' | 'four-days' | 'week' | 'month' | 'year' | 'agenda';
 
-export const localDayKey = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+export { localDayKey };
 export const localDateTime = (date: Date) =>
   `${localDayKey(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 export function weekDays(date: Date) {

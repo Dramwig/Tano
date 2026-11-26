@@ -48,7 +48,6 @@ const props = defineProps<{
   context: EditorSelectionContext;
   disabled?: boolean;
   source?: boolean;
-  enabledLevels?: readonly number[];
   features?: DocumentFeatures;
   compact?: boolean;
   compactActions?: boolean;
@@ -160,7 +159,7 @@ const availableBlocks = computed(() => blockMenuGroups
   .map(types => types
     .map(type => blockTypes.find(item => item.type === type)!)
     .filter(item => !insertionCommands.has(item.command)
-      && commandEnabled(item.command, props.enabledLevels, props.features)
+      && commandEnabled(item.command, props.features)
       && (props.context.availableBlockCommands?.includes(item.command)
         ?? (props.context.canTransform || wrappingCommands.has(item.command)))))
   .filter(items => items.length > 0)
@@ -171,7 +170,7 @@ const availableBlocks = computed(() => blockMenuGroups
   }))),
 );
 const availableInline = computed(() =>
-  inlineTypes.map(item => ({ ...item, label: t(item.label) })).filter((item) => commandEnabled(item.command, props.enabledLevels, props.features)),
+  inlineTypes.map(item => ({ ...item, label: t(item.label) })).filter((item) => commandEnabled(item.command, props.features)),
 );
 const useCompactActions = computed(() => props.compact || props.compactActions);
 const primaryInline = computed(() =>
@@ -280,7 +279,7 @@ function toggleBlockMenu() {
 onMounted(() => window.addEventListener('click', outside));
 onBeforeUnmount(() => window.removeEventListener('click', outside));
 async function run(name: string, argument?: string) {
-  if (props.disabled || props.source || !commandEnabled(name, props.enabledLevels, props.features))
+  if (props.disabled || props.source || !commandEnabled(name, props.features))
     return;
   open.value = false;
   if (['link', 'mention', 'image', 'footnote', 'file', 'embed'].includes(name)) {
@@ -447,7 +446,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
               </button>
             </template>
             <select v-if="compact && context.block === 'Callout'" :aria-label="t('提示块类型')"
-              :disabled="disabled || !commandEnabled('callout', enabledLevels, features)"
+              :disabled="disabled || !commandEnabled('callout', features)"
               @change="run('callout', ($event.target as HTMLSelectElement).value)">
               <option disabled selected value="">{{ t('提示类型') }}</option>
               <option value="NOTE">{{ t('备注') }}</option><option value="TIP">{{ t('提示') }}</option>
@@ -556,7 +555,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
       <TextStyleMenu
         v-if="context.level === 'inline' || useCompactActions"
         :more="useCompactActions"
-        :inline-math="useCompactActions && commandEnabled('math', enabledLevels, features)"
+        :inline-math="useCompactActions && commandEnabled('math', features)"
         :text-color="context.textColor"
         :background-color="context.backgroundColor"
         :dragging="dragging"
@@ -591,7 +590,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
         </template>
       </TextStyleMenu>
       <button
-        v-if="!useCompactActions && context.level === 'block' && commandEnabled('reference', enabledLevels, features)"
+        v-if="!useCompactActions && context.level === 'block' && commandEnabled('reference', features)"
         type="button"
         class="icon-button"
         :aria-label="t('引用对象或文档')"
@@ -603,7 +602,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
         <AtSign :size="17" />
       </button>
       <button
-        v-if="!useCompactActions && context.level === 'block' && commandEnabled('mention', enabledLevels, features)"
+        v-if="!useCompactActions && context.level === 'block' && commandEnabled('mention', features)"
         type="button"
         class="icon-button"
         :aria-label="t('提及文档')"
@@ -617,7 +616,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
       <select
         v-if="!compact && context.block === 'Callout'"
         :aria-label="t('提示块类型')"
-        :disabled="disabled || !commandEnabled('callout', enabledLevels, features)"
+        :disabled="disabled || !commandEnabled('callout', features)"
         @change="run('callout', ($event.target as HTMLSelectElement).value)"
       >
         <option disabled selected value="">{{ t('提示类型') }}</option>

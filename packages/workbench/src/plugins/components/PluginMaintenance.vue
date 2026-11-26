@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { uiLocale, t } from '../../i18n/i18n';
-import { computed, ref, watch } from 'vue';
-import { pluginCacheLimit, pluginPackageLimit, type WorkspacePersonalPluginPolicy } from '@tano/protocol';
-import PluginRepositoryStorage from './PluginRepositoryStorage.vue';
+import { computed, inject, ref, watch } from 'vue';
+import { pluginCacheLimit, pluginPackageLimit } from '@tano/protocol';
+import { workbenchPrefsKey } from '../../shell/workbench-context';
 import { useWorkspaceStore } from '../../stores/workspace';
 import { PluginPackageCache } from '../packages';
 import type { PluginCacheEntry } from '../cache-storage';
-const props = defineProps<{ id: string }>();
+const props = defineProps<{ id: string; developerMode?: boolean }>();
+const workbench = inject(workbenchPrefsKey, null);
+const isDeveloperMode = computed(() => props.developerMode ?? Boolean(workbench?.developerMode));
 const store = useWorkspaceStore(), cache = new PluginPackageCache();
 const entries = ref<PluginCacheEntry[]>([]), pending = ref(false), error = ref(''), status = ref('');
 const developmentUrl = ref(''), trustBuilds = ref(false);
@@ -47,38 +49,7 @@ async function run(action: () => Promise<unknown>, message: string) {
     <p v-if="runtime?.message" :role="runtime.status === 'error' ? 'alert' : 'status'">{{ runtime.message }}</p>
     <p v-if="error" role="alert">{{ error }}</p><p v-if="status" role="status">{{ status }}</p>
     <button :disabled="pending || !installation?.enabled" @click="run(() => store.restartPlugin(id, store.workspace!.id), t('已重新加载当前版本'))">{{ t('重新加载当前版本') }}</button>
-    <div v-if="store.canManagePlugins && store.workspace" class="personal-policy-control">
-      <label
-        >{{ t('本工作区对个人代码插件的策略') }}
-        <select
-          :value="store.personalCodePluginPolicy"
-          :disabled="pending"
-          :aria-label="t('本工作区对个人代码插件的策略')"
-          @change="run(() => store.changePlugin({ personalCodePlugins: ($event.target as HTMLSelectElement).value as WorkspacePersonalPluginPolicy }, store.workspace!.id), t('已更新工作区个人代码插件策略'))"
-        >
-          <option value="allow">{{ t('允许运行（遵循个人授权）') }}</option>
-          <option value="read-only">{{ t('仅允许只读访问（禁止写入）') }}</option>
-          <option value="block">{{ t('禁止个人代码插件访问本工作区') }}</option>
-        </select>
-      </label>
-    </div>
-    <p>{{ t('单包上限') }} {{ size(pluginPackageLimit) }} {{ t('· 设备代码缓存') }} {{ size(used) }} / {{ size(pluginCacheLimit) }}</p>
-    <p>{{ t('此插件本机状态') }} {{ size(state.used) }} / {{ size(state.limit) }}{{ t('。缓存清理不会删除工作区内容。') }}</p>
-    <PluginRepositoryStorage v-if="installation?.scope !== 'user'" :plugin-id="id" />
-    <details v-if="installation?.scope !== 'user'">
-      <summary>{{ t('开发模式') }}</summary>
-      <p>{{ t('先安装并授权一个初始构建，然后运行：') }}</p>
-      <pre>npm run plugin -- watch ./my-plugin --origin {{ appOrigin }}</pre>
-      <p>{{ t('新构建会更新当前工作区的共享插件规则，请使用测试工作区。权限声明变化时停止自动应用。') }}</p>
-      <label>{{ t('本机开发地址') }}<input v-model="developmentUrl" type="url" :aria-label="t('插件开发地址')" :placeholder="t('http://127.0.0.1:端口/…/package.json')" /></label>
-      <label><input v-model="trustBuilds" type="checkbox" />{{ t('信任此开发会话中权限不变的新构建') }}</label>
-      <button :disabled="!trustBuilds || !installation?.authorized || !installation?.enabled || !store.canManagePlugins" @click="startDevelopment">{{ t('开始自动重载') }}</button>
-      <template v-if="store.pluginDevelopment.pluginId === id">
-        <p role="status">{{ store.pluginDevelopment.message }}</p>
-        <button v-if="store.pluginDevelopment.active" @click="store.stopPluginDevelopment()">{{ t('停止自动重载') }}</button>
-      </template>
-    </details>
-    <details v-if="installation?.scope !== 'user'">
+    <details v-if="installation?.scope !== 'user' && (installation?.rule?.history?.length || isDeveloperMode)">
       <summary>{{ t('历史版本（') }}{{ installation?.rule?.history?.length ?? 0 }}）</summary>
       <p>{{ t('保留最近 10 个版本引用。移除引用后，该版本不再受云端回收保护，日后恢复需重新导入。回滚沿用当前共享设置，运行前仍需核对并授权版本。') }}</p>
       <ul>
@@ -91,19 +62,36 @@ async function run(action: () => Promise<unknown>, message: string) {
         </li>
       </ul>
     </details>
-    <details>
-      <summary>{{ t('此插件的设备缓存（') }}{{ localEntries.length }}）</summary>
-      <ul><li v-for="entry in localEntries" :key="entry.integrity">{{ entry.version }} · {{ size(entry.bytes) }} · <code>{{ entry.integrity.slice(0, 12) }}</code>
-        <button :disabled="pending || entry.integrity === installation?.rule?.integrity || store.userPluginIntegrities().has(entry.integrity)" @click="run(() => cache.remove(entry.integrity), t('已清理所选代码缓存'))">{{ t('清理缓存') }}</button>
-      </li></ul>
-      <p>{{ t('清理旧缓存后，回滚可能需要联网下载或重新导入对应包。') }}</p>
-    </details>
-    <details>
-      <summary>{{ t('运行日志（') }}{{ runtime?.logs?.length ?? 0 }}）</summary>
-      <p>{{ t('仅保留本次工作区会话最近 100 条，重新加载插件后仍可查看。') }}</p>
-      <button @click="store.clearPluginLogs(id)">{{ t('清空日志') }}</button>
-      <ol class="plugin-logs"><li v-for="(log, index) in runtime?.logs" :key="index"><time>{{ new Date(log.time).toLocaleTimeString(uiLocale) }}</time> {{ log.level }} <pre>{{ log.message }}</pre></li></ol>
-    </details>
+    <template v-if="isDeveloperMode">
+      <p>{{ t('单包上限') }} {{ size(pluginPackageLimit) }} {{ t('· 设备代码缓存') }} {{ size(used) }} / {{ size(pluginCacheLimit) }}</p>
+      <p>{{ t('此插件本机状态') }} {{ size(state.used) }} / {{ size(state.limit) }}{{ t('。缓存清理不会删除工作区内容。') }}</p>
+      <details v-if="installation?.scope !== 'user'">
+        <summary>{{ t('开发模式') }}</summary>
+        <p>{{ t('先安装并授权一个初始构建，然后运行：') }}</p>
+        <pre>npm run plugin -- watch ./my-plugin --origin {{ appOrigin }}</pre>
+        <p>{{ t('新构建会更新当前工作区的共享插件规则，请使用测试工作区。权限声明变化时停止自动应用。') }}</p>
+        <label>{{ t('本机开发地址') }}<input v-model="developmentUrl" type="url" :aria-label="t('插件开发地址')" :placeholder="t('http://127.0.0.1:端口/…/package.json')" /></label>
+        <label><input v-model="trustBuilds" type="checkbox" />{{ t('信任此开发会话中权限不变的新构建') }}</label>
+        <button :disabled="!trustBuilds || !installation?.authorized || !installation?.enabled || !store.canManagePlugins" @click="startDevelopment">{{ t('开始自动重载') }}</button>
+        <template v-if="store.pluginDevelopment.pluginId === id">
+          <p role="status">{{ store.pluginDevelopment.message }}</p>
+          <button v-if="store.pluginDevelopment.active" @click="store.stopPluginDevelopment()">{{ t('停止自动重载') }}</button>
+        </template>
+      </details>
+      <details>
+        <summary>{{ t('此插件的设备缓存（') }}{{ localEntries.length }}）</summary>
+        <ul><li v-for="entry in localEntries" :key="entry.integrity">{{ entry.version }} · {{ size(entry.bytes) }} · <code>{{ entry.integrity.slice(0, 12) }}</code>
+          <button :disabled="pending || entry.integrity === installation?.rule?.integrity || store.userPluginIntegrities().has(entry.integrity)" @click="run(() => cache.remove(entry.integrity), t('已清理所选代码缓存'))">{{ t('清理缓存') }}</button>
+        </li></ul>
+        <p>{{ t('清理旧缓存后，回滚可能需要联网下载或重新导入对应包。') }}</p>
+      </details>
+      <details>
+        <summary>{{ t('运行日志（') }}{{ runtime?.logs?.length ?? 0 }}）</summary>
+        <p>{{ t('仅保留本次工作区会话最近 100 条，重新加载插件后仍可查看。') }}</p>
+        <button @click="store.clearPluginLogs(id)">{{ t('清空日志') }}</button>
+        <ol class="plugin-logs"><li v-for="(log, index) in runtime?.logs" :key="index"><time>{{ new Date(log.time).toLocaleTimeString(uiLocale) }}</time> {{ log.level }} <pre>{{ log.message }}</pre></li></ol>
+      </details>
+    </template>
   </section>
 </template>
 <style scoped>

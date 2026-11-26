@@ -7,6 +7,7 @@ const props = defineProps<{
   schema: readonly PluginSettingField[];
   modelValue: string;
   disabled?: boolean;
+  developerMode?: boolean;
 }>();
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 
@@ -85,7 +86,7 @@ function updateNumber(field: PluginSettingField, raw: string) {
       </label>
       <p v-if="field.description" class="setting-description">{{ field.description }}</p>
     </div>
-    <details class="setting-raw">
+    <details v-if="developerMode" class="setting-raw">
       <summary>{{ t('高级 JSON 视图') }}</summary>
       <textarea
         :value="modelValue"

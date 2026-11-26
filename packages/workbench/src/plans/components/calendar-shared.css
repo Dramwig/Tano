@@ -1,0 +1,192 @@
+/* ---- Calendar palette -----------------------------------------------------
+   Items read their colour from --tone: workspace items use the product ink,
+   personal items a quiet blue, deadlines amber, overdue the danger colour.
+   Fills and seams are mixed from the tone so every theme stays consistent. */
+.calendar-shell {
+  --cal-ink: var(--text);
+  --cal-personal: #3d6cc9;
+  --cal-due: #b7791f;
+  --cal-overdue: var(--danger, #c24141);
+  --cal-radius: 6px;
+  --cal-today: color-mix(in srgb, var(--text) 2.5%, transparent);
+  --cal-lift: 0 1px 2px rgb(15 15 15 / 0.06), 0 6px 16px -6px rgb(15 15 15 / 0.18);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  background: var(--paper);
+}
+:root[data-theme='dark'] .calendar-shell {
+  --cal-personal: #86a6ea;
+  --cal-due: #d9b26a;
+  --cal-today: color-mix(in srgb, var(--text) 3.5%, transparent);
+  --cal-lift: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 20px -6px rgb(0 0 0 / 0.55);
+}
+.calendar-shell :where(.calendar-view-event, .calendar-view-date-event, .calendar-month-event, .calendar-agenda-row) {
+  --tone: var(--cal-ink);
+}
+.calendar-shell .is-personal { --tone: var(--cal-personal); }
+.calendar-shell .is-due { --tone: var(--cal-due); }
+.calendar-shell .is-overdue { --tone: var(--cal-overdue); }
+
+/* ---- Scroll container ---------------------------------------------------- */
+.calendar-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--paper);
+}
+.calendar-view-timeline,
+.calendar-view-month,
+.calendar-view-year { overflow-anchor: none; }
+/* Switching between views fades the new layout in instead of snapping. */
+.calendar-shell :is(.calendar-view-inner, .calendar-month-view, .calendar-year-view, .calendar-agenda-view) {
+  animation: tano-fade-in var(--motion-base) var(--ease-standard);
+}
+
+/* ---- Shared item pieces -------------------------------------------------- */
+.calendar-shell .calendar-inline-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--tone, var(--text)) 55%, var(--muted));
+}
+.calendar-shell .calendar-inline-check:hover:not(:disabled) {
+  color: var(--tone, var(--text));
+  background: color-mix(in srgb, var(--tone, var(--text)) 12%, transparent);
+}
+/* Checks sit inside draggable items, which the global press motion skips. */
+.calendar-shell .calendar-inline-check:active:not(:disabled) { scale: 0.86; }
+.calendar-shell .calendar-inline-check:disabled { opacity: 0.45; cursor: not-allowed; }
+.calendar-shell .is-completed .calendar-inline-check { color: var(--tone, var(--text)); }
+.calendar-shell .calendar-due-flag { flex: none; color: var(--cal-due); }
+.calendar-shell .is-overdue .calendar-due-flag { color: var(--cal-overdue); }
+.calendar-shell .calendar-item-trigger {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+.calendar-shell .calendar-item-trigger:hover { color: inherit; }
+.calendar-shell .calendar-item-time {
+  margin-right: 5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.calendar-shell .is-draggable { cursor: grab; }
+.calendar-shell .is-draggable:active { cursor: grabbing; }
+.calendar-shell .is-dragging { opacity: 0.38; }
+.calendar-shell .is-completed .calendar-item-trigger,
+.calendar-shell .is-completed .calendar-view-event-body strong,
+.calendar-shell .is-completed .calendar-agenda-item span {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+.calendar-shell .is-overdue .calendar-item-trigger { color: color-mix(in srgb, var(--tone) 75%, var(--text)); }
+
+/* Shared today pill */
+.calendar-shell .calendar-view-day-heading.today strong,
+.calendar-shell .calendar-month-date.today,
+.calendar-shell .calendar-year-days button.today > .calendar-year-date {
+  color: var(--on-accent, white);
+  background: var(--green-fill);
+}
+
+/* Shared drop target highlight */
+.calendar-shell .calendar-view-date-events.is-drop-target,
+.calendar-shell .calendar-month-cell.is-drop-target {
+  background: color-mix(in srgb, var(--text) 5%, var(--paper));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 45%, transparent);
+}
+
+/* All-day chips in the timeline header and every chip in the month grid. */
+.calendar-shell :is(.calendar-view-date-event, .calendar-month-event) {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 7px 0 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--tone) 8%, var(--paper));
+  color: var(--text);
+  font-size: 11px;
+  line-height: 22px;
+  transition:
+    background-color var(--motion-quick) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard),
+    opacity var(--motion-base) var(--ease-standard);
+}
+.calendar-shell :is(.calendar-view-date-event, .calendar-month-event):not(:has(.calendar-inline-check, .calendar-due-flag)) {
+  padding-left: 8px;
+}
+.calendar-shell :is(.calendar-view-date-event, .calendar-month-event):hover,
+.calendar-shell :is(.calendar-view-date-event, .calendar-month-event):focus-within {
+  background: color-mix(in srgb, var(--tone) 14%, var(--paper));
+}
+.calendar-shell :is(.calendar-view-date-event, .calendar-month-event).is-due {
+  background: color-mix(in srgb, var(--tone) 7%, var(--paper));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 30%, transparent);
+}
+.calendar-shell :is(.calendar-view-date-event, .calendar-month-event).is-due:hover {
+  background: color-mix(in srgb, var(--tone) 13%, var(--paper));
+}
+.calendar-shell :is(.calendar-view-date-event, .calendar-month-event).is-completed {
+  background: color-mix(in srgb, var(--tone) 4%, var(--paper));
+}
+
+/* Shared checkbox styling for filter bar and quick-create dialog */
+.calendar-filter-completed input,
+.calendar-create-checkable input {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1.5px solid var(--control-border);
+  border-radius: 4px;
+  background: var(--paper);
+  cursor: pointer;
+  transition: background-color var(--motion-quick) var(--ease-standard), border-color var(--motion-quick) var(--ease-standard);
+}
+.calendar-filter-completed input::after,
+.calendar-create-checkable input::after {
+  content: '';
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 3.5px;
+  height: 7px;
+  border: solid var(--on-accent, #fff);
+  border-width: 0 1.5px 1.5px 0;
+  rotate: 45deg;
+  scale: 0.4;
+  opacity: 0;
+  transition: scale var(--motion-spring) var(--ease-spring-bouncy), opacity var(--motion-quick) var(--ease-standard);
+}
+.calendar-filter-completed input:checked,
+.calendar-create-checkable input:checked { border-color: var(--green-fill); background: var(--green-fill); }
+.calendar-filter-completed input:checked::after,
+.calendar-create-checkable input:checked::after { scale: 1; opacity: 1; }
+.calendar-filter-completed:hover input:not(:checked),
+.calendar-create-checkable:hover input:not(:checked, :disabled) { border-color: var(--text-secondary); }
+.calendar-filter-completed input:focus-visible,
+.calendar-create-checkable input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-shell :is(.calendar-view-inner, .calendar-month-view, .calendar-year-view, .calendar-agenda-view, .calendar-view-event, .calendar-slot-preview, .calendar-error-banner) {
+    animation: none;
+  }
+}

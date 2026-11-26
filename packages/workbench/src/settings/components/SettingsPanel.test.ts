@@ -109,6 +109,8 @@ let visualFontSize = ref(16);
 let sourceFontSize = ref(14);
 let toolbarMode = ref<ToolbarMode>('selection');
 let workspaceMode = ref<'demo' | 'web' | 'local'>('local');
+const nativeHost = ref(true);
+const mobileHost = ref(false);
 const developerMode = ref(false);
 let hostWorkspace = ref<SettingsPageContext['workspace']>(null);
 let hostFile = ref<SettingsPageContext['activeFile']>(null);
@@ -161,6 +163,8 @@ beforeEach(() => {
   sourceFontSize = ref(14);
   toolbarMode = ref('selection');
   workspaceMode = ref('local');
+  nativeHost.value = true;
+  mobileHost.value = false;
   developerMode.value = false;
   hostWorkspace = ref(null);
   hostFile = ref(null);
@@ -196,8 +200,8 @@ beforeEach(() => {
           { id: 'online-only', label: '在线专属设置', group: '工作区设置', terms: '', component: ExtraSettings,
             isVisible: context => context.mode === 'web' && !!context.workspace },
         ],
-        native: true,
-        mobile: false,
+        native: nativeHost.value,
+        mobile: mobileHost.value,
         developerMode: developerMode.value,
         'onUpdate:developerMode': (enabled: boolean) => { developerMode.value = enabled; },
         defaultSource: false,
@@ -805,7 +809,7 @@ it('opens directly on the complete about page with the current locale slogan', a
   expect(root.textContent).not.toContain('人与 Agent，在同一页工作。');
 });
 
-it('toggles developer mode from the about page', async () => {
+it('toggles developer mode from the about page on desktop and web, and hides it on mobile', async () => {
   const toggle = root.querySelector<HTMLButtonElement>('[role="switch"][aria-label="开发者模式"]')!;
   expect(toggle.getAttribute('aria-checked')).toBe('false');
   toggle.click();
@@ -814,6 +818,16 @@ it('toggles developer mode from the about page', async () => {
   toggle.click();
   await nextTick();
   expect(toggle.getAttribute('aria-checked')).toBe('false');
+
+  nativeHost.value = false;
+  mobileHost.value = false;
+  await nextTick();
+  expect(root.querySelector('[role="switch"][aria-label="开发者模式"]')).not.toBeNull();
+  expect(root.textContent).toContain('开启后，可在插件中心访问开发者区（导入插件、工坊、开发监听、运行日志与投稿）。');
+
+  mobileHost.value = true;
+  await nextTick();
+  expect(root.querySelector('[role="switch"][aria-label="开发者模式"]')).toBeNull();
 });
 
 it('links the about page to the website, documentation, releases, and feedback', () => {
@@ -1006,7 +1020,7 @@ it('selects colors and icons independently and explains unavailable selections',
   appearance.value = { ...appearance.value, materials: [...builtinAppearance.materials!] };
   await nextTick();
   const material = root.querySelector<HTMLSelectElement>('[aria-label="材质"]')!;
-  expect([...material.options].map(option => option.textContent)).toEqual(['平面', '立体卡片', '磨砂玻璃', '液态玻璃']);
+  expect([...material.options].map(option => option.textContent)).toEqual(['平面', '立体卡片', '纸纹', '磨砂玻璃', '液态玻璃']);
   material.value = 'builtin:raised'; material.dispatchEvent(new Event('change')); await nextTick();
   expect(appearanceSelections.at(-1)).toEqual({ workspaceId: 'one', kind: 'material', id: 'builtin:raised' });
 });

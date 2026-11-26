@@ -137,7 +137,6 @@ export function slashQuery(state: EditorState, composing = false) {
 
 export function slashItems(
   query: string,
-  levels?: readonly number[],
   features?: DocumentFeatures,
   translate: SlashTranslate = defaultTranslate,
   extraItems?: readonly ExternalSlashCommand[],
@@ -145,7 +144,7 @@ export function slashItems(
   const words = query.trim().toLowerCase().split(/\s+/);
   const builtin = items.filter(
     (item) =>
-      commandEnabled(item.command, levels, features) &&
+      commandEnabled(item.command, features) &&
       words.every((word) =>
         `${itemLabel(item, translate)} ${item.englishLabel} ${item.label} ${item.keywords}`.toLowerCase().includes(word),
       ),
@@ -214,7 +213,6 @@ export function applySlashCommand(
 export function slashCommands(options: {
   readonly: () => boolean;
   chineseSlash?: () => boolean;
-  levels: () => readonly number[] | undefined;
   features?: () => DocumentFeatures;
   aiShortcut?: () => boolean;
   translate?: SlashTranslate;
@@ -386,6 +384,7 @@ export function slashCommands(options: {
       const document = window.document;
       const menu = document.createElement('div');
       menu.className = 'tano-slash-menu';
+      menu.dataset.surfaceRole = 'popover';
       menu.hidden = true;
       menu.setAttribute('aria-label', translate('切换块类型'));
       const title = document.createElement('div');
@@ -470,7 +469,7 @@ export function slashCommands(options: {
           item.external.execute();
           return;
         }
-        if (options.readonly() || !commandEnabled(item.command, options.levels(), options.features?.())) {
+        if (options.readonly() || !commandEnabled(item.command, options.features?.())) {
           close();
           return;
         }
@@ -545,7 +544,7 @@ export function slashCommands(options: {
           if (
             formState?.doc !== view.state.doc ||
             !formState.selection.eq(view.state.selection) ||
-            !commandEnabled(formItem.command, options.levels(), options.features?.())
+            !commandEnabled(formItem.command, options.features?.())
           )
             close();
           return;
@@ -559,7 +558,7 @@ export function slashCommands(options: {
           close();
           return;
         }
-        matches = slashItems(query.query, options.levels(), options.features?.(), translate, options.extraItems?.());
+        matches = slashItems(query.query, options.features?.(), translate, options.extraItems?.());
         menu.setAttribute('aria-label', translate('切换块类型'));
         list.setAttribute('aria-label', translate('块类型搜索结果'));
         const queryLength = Array.from(query.query).length;
@@ -573,7 +572,7 @@ export function slashCommands(options: {
               // Count committed characters even when an IME/paste inserts them
               // in one transaction, rather than counting preedit updates.
               unmatchedLength = !changed ? queryLength : characters.findIndex((_, index) => !slashItems(
-                characters.slice(0, index + 1).join(''), options.levels(), options.features?.(), translate, options.extraItems?.(),
+                characters.slice(0, index + 1).join(''), options.features?.(), translate, options.extraItems?.(),
               ).length) + 1;
             }
             if (queryLength - unmatchedLength >= 2) {

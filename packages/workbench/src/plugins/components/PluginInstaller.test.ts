@@ -19,6 +19,9 @@ const showModal = HTMLDialogElement.prototype.showModal;
 const close = HTMLDialogElement.prototype.close;
 const catalogOverride = shallowRef<readonly PluginCatalogEntry[]>();
 const publishingAvailable = shallowRef(false);
+const customizeAvailable = shallowRef(false);
+const developerModeOverride = shallowRef<boolean | undefined>(undefined);
+const enabledDeveloperModeEvents: number[] = [];
 
 beforeEach(async () => {
   // jsdom does not implement the native dialog top layer.
@@ -31,6 +34,9 @@ beforeEach(async () => {
   localStorage.clear();
   catalogOverride.value = undefined;
   publishingAvailable.value = false;
+  customizeAvailable.value = false;
+  developerModeOverride.value = undefined;
+  enabledDeveloperModeEvents.length = 0;
   pinia = createPinia();
   configureWorkbench(pinia, { adapter: new DemoAdapter(), native: false, mobile: false });
   setActivePinia(pinia);
@@ -38,8 +44,29 @@ beforeEach(async () => {
   await store.openWorkspace();
   root = document.createElement('div');
   document.body.append(root);
-  app = createApp(() => h('div', [h(PluginInstaller, { catalog: catalogOverride.value }, publishingAvailable.value
-    ? { publishing: () => h('textarea', { 'aria-label': '投稿草稿' }) } : undefined), ...(store.tabs.find(tab => tab.id === store.activeId)?.pluginDetail ? [h(PluginDetailPage, { pluginId: store.tabs.find(tab => tab.id === store.activeId)!.pluginDetail!.id })] : [])]));
+  app = createApp(() =>
+    h('div', [
+      h(
+        PluginInstaller,
+        {
+          catalog: catalogOverride.value,
+          developerMode: developerModeOverride.value,
+          onEnableDeveloperMode: () => enabledDeveloperModeEvents.push(Date.now()),
+        },
+        {
+          ...(customizeAvailable.value
+            ? { customize: () => h('div', { 'aria-label': '微调面板' }, '工作台外观微调') }
+            : {}),
+          ...(publishingAvailable.value
+            ? { publishing: () => h('textarea', { 'aria-label': '投稿草稿' }) }
+            : {}),
+        },
+      ),
+      ...(store.tabs.find((tab) => tab.id === store.activeId)?.pluginDetail
+        ? [h(PluginDetailPage, { pluginId: store.tabs.find((tab) => tab.id === store.activeId)!.pluginDetail!.id })]
+        : []),
+    ]),
+  );
   app.use(pinia);
   app.mount(root);
 });
@@ -76,30 +103,48 @@ it('loads a bundled code package on installation and keeps failed downloads retr
   expect(loadPackage).toHaveBeenCalledTimes(2);
 });
 
-it('offers publishing only when the product provides it and preserves drafts while browsing plugins', async () => {
-  expect(button('我的投稿')).toBeUndefined();
-  button('社区目录').click();
+it('gates developer tools behind developerMode, keeps customize user-facing, and preserves publishing drafts across tabs', async () => {
+  expect(button('社区目录')).toBeUndefined();
+  expect(button('开发者')).toBeUndefined();
+  expect(button('导入插件')).toBeUndefined();
+  expect(button('工作台微调')).toBeUndefined();
+
+  customizeAvailable.value = true;
   await nextTick();
-  expect(button('发布插件')).toBeUndefined();
+  expect(button('工作台微调')).toBeDefined();
+  button('工作台微调').click();
+  await nextTick();
+  expect(document.querySelector('[aria-label="微调面板"]')).not.toBeNull();
+  expect(document.querySelector('.center-footer')).toBeNull();
+
+  button('发现').click();
+  await nextTick();
+  button('开启开发者模式以导入或开发插件').click();
+  await nextTick();
+  await nextTick();
+  expect(enabledDeveloperModeEvents).toHaveLength(1);
+  expect(button('开发者').getAttribute('aria-pressed')).toBe('true');
+  expect(button('导入插件')).toBeDefined();
+  expect(button('我的投稿')).toBeUndefined();
+
   publishingAvailable.value = true;
   await nextTick();
   expect(document.querySelector('[aria-label="投稿草稿"]')).toBeNull();
-  button('发布插件').click();
+  button('我的投稿').click();
   await nextTick();
   expect(button('我的投稿').getAttribute('aria-pressed')).toBe('true');
-  expect(button('导入插件')).toBeUndefined();
   expect(document.querySelector('.catalog-filter')).toBeNull();
   expect(document.querySelector('.center-footer')).toBeNull();
   const draft = document.querySelector<HTMLTextAreaElement>('[aria-label="投稿草稿"]')!;
   draft.value = '未提交的新版本说明';
-  button('社区目录').click();
+  button('发现').click();
   await nextTick();
-  expect(draft.parentElement?.style.display).toBe('none');
-  button('我的投稿').click();
+  expect(document.querySelector<HTMLElement>('.plugin-developer-area')?.style.display).toBe('none');
+  button('开发者').click();
   await nextTick();
   expect(document.querySelector('[aria-label="投稿草稿"]')).toBe(draft);
   expect(draft.value).toBe('未提交的新版本说明');
-  expect(draft.parentElement?.style.display).not.toBe('none');
+  expect(document.querySelector<HTMLElement>('.plugin-developer-area')?.style.display).not.toBe('none');
 });
 
 it('installs a plugin and preserves its objects when disabled and re-enabled', async () => {
@@ -182,6 +227,10 @@ it('opens details, installs there, and shows the installed manifest version', as
 });
 
 it('validates imports and invalidates a preview after editing before installation', async () => {
+  developerModeOverride.value = true;
+  await nextTick();
+  button('开发者').click();
+  await nextTick();
   button('导入插件').click();
   await nextTick();
   const textarea = document.querySelector('textarea')!;
@@ -229,6 +278,10 @@ it('keeps a failed install actionable and reports the error in its dialog', asyn
 });
 
 it('clears an earlier preview when a newly selected file cannot be imported', async () => {
+  developerModeOverride.value = true;
+  await nextTick();
+  button('开发者').click();
+  await nextTick();
   button('导入插件').click();
   await nextTick();
   const textarea = document.querySelector('textarea')!;
@@ -321,4 +374,13 @@ it.each(['演示文稿预览', 'Word 文档预览'])('identifies system plugin %
   await vi.waitFor(() => expect(store.installedPlugins.find(p => p.system && p.manifest.name === name)?.enabled).toBe(false));
   button('启用插件').click();
   await vi.waitFor(() => expect(store.installedPlugins.find(p => p.system && p.manifest.name === name)?.enabled).toBe(true));
+});
+
+it('shows workspace personal plugin policy in Installed and hides unconfigured connections and automations', async () => {
+  button(`已安装 ${store.installedPlugins.length}`).click();
+  await nextTick();
+  const policySelect = document.querySelector<HTMLSelectElement>('select[aria-label="本工作区对个人代码插件的策略"]');
+  expect(policySelect).not.toBeNull();
+  expect(document.querySelector('[aria-label="插件账号连接"]')).toBeNull();
+  expect(document.querySelector('[aria-label="插件定时自动化"]')).toBeNull();
 });

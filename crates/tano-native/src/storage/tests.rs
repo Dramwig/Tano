@@ -102,10 +102,12 @@ mod protocol_vector_tests {
         for p in vectors["workspaceDataPaths"]["valid"].as_array().unwrap() {
             let s = p.as_str().unwrap();
             assert!(tano_protocol::is_workspace_data_path(s), "{s}");
+            assert!(is_workspace_data_path(s), "{s}");
         }
         for p in vectors["workspaceDataPaths"]["invalid"].as_array().unwrap() {
             let s = p.as_str().unwrap();
             assert!(!tano_protocol::is_workspace_data_path(s), "{s}");
+            assert!(!is_workspace_data_path(s), "{s}");
         }
     }
 }

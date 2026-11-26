@@ -147,25 +147,26 @@ export function buildEditorNodeViews(options: EditorNodeViewsOptions) {
           },
         ),
         image(node, view, getPos) {
-          const wrapper = document.createElement('span');
+          const doc = view.dom.ownerDocument;
+          const wrapper = doc.createElement('span');
           wrapper.className = 'tano-image';
           wrapper.contentEditable = 'false';
-          const img = document.createElement('img');
+          const img = doc.createElement('img');
           img.loading = 'lazy';
           img.referrerPolicy = 'no-referrer';
-          const status = document.createElement('small');
-          const imageCaption = document.createElement('span');
+          const status = doc.createElement('small');
+          const imageCaption = doc.createElement('span');
           imageCaption.className = 'tano-image-caption';
-          const panel = createEditorPanel('div', 'tano-image-editor-panel', '编辑图片');
+          const panel = createEditorPanel('div', 'tano-image-editor-panel', '编辑图片', doc);
           const fields = (['src', 'alt', 'title'] as const).map((key) => {
-            const label = document.createElement('label');
-            const caption = document.createElement('span');
+            const label = doc.createElement('label');
+            const caption = doc.createElement('span');
             caption.textContent = {
               src: '图片地址',
               alt: '图注（替代文字）',
               title: '悬停提示',
             }[key];
-            const input = document.createElement('input');
+            const input = doc.createElement('input');
             input.type = 'text';
             input.setAttribute('aria-label', caption.textContent);
             label.append(caption, input);

@@ -28,7 +28,7 @@ import {
   type WindowLayouts,
 } from '../windows/layout';
 import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../plugins/workspace-plugins';
-import type { DocumentTab } from './workspace';
+import type { DocumentTab } from './workspace-types';
 
 export interface WorkspaceTabsLayoutDeps {
   workspace: Ref<Workspace | null>;

@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { isMarkdown, validatePath, validateStoragePath, parseAssistantSession, fileHandlers, parseObject, parseRelations, parseDataTable, isDataTableFilePath, validateObjectProperties, defaultObjectViewQuery, viewEngine, dataEvaluator, dataViewRows, AGENT_GATEWAY_VERSION, parseFileMetadata, emptyFileMetadata, queryFileDatabase, defaultFileDatabaseQuery } from '@tano/protocol';
+import { isMarkdown, validatePath, validateStoragePath, parseAssistantSession, fileHandlers, parseObject, parseRelations, parseDataTable, isDataTableFilePath, validateObjectProperties, defaultObjectViewQuery, viewEngine, dataEvaluator, dataViewRows, AGENT_GATEWAY_VERSION, parseFileMetadata, emptyFileMetadata, queryFileDatabase, defaultFileDatabaseQuery, SchemaRegistry, parsePluginPolicy, workspacePluginPath, legacyWorkspacePluginPolicyLimit } from '@tano/protocol';
 import { markdownFileMetadata } from '@tano/protocol/markdown-file-metadata';
 import type { AgentGatewayPolicy, GatewayBatch, ObjectViewQuery, AssistantProposal, FileDatabaseQuery } from '@tano/protocol';
 
@@ -331,6 +331,31 @@ export class AgentWorkspace {
     return { ...revision, tableId: table.id, name: table.name, fields: table.fields, view,
       ...this.page(rows.map(row => ({ ...row, computed: Object.fromEntries(table.fields.map(field => [field.id, evaluate(row, field.id)])) })), offset, limit) };
   }
+  private objectSchemaRegistry(): SchemaRegistry {
+    const registry = new SchemaRegistry();
+    const tanoDir = join(this.root, '.tano');
+    const dirStat = lstatSync(tanoDir, { throwIfNoEntry: false });
+    if (!dirStat || dirStat.isSymbolicLink() || !dirStat.isDirectory()) return registry;
+    const file = join(this.root, workspacePluginPath);
+    const stat = lstatSync(file, { throwIfNoEntry: false });
+    if (!stat || stat.isSymbolicLink() || !stat.isFile() || stat.size > legacyWorkspacePluginPolicyLimit) {
+      return registry;
+    }
+    try {
+      const policy = parsePluginPolicy(text(readFileSync(file)));
+      for (const rule of policy.plugins) {
+        if (rule.mode === 'disabled') continue;
+        for (const definition of rule.manifest.objectTypes) {
+          if (!registry.get(definition.type)) {
+            registry.registerObjectType({ ...definition, plugin: rule.manifest.id });
+          }
+        }
+      }
+    } catch {
+      // Ignore corrupt plugin policies so built-in object proposals keep working.
+    }
+    return registry;
+  }
   proposeChanges(batch: GatewayBatch, client: string) {
     this.assertWorkspace();
     if (this.policy.access === 'read') throw new Error('Agent 只有读取权限');
@@ -338,6 +363,7 @@ export class AgentWorkspace {
     const fingerprint = hash(JSON.stringify(batch)), rootKey = `${this.rootIdentity.dev}:${this.rootIdentity.ino}`;
     const existing = this.db.prepare('SELECT fingerprint FROM gateway_operations WHERE id=? AND root=? AND root_key=?').get(batch.operationId, this.root, rootKey) as { fingerprint: string } | undefined;
     if (existing) { if (existing.fingerprint !== fingerprint) throw new Error('同一操作标识不能对应不同建议'); return this.operation(batch.operationId); }
+    const schemaRegistry = this.objectSchemaRegistry();
     const paths = new Set<string>();
     const sessions = batch.edits.map(edit => {
       if (!edit || typeof edit.path !== 'string' || paths.has(edit.path.toLowerCase()) || typeof edit.content !== 'string' || text(Buffer.from(edit.content)) !== edit.content || Buffer.byteLength(edit.content) > previewBytes || typeof edit.reason !== 'string' || !edit.reason.trim() || edit.reason.length > 4000 || (edit.expectedHash !== null && !/^[a-f0-9]{64}$/.test(edit.expectedHash))) throw new Error('建议内容、路径或 revision 无效');
@@ -347,7 +373,7 @@ export class AgentWorkspace {
       if (!before && (edit.fileId !== undefined || existsSync(join(this.root, edit.path)))) throw new Error('新建路径已存在或 File ID 无效');
       let kind: AssistantProposal['kind'] = before ? 'edit' : 'create';
       if (edit.path.startsWith('.tano/objects/')) {
-        const object = parseObject(edit.content); validateObjectProperties(object.type, object.properties);
+        const object = parseObject(edit.content); validateObjectProperties(object.type, object.properties, schemaRegistry);
         if (!this.policy.objectTypes.includes(object.type) || (!before && edit.path !== `.tano/objects/${object.id}.tano.json`)) throw new Error('对象类型或路径未授权');
         if (before) { const base = parseObject(before.content); if (base.id !== object.id || base.type !== object.type) throw new Error('对象身份不能改变'); }
         kind = 'object';

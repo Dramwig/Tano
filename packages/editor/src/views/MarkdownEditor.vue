@@ -111,7 +111,6 @@ const props = withDefaults(
     /** Translate editor-owned UI text without touching document content. */
     translate?: SlashTranslate;
     shortcutHints?: Record<string, string>;
-    enabledLevels?: readonly number[];
     capabilities?: WorkspaceCapabilities;
     preferences?: EditorPreferences;
     openLinksOnTap?: boolean;
@@ -151,7 +150,7 @@ const emit = defineEmits<{
 const policy = () => props.capabilities ?? defaultCapabilities;
 const referencesEnabled = () =>
   props.referenceTargets !== undefined &&
-  commandEnabled('reference', props.enabledLevels, policy().features);
+  commandEnabled('reference', policy().features);
 const preferences = () => props.preferences ?? defaultEditorPreferences;
 const completesTextSpacing = () => !props.readonly && preferences().completeTextSpacing === true;
 const canSpaceTextInput = (view: EditorView) =>
@@ -284,7 +283,6 @@ const editorUploads = createEditorUploads({
   getEditor: () => editor,
   isDisposed: () => disposed,
   readonly: () => !!props.readonly,
-  enabledLevels: () => props.enabledLevels,
   policy,
   referencesEnabled,
   referenceTargets: () => props.referenceTargets ?? [],
@@ -332,7 +330,6 @@ const blockMenu = createBlockMenuController({
   getView: () => bridgeView,
   isDisposed: () => disposed,
   readonly: () => !!props.readonly,
-  enabledLevels: () => props.enabledLevels,
   policy,
   defaultCopyAction,
   clipboardContent: editorClipboard.clipboardContent,
@@ -352,7 +349,6 @@ const editorCommands = createEditorCommandsApi({
   isDisposed: () => disposed,
   readonly: () => !!props.readonly,
   revealMarkdown: () => props.revealMarkdown !== false,
-  enabledLevels: () => props.enabledLevels,
   policy,
   referencesEnabled,
   extension: () => props.extension,
@@ -957,7 +953,7 @@ onMounted(async () => {
           blockControls(
             () => !!props.readonly,
             () => preferences().folding,
-            () => commandEnabled('columns', props.enabledLevels, policy().features),
+            () => commandEnabled('columns', policy().features),
             blockMenu.openBlockMenu,
           ),
         ),
@@ -969,7 +965,6 @@ onMounted(async () => {
             chineseSlash: () => chineseInput.chineseInputSettings().slashCommand,
             translate: props.translate,
             readonly: () => !!props.readonly,
-            levels: () => props.enabledLevels,
             features: () => policy().features,
             aiShortcut: () => preferences().blankBlockAiShortcut,
             extraItems: () => props.slashCommands ?? [],
@@ -1164,7 +1159,6 @@ watch(
   () =>
     JSON.stringify([
       props.readonly,
-      props.enabledLevels,
       {
         features: policy().features,
         markdownDialect: policy().markdownDialect,
