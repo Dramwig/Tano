@@ -3,7 +3,7 @@ import { ref, watch } from 'vue';
 import type { PluginJson, PluginUiBundle } from '@tano/protocol';
 import { createPluginUiSandbox, type PluginUiSandbox } from '../ui-sandbox';
 import type { PluginInteraction } from '../workbench';
-const props = defineProps<{ bundle: PluginUiBundle; state: PluginJson; workspaceId: string; pluginId: string; instanceId: string; viewId: string;
+const props = defineProps<{ bundle: PluginUiBundle; state: PluginJson; workspaceId: string; pluginId: string; instanceId: string; viewId: string; fill?: boolean;
   execute: (interaction: PluginInteraction) => Promise<void> }>();
 const container = ref<HTMLElement>();
 const error = ref('');
@@ -24,7 +24,7 @@ watch([() => container.value, () => props.workspaceId, () => props.pluginId, () 
 watch(() => props.state, state => sandbox?.update(state), { flush: 'post' });
 </script>
 <template>
-  <div class="plugin-custom-view" :class="{ 'plugin-custom-fill': pluginId === 'excalidraw' || pluginId === 'presentation-preview' || pluginId === 'word-preview' }">
+  <div class="plugin-custom-view" :class="{ 'plugin-custom-fill': !!fill }">
     <p v-if="error" role="alert">{{ error }}</p>
     <div ref="container" class="plugin-custom-container" v-show="!error" />
   </div>

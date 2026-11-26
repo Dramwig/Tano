@@ -7,7 +7,6 @@ export function documentTabLabel(tab: DocumentTab): string {
   if (tab.pluginDetail) return tab.pluginDetail.name;
   if (tab.directory) return t(tab.directory.name);
   if (tab.dataTable) return tab.dataTable.name;
-  if (tab.workspaceView) return tab.workspaceView.view.name;
   if (tab.graph) return t('关系图谱');
   if (tab.plugins) return t('插件');
   if (tab.calendar) return t('计划');

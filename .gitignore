@@ -11,6 +11,7 @@ __pycache__/
 test-results/
 .playwright-cli/
 /output/
+/promo/
 artifacts/
 apps/client/src-tauri/gen/android/app/src/main/jniLibs/
 apps/client/src-tauri/gen/android/app/src/main/assets/

@@ -5,8 +5,10 @@ import {
   FileRegistry,
   isMarkdown,
   isWorkspaceInternalPath,
+  matchesPluginPathScopes,
   objectDirectory,
   parseObject,
+  parsePluginAttachmentWrite,
   parsePluginConnectionInput,
   pluginRecord,
   referenceKey,
@@ -16,19 +18,33 @@ import {
   type FileEntry,
   type FileSnapshot,
   type PluginConnectionInput,
+  type PluginHostEnvironment,
   type PluginOAuthInput,
+  type PluginUiConfirmOptions,
+  type PluginUiPickOptions,
+  type PluginUiPromptOptions,
+  type PluginUiTone,
   type ReferenceTarget,
   type RelationTypeDefinition,
   type Workspace,
   type WorkspaceAdapter,
+  type WorkspacePersonalPluginPolicy,
   type WorkspaceRelation,
 } from '@tano/protocol';
+import workbenchPackage from '../../package.json';
 import { assistantHash } from '../assistant/hash';
 import { nativeAttachments } from '../files/attachments';
 import type { useDocumentIndex } from '../documents/document-index';
 import { documentDirty as dirty, type OpenDocument } from '../documents/document-session';
 import { t } from '../i18n/i18n';
 import { PluginAttachmentReader } from '../plugins/attachment-reader';
+import { listActivePluginContextProviders } from '../plugins/assistant-bridge';
+import type {
+  PluginAiCompleteRequest,
+  PluginAiCompleteResult,
+  PluginAiStructuredRequest,
+  PluginAiStructuredResult,
+} from '@tano/protocol';
 import { PluginQueryPager, pluginChanges } from '../plugins/data';
 import type { PluginDevelopmentState } from '../plugins/development';
 import type { PluginRuntimeState } from '../plugins/host';
@@ -36,15 +52,64 @@ import { canManageWorkspacePlugins } from '../plugins/policy';
 import { queryPluginData } from '../plugins/queries';
 import {
   pluginViewKey,
+  pluginWorkbenchCodeBlockRenderers,
   pluginWorkbenchCommands,
+  pluginWorkbenchDecorations,
+  pluginWorkbenchFileHandlers,
+  pluginWorkbenchSlashCommands,
+  pluginWorkbenchStatusBarItems,
   pluginWorkbenchViews,
   type PluginInteraction,
 } from '../plugins/workbench';
-import type { WorkbenchRuntime } from '../runtime';
+import { resolveOverlayExtension, type WorkbenchOverlaySnapshot, type WorkbenchRuntime } from '../runtime';
 import { mergeObject, saveObject, type ObjectRecord } from '../objects/workspace-objects';
 import { WorkspacePluginRuntime } from '../plugins/workspace-plugin-runtime';
 import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../plugins/workspace-plugins';
 import { saveRelationChange } from '../objects/workspace-relations';
+
+export type PluginUiDialogRequest =
+  | {
+      id: string;
+      kind: 'pick';
+      pluginId: string;
+      pluginName: string;
+      options: PluginUiPickOptions;
+    }
+  | {
+      id: string;
+      kind: 'prompt';
+      pluginId: string;
+      pluginName: string;
+      options: PluginUiPromptOptions;
+    }
+  | {
+      id: string;
+      kind: 'confirm';
+      pluginId: string;
+      pluginName: string;
+      options: PluginUiConfirmOptions;
+    };
+
+export interface PluginUiToastItem {
+  id: string;
+  pluginId: string;
+  pluginName: string;
+  message: string;
+  tone: PluginUiTone;
+}
+
+export interface PluginEditorBridge {
+  applyEdit(id: string, before: string, after: string): Promise<boolean>;
+  activeEditor?(): {
+    fileId: string;
+    mode: 'rich' | 'source';
+    readOnly: boolean;
+    selection: { from: number; to: number; empty: boolean };
+    selectedText: string;
+    blockType?: string;
+  } | null;
+  applySelectionEdit?(id: string, text: string, mode: 'insert' | 'replace'): Promise<boolean>;
+}
 
 export interface WorkspacePluginsStateDeps {
   adapter: WorkspaceAdapter;
@@ -104,7 +169,7 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
   } = deps;
 
   const pluginAttachmentReader = new PluginAttachmentReader();
-  let pluginEditorEdit: ((id: string, before: string, after: string) => Promise<boolean>) | undefined;
+  let pluginEditorBridge: PluginEditorBridge | undefined;
   const pluginRuntime = shallowRef<PluginRuntimeState[]>([]);
   watch(
     [
@@ -118,7 +183,11 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
     () => !!workspace.value && canManageWorkspacePlugins(adapter, workspace.value),
   );
   const pluginStorageChanged = (event: StorageEvent) => {
-    if (event.key?.startsWith('tano.object-plugins.v1.') || event.key?.startsWith('tano.plugin-'))
+    if (
+      event.key?.startsWith('tano.object-plugins.v1.') ||
+      event.key?.startsWith('tano.plugin-') ||
+      event.key?.startsWith('tano.user-plugins.v1.')
+    )
       scheduleRefresh();
   };
   if (typeof window !== 'undefined') window.addEventListener('storage', pluginStorageChanged);
@@ -127,14 +196,40 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
   });
 
   const installedPluginWorkspace = ref('');
+  const personalCodePluginPolicy = ref<WorkspacePersonalPluginPolicy>('allow');
+  const overlayExtension = () => resolveOverlayExtension(runtime);
+  const overlaySnapshot = computed<WorkbenchOverlaySnapshot>(
+    () => overlayExtension()?.snapshot ?? { safeMode: false },
+  );
+  type PluginAiRunner = (options: {
+    pluginId: string;
+    pluginName: string;
+    structured: boolean;
+    request: PluginAiCompleteRequest | PluginAiStructuredRequest;
+    signal: AbortSignal;
+  }) => Promise<PluginAiCompleteResult | PluginAiStructuredResult>;
+  let pluginAiRunner: PluginAiRunner | undefined;
   const pluginDevelopment = shallowRef<PluginDevelopmentState>({
     pluginId: '',
     active: false,
     message: '',
   });
+  const pluginHostEnvironment: PluginHostEnvironment = runtime.plugins?.host ?? {
+    coreVersion: workbenchPackage.version,
+    platform: runtime.mobile
+      ? 'mobile'
+      : adapter.mode === 'desktop'
+        ? 'desktop-local'
+        : runtime.native
+          ? 'desktop-online'
+          : 'web',
+  };
   const pluginServices = new WorkspacePluginRuntime({
     adapter,
-    services: runtime.plugins,
+    services: {
+      ...runtime.plugins,
+      host: pluginHostEnvironment,
+    },
     serial,
     refresh: refreshObjects,
     call: pluginCall,
@@ -156,6 +251,122 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
 
   const pluginViews = computed(() => pluginWorkbenchViews(installedPlugins.value));
   const pluginCommands = computed(() => pluginWorkbenchCommands(pluginRuntime.value));
+  const pluginFileHandlers = computed(() =>
+    pluginWorkbenchFileHandlers(installedPlugins.value, pluginRuntime.value),
+  );
+  const pluginSlashCommands = computed(() =>
+    pluginWorkbenchSlashCommands(installedPlugins.value, pluginRuntime.value),
+  );
+  const pluginCodeBlockRenderers = computed(() =>
+    pluginWorkbenchCodeBlockRenderers(installedPlugins.value, pluginRuntime.value),
+  );
+  const pluginDecorationsFor = (fileId: string) =>
+    pluginWorkbenchDecorations(pluginRuntime.value, fileId);
+  const pluginStatusBarItems = computed(() => pluginWorkbenchStatusBarItems(pluginRuntime.value));
+  const activeDocumentPluginSidebar = ref('');
+  const activePluginDialog = shallowRef<PluginUiDialogRequest | null>(null);
+  const pluginToasts = shallowRef<PluginUiToastItem[]>([]);
+  const toastTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  let activeDialogControl: {
+    id: string;
+    resolve: (value: string | boolean | null) => void;
+    reject: (error: Error) => void;
+    cleanup: () => void;
+  } | null = null;
+  function cancelActivePluginDialog(reason = '插件交互已取消') {
+    const current = activeDialogControl;
+    if (!current) return;
+    activeDialogControl = null;
+    activePluginDialog.value = null;
+    current.cleanup();
+    current.reject(new Error(reason));
+  }
+  function resolvePluginDialog(id: string, value: string | boolean | null) {
+    const current = activeDialogControl;
+    if (!current || current.id !== id) return;
+    activeDialogControl = null;
+    activePluginDialog.value = null;
+    current.cleanup();
+    current.resolve(value);
+  }
+  function dismissPluginToast(id: string) {
+    const timer = toastTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      toastTimers.delete(id);
+    }
+    pluginToasts.value = pluginToasts.value.filter((item) => item.id !== id);
+  }
+  function showPluginToast(params: Record<string, unknown>) {
+    const id = crypto.randomUUID();
+    const item: PluginUiToastItem = {
+      id,
+      pluginId: String(params.pluginId ?? ''),
+      pluginName: String(params.pluginName ?? ''),
+      message: String(params.message ?? ''),
+      tone: (params.tone as PluginUiTone | undefined) ?? 'info',
+    };
+    const next = [...pluginToasts.value, item];
+    while (next.length > 3) {
+      const removed = next.shift();
+      if (removed) {
+        const timer = toastTimers.get(removed.id);
+        if (timer) {
+          clearTimeout(timer);
+          toastTimers.delete(removed.id);
+        }
+      }
+    }
+    pluginToasts.value = next;
+    toastTimers.set(
+      id,
+      setTimeout(() => dismissPluginToast(id), 4500),
+    );
+  }
+  function openPluginDialog(
+    method: 'ui.pick' | 'ui.prompt' | 'ui.confirm',
+    params: Record<string, unknown>,
+  ): Promise<string | boolean | null> {
+    if (activeDialogControl) {
+      return Promise.reject(new Error('当前已有插件交互弹窗正在等待响应，请稍后重试'));
+    }
+    const id = crypto.randomUUID();
+    const signal = params.signal instanceof AbortSignal ? params.signal : undefined;
+    if (signal?.aborted) return Promise.reject(new Error('插件已停止'));
+    return new Promise<string | boolean | null>((resolve, reject) => {
+      const onAbort = () => cancelActivePluginDialog('插件已停止');
+      signal?.addEventListener('abort', onAbort, { once: true });
+      const cleanup = () => signal?.removeEventListener('abort', onAbort);
+      activeDialogControl = { id, resolve, reject, cleanup };
+      const pluginId = String(params.pluginId ?? '');
+      const pluginName = String(params.pluginName ?? '');
+      if (method === 'ui.pick') {
+        activePluginDialog.value = {
+          id,
+          kind: 'pick',
+          pluginId,
+          pluginName,
+          options: params.options as PluginUiPickOptions,
+        };
+      } else if (method === 'ui.prompt') {
+        activePluginDialog.value = {
+          id,
+          kind: 'prompt',
+          pluginId,
+          pluginName,
+          options: params.options as PluginUiPromptOptions,
+        };
+      } else {
+        activePluginDialog.value = {
+          id,
+          kind: 'confirm',
+          pluginId,
+          pluginName,
+          options: params.options as PluginUiConfirmOptions,
+        };
+      }
+    });
+  }
   const pluginSettingsRequest = shallowRef<{ key: string; sequence: number }>();
   const pluginSettingsPages = computed(() =>
     pluginViews.value
@@ -172,7 +383,40 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
     () => workspace.value?.id,
     () => {
       activePluginSidebar.value = '';
+      activeDocumentPluginSidebar.value = '';
       pluginSettingsRequest.value = undefined;
+      cancelActivePluginDialog('工作区已切换');
+      for (const timer of toastTimers.values()) clearTimeout(timer);
+      toastTimers.clear();
+      pluginToasts.value = [];
+    },
+  );
+  watch(pluginViews, (views) => {
+    if (
+      activeDocumentPluginSidebar.value &&
+      !views.some(
+        (view) => view.location === 'documentSidebar' && view.key === activeDocumentPluginSidebar.value,
+      )
+    ) {
+      activeDocumentPluginSidebar.value = '';
+    }
+  });
+  watch(
+    () => {
+      const id = activeId.value;
+      const entry = id ? fileRegistry.value?.get(id) : undefined;
+      return entry && isMarkdown(entry.path) && !isWorkspaceInternalPath(entry.path) ? entry.id : '';
+    },
+    (docId, prevDocId) => {
+      if (!docId || docId === prevDocId || !workspace.value) return;
+      for (const view of pluginViews.value) {
+        if (view.location === 'documentHeader' || view.location === 'documentFooter') {
+          if (pluginRuntime.value.some((rt) => rt.id === view.pluginId && rt.status === 'idle')) {
+            void pluginExecutor.ensureActivated(view.pluginId).catch(() => {});
+          }
+        }
+      }
+      pluginExecutor.notify({ type: 'workspace.changed', fileId: docId });
     },
   );
 
@@ -246,13 +490,37 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
     { immediate: true },
   );
 
+  watch(
+    () => (workspace.value ? ([workspace.value.id, overlaySnapshot.value.safeMode] as const) : null),
+    (current, previous) => {
+      if (current && previous && current[0] === previous[0] && current[1] !== previous[1] && workspace.value) {
+        pluginExecutor.sync(workspace.value, installedPlugins.value, current[1]);
+      }
+    },
+  );
+
+  watch(
+    () => {
+      const id = activeId.value;
+      const entry = id ? fileRegistry.value?.get(id) : undefined;
+      return entry && !isWorkspaceInternalPath(entry.path) ? entry.path : '';
+    },
+    (docPath) => {
+      if (workspace.value) overlayExtension()?.syncContext?.(workspace.value.id, docPath);
+    },
+    { immediate: true },
+  );
+
   async function refreshPlugins(current: Workspace) {
     try {
-      const installed = await pluginHost.loadWorkspace(adapter, current);
+      const activeEntry = activeId.value ? fileRegistry.value?.get(activeId.value) : undefined;
+      overlayExtension()?.syncContext?.(current.id, activeEntry?.path ?? '');
+      const installed = await pluginHost.loadWorkspace(adapter, current, runtime.plugins?.repository);
       if (workspace.value?.id !== current.id) return;
       installedPlugins.value = installed;
       installedPluginWorkspace.value = current.id;
-      pluginExecutor.sync(current, installedPlugins.value);
+      personalCodePluginPolicy.value = pluginHost.personalCodePluginPolicy();
+      pluginExecutor.sync(current, installedPlugins.value, overlaySnapshot.value.safeMode);
       pluginError.value = '';
     } catch (error) {
       pluginExecutor.dispose();
@@ -265,13 +533,19 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
   function openPluginView(pluginId: string, viewId: string) {
     const view = pluginViews.value.find((view) => view.key === pluginViewKey(pluginId, viewId));
     if (!workspace.value || !view) throw new Error('插件视图已停用或不存在');
-    if (view.location === 'tab') {
+    if (pluginRuntime.value.some((rt) => rt.id === pluginId && rt.status === 'idle')) {
+      void pluginExecutor.ensureActivated(pluginId).catch(() => {});
+    }
+    if (view.location === 'tab' || view.location === 'homeTab' || view.location === 'newTab') {
       if (!tabIds.value.includes(view.key)) tabIds.value.push(view.key);
       activeId.value = view.key;
       ensureTabNavigation(view.key);
       touchNavigation();
     } else if (view.location === 'sidebar') activePluginSidebar.value = view.key;
-    else if (view.location === 'settings')
+    else if (view.location === 'documentSidebar') activeDocumentPluginSidebar.value = view.key;
+    else if (view.location === 'documentHeader' || view.location === 'documentFooter') {
+      // Document header/footer slots render automatically on the active document.
+    } else if (view.location === 'settings')
       pluginSettingsRequest.value = {
         key: view.key,
         sequence: (pluginSettingsRequest.value?.sequence ?? 0) + 1,
@@ -282,6 +556,44 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
       ensureTabNavigation(PLUGINS_TAB_ID);
       touchNavigation();
     }
+  }
+
+  const pluginContextProviders = computed(() =>
+    listActivePluginContextProviders(installedPlugins.value, pluginRuntime.value),
+  );
+  const pluginHomeTabView = computed(() => {
+    if (overlaySnapshot.value.safeMode) return null;
+    const pinnedKey = overlaySnapshot.value.homeTabViewKey;
+    if (pinnedKey) {
+      return pluginViews.value.find((view) => view.key === pinnedKey && view.location === 'homeTab') ?? null;
+    }
+    return pluginViews.value.find((view) => view.location === 'homeTab') ?? null;
+  });
+  const pluginNewTabView = computed(() => {
+    if (overlaySnapshot.value.safeMode) return null;
+    const pinnedKey = overlaySnapshot.value.newTabViewKey;
+    if (pinnedKey) {
+      return pluginViews.value.find((view) => view.key === pinnedKey && view.location === 'newTab') ?? null;
+    }
+    return pluginViews.value.find((view) => view.location === 'newTab') ?? null;
+  });
+  function invokePluginAssistantTool(pluginId: string, toolName: string, args: Record<string, unknown>) {
+    if (!workspace.value) return Promise.reject(new Error('请先打开工作区'));
+    const entry = activeId.value ? fileRegistry.value?.get(activeId.value) : undefined;
+    const activeFileId = entry && isMarkdown(entry.path) && !isWorkspaceInternalPath(entry.path) ? entry.id : undefined;
+    return pluginExecutor.invokeAssistantTool(pluginId, toolName, args, {
+      workspaceId: workspace.value.id,
+      ...(activeFileId ? { activeFileId } : {}),
+    });
+  }
+  function queryPluginAssistantContext(pluginId: string, providerId: string, query: string) {
+    if (!workspace.value) return Promise.reject(new Error('请先打开工作区'));
+    const entry = activeId.value ? fileRegistry.value?.get(activeId.value) : undefined;
+    const activeFileId = entry && isMarkdown(entry.path) && !isWorkspaceInternalPath(entry.path) ? entry.id : undefined;
+    return pluginExecutor.queryAssistantContext(pluginId, providerId, query, {
+      workspaceId: workspace.value.id,
+      ...(activeFileId ? { activeFileId } : {}),
+    });
   }
 
   function interactWithPlugin(interaction: PluginInteraction) {
@@ -302,20 +614,126 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
     assertInstance: () => void,
   ): Promise<unknown> {
     const expected = workspace.value?.id;
+    if (method === 'ui.pick' || method === 'ui.prompt' || method === 'ui.confirm') {
+      assertInstance();
+      if (!expected || workspace.value?.id !== expected) throw new Error(t('工作区已切换'));
+      return openPluginDialog(method, params);
+    }
+    if (method === 'ui.toast') {
+      assertInstance();
+      if (!expected || workspace.value?.id !== expected) throw new Error(t('工作区已切换'));
+      showPluginToast(params);
+      return null;
+    }
+    if (method === 'ai.complete' || method === 'ai.structured') {
+      assertInstance();
+      if (!expected || workspace.value?.id !== expected) throw new Error(t('工作区已切换'));
+      if (!pluginAiRunner) throw new Error('当前环境尚未配置同页助手模型连接');
+      const signal = params.signal instanceof AbortSignal ? params.signal : new AbortController().signal;
+      return pluginAiRunner({
+        pluginId: String(params.pluginId ?? ''),
+        pluginName: String(params.pluginName ?? ''),
+        structured: method === 'ai.structured',
+        request: params.request as PluginAiCompleteRequest | PluginAiStructuredRequest,
+        signal,
+      });
+    }
+    const pathScopes = Array.isArray(params.pathScopes) ? (params.pathScopes as string[]) : undefined;
+    if (method === 'editor.active') {
+      assertInstance();
+      if (!expected || workspace.value?.id !== expected) throw new Error(t('工作区已切换'));
+      const snapshot = pluginEditorBridge?.activeEditor?.();
+      if (!snapshot) return null;
+      const entry = fileRegistry.value?.get(snapshot.fileId);
+      if (!entry || !isMarkdown(entry.path) || isWorkspaceInternalPath(entry.path)) return null;
+      if (!matchesPluginPathScopes(entry.path, pathScopes)) return null;
+      const doc = documentIndex.byId.value.get(entry.id);
+      const content = doc ? doc.content : (await adapter.read(entry.path)).content;
+      assertInstance();
+      return {
+        fileId: entry.id,
+        path: entry.path,
+        mode: snapshot.mode,
+        readOnly: !!(workspace.value?.readOnly || entry.readOnly || snapshot.readOnly),
+        selection: snapshot.selection,
+        selectedText: snapshot.selectedText,
+        ...(snapshot.blockType ? { blockType: snapshot.blockType } : {}),
+        hash: await assistantHash(content),
+      };
+    }
+    if (method === 'editor.insert' || method === 'editor.replaceSelection') {
+      return serial(async () => {
+        assertInstance();
+        if (!expected || workspace.value?.id !== expected) throw new Error(t('工作区已切换'));
+        writable();
+        const snapshot = pluginEditorBridge?.activeEditor?.();
+        if (!snapshot || !pluginEditorBridge?.applySelectionEdit)
+          throw new Error('当前没有可编辑的活动文档');
+        const entry = fileRegistry.value?.get(snapshot.fileId);
+        if (!entry || !isMarkdown(entry.path) || isWorkspaceInternalPath(entry.path))
+          throw new Error('当前没有可编辑的活动文档');
+        if (!matchesPluginPathScopes(entry.path, pathScopes))
+          throw new Error('文档路径不在插件授权目录范围内');
+        if (entry.readOnly || snapshot.readOnly) throw new Error('你对这篇文档只有阅读权限');
+        const doc = documentIndex.byId.value.get(entry.id);
+        if (doc?.conflict || doc?.missing) throw new Error('请先处理文档已有冲突');
+        const editing = runtime.extensions?.()?.editing;
+        if (editing?.isManaging(entry.id)) {
+          throw new Error('当前协作会话暂不支持直接插入选区，请使用 documents.edit');
+        }
+        const ok = await pluginEditorBridge.applySelectionEdit(
+          entry.id,
+          String(params.text ?? ''),
+          method === 'editor.insert' ? 'insert' : 'replace',
+        );
+        if (!ok) throw new Error('当前编辑器无法应用选区修改');
+        assertInstance();
+        const updated = documentIndex.byId.value.get(entry.id);
+        const content = updated ? updated.content : (await adapter.read(entry.path)).content;
+        return {
+          fileId: entry.id,
+          hash: await assistantHash(content),
+          status: 'applied',
+        };
+      });
+    }
     return serial(async () => {
       const assertCurrent = () => {
         assertInstance();
         if (!expected || workspace.value?.id !== expected) throw new Error(t('工作区已切换'));
       };
       assertCurrent();
+      const attachmentService =
+        runtime.attachments ??
+        (runtime.native && adapter.mode === 'desktop' ? nativeAttachments : undefined);
       if (method === 'attachments.read')
         return pluginAttachmentReader.read(
           workspace.value!,
           params,
-          runtime.attachments ??
-            (runtime.native && adapter.mode === 'desktop' ? nativeAttachments : undefined),
+          attachmentService,
           assertCurrent,
         );
+      if (method === 'attachments.write') {
+        writable();
+        if (!attachmentService?.importAttachment)
+          throw new Error('当前宿主不支持写入附件');
+        const parsed = parsePluginAttachmentWrite(params.request);
+        const targetDocPath = parsed.documentPath || (pathScopes?.length ? `${pathScopes[0]!}note.md` : '');
+        if (pathScopes?.length && !matchesPluginPathScopes(targetDocPath, pathScopes))
+          throw new Error('附件目标目录不在插件授权目录范围内');
+        const fileBytes = new Uint8Array(parsed.bytes);
+        const uploadFile = new File([fileBytes], parsed.name, { type: parsed.mimeType });
+        assertCurrent();
+        const imported = await attachmentService.importAttachment(
+          workspace.value!.id,
+          targetDocPath,
+          uploadFile,
+          parsed.image,
+        );
+        assertCurrent();
+        workspace.value = await adapter.refresh();
+        return imported;
+      }
       workspace.value = await adapter.refresh();
       await refreshObjects();
       assertCurrent();
@@ -337,6 +755,8 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
         const entry = fileRegistry.value?.get(String(params.fileId));
         if (!entry || !isMarkdown(entry.path) || isWorkspaceInternalPath(entry.path))
           throw new Error('文档不存在或不可访问');
+        if (!matchesPluginPathScopes(entry.path, pathScopes))
+          throw new Error('文档路径不在插件授权目录范围内');
         return entry;
       };
       const text = (value: unknown) => {
@@ -348,7 +768,10 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
         return current.files
           .filter(
             (row) =>
-              row.kind === 'file' && isMarkdown(row.path) && !isWorkspaceInternalPath(row.path),
+              row.kind === 'file' &&
+              isMarkdown(row.path) &&
+              !isWorkspaceInternalPath(row.path) &&
+              matchesPluginPathScopes(row.path, pathScopes),
           )
           .map(({ id, path, name, readOnly }) => ({
             id,
@@ -390,11 +813,78 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
       if (method === 'documents.create') {
         const path = text(params.path);
         if (!isMarkdown(path) || validatePath(path)) throw new Error('新文档路径无效');
+        if (!matchesPluginPathScopes(path, pathScopes))
+          throw new Error('新文档路径不在插件授权目录范围内');
         assertCurrent();
         await adapter.create(path, text(params.content));
         workspace.value = await adapter.refresh();
         const entry = fileRegistry.value?.at(path)!;
         return { id: entry.id, path };
+      }
+      if (method === 'documents.move') {
+        const entry = file();
+        if (entry.readOnly) throw new Error('你对这篇文档只有阅读权限');
+        const destination = text(params.destination);
+        if (!isMarkdown(destination) || validatePath(destination) || isWorkspaceInternalPath(destination))
+          throw new Error('目标文档路径无效');
+        if (!matchesPluginPathScopes(destination, pathScopes))
+          throw new Error('目标路径不在插件授权目录范围内');
+        if (destination === entry.path) return { id: entry.id, path: entry.path };
+        if (current.files.some((row) => row.path === destination))
+          throw new Error('目标路径已存在同名文件');
+        if (!pluginRecord(params.base) || params.base.id !== entry.id || typeof params.base.content !== 'string')
+          throw new Error('文档版本无效');
+        const doc = documentIndex.byId.value.get(entry.id);
+        if (doc?.conflict || doc?.missing) throw new Error('请先处理文档已有冲突');
+        if (doc && dirty(doc)) throw new Error('文档存在未保存修改，请先保存后再移动');
+        const disk = await adapter.read(entry.path);
+        if (disk.content !== params.base.content)
+          throw new Error('文档内容已变化，请重新读取后再移动');
+        assertCurrent();
+        if (adapter.changeFile) {
+          const result = await adapter.changeFile({
+            workspaceId: current.id,
+            fileId: entry.id,
+            path: entry.path,
+            expectedHash: disk.hash,
+            destination,
+          });
+          if (result.status !== 'saved') throw new Error('文档内容已变化或不存在，请重新读取后再移动');
+        } else {
+          await adapter.move(entry.path, destination, 'file');
+        }
+        assertCurrent();
+        workspace.value = await adapter.refresh();
+        if (doc) doc.path = destination;
+        return { id: entry.id, path: destination };
+      }
+      if (method === 'documents.trash') {
+        const entry = file();
+        if (entry.readOnly) throw new Error('你对这篇文档只有阅读权限');
+        if (!pluginRecord(params.base) || params.base.id !== entry.id || typeof params.base.content !== 'string')
+          throw new Error('文档版本无效');
+        const doc = documentIndex.byId.value.get(entry.id);
+        if (doc?.conflict || doc?.missing) throw new Error('请先处理文档已有冲突');
+        if (doc && dirty(doc)) throw new Error('文档存在未保存修改，请先保存后再移入回收站');
+        const disk = await adapter.read(entry.path);
+        if (disk.content !== params.base.content)
+          throw new Error('文档内容已变化，请重新读取后再移入回收站');
+        assertCurrent();
+        if (adapter.changeFile) {
+          const result = await adapter.changeFile({
+            workspaceId: current.id,
+            fileId: entry.id,
+            path: entry.path,
+            expectedHash: disk.hash,
+          });
+          if (result.status !== 'saved') throw new Error('文档内容已变化或不存在，请重新读取后再移入回收站');
+        } else {
+          await adapter.remove(entry.path);
+        }
+        assertCurrent();
+        workspace.value = await adapter.refresh();
+        if (doc) doc.missing = true;
+        return { id: entry.id, path: entry.path, trashed: true };
       }
       if (method === 'documents.write') {
         const entry = file();
@@ -432,7 +922,7 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
             status: 'applied',
           };
         }
-        if (doc && pluginEditorEdit && (await pluginEditorEdit(entry.id, doc.content, merged.content))) {
+        if (doc && pluginEditorBridge && (await pluginEditorBridge.applyEdit(entry.id, doc.content, merged.content))) {
           return { id: entry.id, hash: await assistantHash(doc.content), status: 'applied' };
         }
         if (doc) {
@@ -626,17 +1116,28 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
   }
 
   function disposePlugins() {
+    cancelActivePluginDialog('工作区已关闭');
+    for (const timer of toastTimers.values()) clearTimeout(timer);
+    toastTimers.clear();
+    pluginToasts.value = [];
     pluginAttachmentReader.clear();
     clearTimeout(pluginEventTimer);
+    overlayExtension()?.dispose?.();
     pluginServices.dispose();
     if (typeof window !== 'undefined') window.removeEventListener('storage', pluginStorageChanged);
   }
 
   return {
     pluginRuntime,
+    pluginHostEnvironment,
     canManagePlugins,
     installedPlugins,
     installedPluginWorkspace,
+    personalCodePluginPolicy,
+    overlaySnapshot,
+    setSafeMode: (enabled: boolean) => overlayExtension()?.setSafeMode(enabled),
+    pluginHomeTabView,
+    pluginNewTabView,
     pluginDevelopment,
     pluginServices,
     pluginHost,
@@ -644,13 +1145,29 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
     pluginDeveloper,
     pluginViews,
     pluginCommands,
+    pluginFileHandlers,
+    pluginSlashCommands,
+    pluginCodeBlockRenderers,
+    pluginDecorationsFor,
+    pluginStatusBarItems,
+    pluginContextProviders,
     activePluginSidebar,
+    activeDocumentPluginSidebar,
+    activePluginDialog,
+    resolvePluginDialog,
+    pluginToasts,
+    dismissPluginToast,
     pluginSettingsRequest,
     pluginSettingsPages,
     pluginError,
     refreshPlugins,
     openPluginView,
     interactWithPlugin,
+    invokePluginAssistantTool,
+    queryPluginAssistantContext,
+    setPluginAiRunner: (runner?: PluginAiRunner) => {
+      pluginAiRunner = runner;
+    },
     startPluginOAuth,
     loadPluginConnections,
     savePluginConnection,
@@ -658,8 +1175,14 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
     removePluginPackage,
     loadPluginPackageUsage,
     clearPluginLogs: (id: string) => pluginExecutor.clearLogs(id),
-    setPluginEditor: (apply?: (id: string, before: string, after: string) => Promise<boolean>) => {
-      pluginEditorEdit = apply;
+    userPluginIntegrities: () => pluginHost.userPluginIntegrities(),
+    setPluginEditor: (
+      bridge?:
+        | PluginEditorBridge
+        | ((id: string, before: string, after: string) => Promise<boolean>),
+    ) => {
+      pluginEditorBridge =
+        typeof bridge === 'function' ? { applyEdit: bridge } : bridge;
     },
     disposePlugins,
   };

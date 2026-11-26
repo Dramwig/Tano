@@ -43,3 +43,22 @@ it('does not leak a pending interaction or its error into the replacement instan
   runtime.value = { ...runtime.value, status: 'error', message: '已停止' }; await nextTick();
   expect(root.querySelector('button')!.disabled).toBe(true);
 });
+
+it('applies full-height fill layout for any plugin declaring layout: fill without hardcoding plugin IDs', async () => {
+  root = document.createElement('div'); document.body.append(root);
+  const view = { id: 'viewer', key: 'plugin:custom-third-party:viewer', label: '自定义画布', location: 'tab' as const, layout: 'fill' as const, pluginId: 'custom-third-party', pluginName: '第三方插件' };
+  const runtime = shallowRef<PluginRuntimeState>({
+    id: 'custom-third-party', instanceId: 'one', name: '第三方插件', status: 'running', message: '', commands: [],
+    views: [{ id: 'viewer', label: '自定义画布', location: 'tab', layout: 'fill', custom: { bundle: { html: '', css: '', source: 'void 0' }, state: { ready: true } } }],
+  });
+  app = createApp({ render: () => h(PluginSurface, { view, runtime: runtime.value, workspaceId: 'workspace', execute: vi.fn().mockResolvedValue(undefined) }) });
+  app.mount(root);
+  await nextTick();
+  const surface = root.querySelector('.plugin-surface')!;
+  expect(surface.classList.contains('plugin-surface-fill')).toBe(true);
+  expect(surface.getAttribute('data-layout')).toBe('fill');
+  expect(root.querySelector('.plugin-custom-view')?.classList.contains('plugin-custom-fill')).toBe(true);
+  runtime.value = { ...runtime.value, status: 'error', message: '启动失败' };
+  await nextTick();
+  expect(surface.classList.contains('plugin-surface-fill')).toBe(false);
+});

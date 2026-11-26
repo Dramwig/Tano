@@ -9,15 +9,16 @@ import {
   DocumentHistoryPanel,
   ImportPanel,
   MobileRecycle,
-  ObjectPanel,
+  ObjectDetailModal,
+  PlanArchiveDialog,
   PlanDetailPanel,
   SelectionTodoDialog,
 } from '../workbench-async-components';
 import { workbenchContextKey } from '../workbench-context';
 import CommandPalette from './CommandPalette.vue';
 import NewTabPicker from '../../tabs/components/NewTabPicker.vue';
+import PluginUiDialog from '../../plugins/components/PluginUiDialog.vue';
 import WorkbenchSettings from '../../settings/components/WorkbenchSettings.vue';
-import WorkspaceSyncPanel from '../../workspace/components/WorkspaceSyncPanel.vue';
 
 const context = inject(workbenchContextKey);
 if (!context) throw new Error('Workbench context is required');
@@ -30,8 +31,6 @@ const {
   importPanel,
   attachments,
   importRecords,
-  systemSyncPanel,
-  workspaceSync,
   extensions,
   extensionActions,
   recyclePanel,
@@ -41,19 +40,12 @@ const {
   active,
   activities,
   historyPage,
-  importObjectAssets,
-  objectPanelMounted,
-  objectPanel,
-  selectedObjectId,
-  selectedResourceIdentity,
-  selectedPersonal,
-  plans,
-  assetImportBusy,
-  assetPreview,
-  openObjectResource,
+  objectDetail,
+  planArchiveOpen,
+  calendarScope,
   openObjectReference,
   createNewDocument,
-  assetInput,
+  createNewEntry,
   planDetail,
   openPlanReference,
   selectionTodo,
@@ -94,13 +86,6 @@ const {
         @close="importPanel = false"
         @completed="importRecords.unshift($event)"
       />
-      <WorkspaceSyncPanel
-        v-if="systemSyncPanel && workspace"
-        :workspace-id="workspace.id"
-        :controller="workspaceSync"
-        :cloud="extensions.sync"
-        @close="systemSyncPanel = false"
-      />
       <component
         :is="extensions.regions['sync-dialog']"
         v-if="extensions.regions['sync-dialog']"
@@ -137,31 +122,20 @@ const {
           selectedDiff = $event;
         "
       />
-      <input
-        :ref="(el) => { context.assetInput = (el as HTMLInputElement | null) ?? undefined; }"
-        type="file"
-        multiple
-        hidden
-        @change="importObjectAssets"
-      />
-      <ObjectPanel
-        v-if="objectPanelMounted"
-        v-show="objectPanel"
-        :open="objectPanel"
-        :selected-id="selectedObjectId"
-        :selected-identity="selectedResourceIdentity"
-        :personal="selectedPersonal ? plans.panel : undefined"
-        :can-open-asset="!!attachments"
-        :can-import-asset="!!attachments && !assetImportBusy"
-        :preview-asset="assetPreview"
-        @close="objectPanel = false"
-        @open-resource="openObjectResource"
+      <ObjectDetailModal
+        v-if="objectDetail && workspace"
+        :key="`${workspace.id}:${objectDetail.record?.object.id ?? `new:${objectDetail.initialType ?? ''}`}`"
+        :record="objectDetail.record"
+        :initial-type="objectDetail.initialType"
+        @close="objectDetail = undefined"
         @open-reference="openObjectReference"
-        @create-document="
-          objectPanel = false;
-          createNewDocument();
-        "
-        @import-asset="assetInput?.click()"
+        @saved="objectDetail = { record: $event }"
+      />
+      <PlanArchiveDialog
+        v-if="planArchiveOpen"
+        :scope="calendarScope"
+        @close="planArchiveOpen = false"
+        @select-event="showPlanEvent"
       />
       <PlanDetailPanel
         v-if="planDetail"
@@ -207,6 +181,7 @@ const {
         v-if="modal === 'newTab'"
         @close="modal = ''"
         @new-document="createNewDocument"
+        @new-table="createNewEntry('table')"
       />
       <div
         v-surface-motion="'App:8'"
@@ -369,6 +344,12 @@ const {
           </form>
         </section>
       </div>
+      <PluginUiDialog
+        :dialog="store.activePluginDialog"
+        :toasts="store.pluginToasts"
+        @resolve="store.resolvePluginDialog"
+        @dismiss-toast="store.dismissPluginToast"
+      />
     </WindowScope>
   </Teleport>
 </template>

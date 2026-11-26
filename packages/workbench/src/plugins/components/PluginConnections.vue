@@ -11,7 +11,7 @@ const authentication = ref<PluginConnectionAuthentication>('bearer');
 const methods = ref<PluginConnectionMethod[]>(['GET']);
 const busy = ref(false), error = ref(''), status = ref('');
 let controller = new AbortController();
-const plugins = computed(() => store.installedPlugins.filter(item => item.manifest.manifestVersion === 2 && item.manifest.permissions.includes('connections')));
+const plugins = computed(() => store.installedPlugins.filter(item => item.scope !== 'user' && !item.system && item.manifest.manifestVersion === 2 && item.manifest.permissions.includes('connections')));
 const installation = computed(() => plugins.value.find(item => item.manifest.id === pluginId.value));
 const origins = computed(() => installation.value?.manifest.manifestVersion === 2 ? installation.value.manifest.networkOrigins : []);
 const existing = computed(() => entries.value.find(item => item.pluginId === pluginId.value && item.origin === origin.value));

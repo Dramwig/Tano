@@ -2,12 +2,14 @@
 import { t } from '../../i18n/i18n';
 import { LoaderCircle, MoreHorizontal, Plus } from 'lucide-vue-next';
 import type { PluginManifest } from '@tano/protocol';
+import type { PluginInstallScope } from '../workspace-plugins';
 import PluginIcon from './PluginIcon.vue';
 
 defineProps<{
   plugin: PluginManifest;
   installed?: boolean;
   enabled?: boolean;
+  scope?: PluginInstallScope;
   showState?: boolean;
   busy?: boolean;
   pending?: boolean;
@@ -24,6 +26,7 @@ const emit = defineEmits<{ details: []; install: [] }>();
         <span class="entry-description" :title="plugin.description">{{ plugin.description }}</span>
       </span>
     </button>
+    <span v-if="showState && installed && scope === 'user'" class="entry-state">{{ t('全局') }}</span>
     <span v-if="showState && installed" class="entry-state" :class="{ enabled }">{{
       enabled ? t('已启用') : t('已停用')
     }}</span>

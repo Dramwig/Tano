@@ -20,13 +20,13 @@ import {
 import type { ReferenceTarget } from './objects';
 const targets: ReferenceTarget[] = [
   { workspace: 'ws', type: 'person', id: 'a82f91', name: 'Alice', path: 'objects/a.tano.json' },
-  { workspace: 'ws', type: 'project', id: 'b91af2', name: 'Alice', path: 'objects/b.tano.json' },
+  { workspace: 'ws', type: 'task', id: 'b91af2', name: 'Alice', path: 'objects/b.tano.json' },
   { workspace: 'ws', type: 'document', id: 'c72bb3', name: 'Alice', path: 'Alice.md' },
 ];
 it('disambiguates names by type and binds identity independently of name or path', () => {
   expect(referenceCandidates(targets, '@Alice')).toEqual([targets[2], targets[0], targets[1]]);
   expect(referenceCandidates(targets, '@person/Alice')).toEqual([targets[0]]);
-  expect(referenceCandidates(targets, 'project:Alice')).toEqual([targets[1]]);
+  expect(referenceCandidates(targets, 'task:Alice')).toEqual([targets[1]]);
   const identity = parseReferenceUrl(referenceUrl(targets[0]!))!;
   expect(referenceUrl(targets[0]!)).toBe('object://person/a82f91');
   expect(identity).toEqual({ type: 'person', id: 'a82f91' });
@@ -56,17 +56,15 @@ it('accepts only six-digit local reference IDs, without legacy URL compatibility
     expect(parseReferenceUrl(`object://${type}/d00001`)).toEqual({ type, id: 'd00001' });
   }
 });
-it('ships task, project and experiment core types and preserves unregistered domain data without enabling it', () => {
+it('ships minimal core types and preserves unregistered domain data without enabling it', () => {
   expect(coreObjectTypes.map((type) => type.type)).toEqual([
     'task',
-    'project',
-    'experiment',
     'person',
     'document',
     'event',
     'asset',
   ]);
-  for (const type of ['dataset', 'database', 'paper', 'ai.paper']) {
+  for (const type of ['project', 'experiment', 'dataset', 'database', 'paper', 'ai.paper']) {
     const object = {
       version: 1,
       id: 'a00001',
@@ -90,12 +88,18 @@ it('ships task, project and experiment core types and preserves unregistered dom
     expect(parseReferenceUrl(referenceUrl(target))).toEqual({ type, id: object.id });
   }
 });
-it('keeps historical project identities editable and available for references', () => {
-  expect(objectTypeRegistry.list().some(type => type.type === 'project')).toBe(true);
-  const project = targets[1]!;
-  expect(resolveReference(targets, project).target).toEqual(project);
+it('preserves historical project identities read-only without built-in registration', () => {
+  expect(objectTypeRegistry.list().some((type) => type.type === 'project')).toBe(false);
+  const project: ReferenceTarget = {
+    workspace: 'ws',
+    type: 'project',
+    id: 'b91af2',
+    name: 'Legacy Project',
+    path: 'objects/b.tano.json',
+  };
+  expect(resolveReference([project], project).error).toBe('unregistered');
   expect(parseReferenceUrl(referenceUrl(project))).toEqual({ type: 'project', id: project.id });
-  expect(() => validateObjectProperties('project', { custom: 'retained' })).not.toThrow();
+  expect(() => validateObjectProperties('project', { custom: 'retained' })).toThrow('未启用');
 });
 it('registers namespaced plugin fields and unregisters without losing stored references', () => {
   const unregister = registerObjectType({
@@ -184,7 +188,8 @@ it('supports unscheduled, date-only and timed tasks using the same event type', 
     { checkable: true, start: '2026-10-01T10:00:00Z' },
     { date: '2026-10-01', start: '2026-10-01T10:00:00Z', end: '2026-10-01T11:00:00Z' },
   ]) expect(() => validateObjectProperties('event', properties)).toThrow();
-  expect(coreObjectTypes.find(type => type.type === 'task')?.legacy).not.toBe(true);
+  expect(coreObjectTypes.find(type => type.type === 'task')?.legacy).toBe(true);
+  expect(() => validateObjectProperties('task', { status: 'todo', due: '2026-10-01', completed: false })).not.toThrow();
 });
 it('derives Document and Asset metadata from file identity without storing content or following paths', () => {
   const files = [
@@ -275,8 +280,8 @@ it('rejects malformed identities and object schemas while retaining future field
 });
 
 it('stores identity without a copied name and preserves person occurrence metadata', () => {
-  expect(referenceMarkdown(targets[1]!, 'An outdated [name]')).toBe('[[object://project/b91af2]]');
+  expect(referenceMarkdown(targets[1]!, 'An outdated [name]')).toBe('[[object://task/b91af2]]');
   expect(referenceMarkdown(targets[0]!, 'Alice')).toMatch(/^\[\[object:\/\/person\/a82f91\]\]<!--tano:mention:[a-z0-9-]+-->$/);
   expect(referenceSyntax(targets[0]!)).toBe('[[object://person/a82f91]]');
-  expect(referenceSyntax(targets[1]!, true)).toBe('![[object://project/b91af2]]');
+  expect(referenceSyntax(targets[1]!, true)).toBe('![[object://task/b91af2]]');
 });

@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { buildPlugin } from '../plugin/plugin-build.mjs';
 
-const root = resolve(import.meta.dirname, '..');
+const root = resolve(import.meta.dirname, '../..');
 const source = resolve(root, 'examples/plugins/presentation-preview');
 const destination = resolve(root, 'packages/workbench/src/plugins/presentation-preview');
 const notices = ['Presentation Preview for Tano — MIT\n'];

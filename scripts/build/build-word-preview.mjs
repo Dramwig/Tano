@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { dirname } from 'node:path';
 import { buildPlugin } from '../plugin/plugin-build.mjs';
 
-const root = resolve(import.meta.dirname, '..');
+const root = resolve(import.meta.dirname, '../..');
 const source = resolve(root, 'examples/plugins/word-preview');
 const destination = resolve(root, 'packages/workbench/src/plugins/word-preview');
 async function license(directory) {

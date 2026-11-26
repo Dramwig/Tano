@@ -46,14 +46,92 @@
   font-display: swap;
 }
 
+/* Interface Latin face. The unicode-range stops at Latin-1 plus a few symbols:
+   CJK text, full-width punctuation, curly quotes, em dashes and ellipses all
+   fall through to the Chinese face (bundled Noto or the platform face), so
+   Chinese sentences keep their native punctuation width. Prose has its own font setting and never uses this
+   alias unless a surface opts into --font-ui. */
+@font-face {
+  font-family: 'Tano UI Inter';
+  src: url('../fonts/Inter-Latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013, U+20AC, U+2122, U+2212;
+}
+
+@font-face {
+  font-family: 'Tano UI Inter';
+  src: url('../fonts/Inter-Latin-Italic.woff2') format('woff2');
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2013, U+20AC, U+2122, U+2212;
+}
+
+/* Bundled Simplified Chinese face for the interface default (界面字体 → 内置):
+   Noto Sans CJK SC (思源黑体) Regular/Medium/Bold, GB2312 subsets renamed per
+   OFL (docs/THIRD_PARTY_NOTICES.md, scripts/fonts/subset-ui-cjk.py). Every
+   weight comes from this one family; the 系统字体 and 自定义 choices replace it
+   entirely. Characters outside the subset fall through to the platform stack. */
+@font-face {
+  font-family: 'Tano UI Sans SC';
+  src: url('../fonts/TanoUISansSC-Regular.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 449;
+  font-display: swap;
+  unicode-range: U+2010-2027, U+2030-203B, U+3000-303F, U+4E00-9FFF, U+FF00-FFEF;
+  /* Measured on Windows: Noto Sans CJK 1.16/0.29 em vs Microsoft YaHei UI
+     1.02/0.25 em. Match YaHei UI so switching faces never changes row heights;
+     ideographs (-0.12…0.88 em) stay centred in the 1.27 em box. */
+  ascent-override: 102%;
+  descent-override: 25%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Tano UI Sans SC';
+  src: url('../fonts/TanoUISansSC-Medium.woff2') format('woff2');
+  font-style: normal;
+  /* 500 only. 600 (section headings, group labels) must stay a clear step
+     above 500 (row titles), as YaHei's 400/700 pair made it; Noto has no
+     SemiBold, so 550+ uses Bold like standard nearest-weight matching. */
+  font-weight: 450 549;
+  font-display: swap;
+  unicode-range: U+2010-2027, U+2030-203B, U+3000-303F, U+4E00-9FFF, U+FF00-FFEF;
+  /* Same metrics as the regular face. */
+  ascent-override: 102%;
+  descent-override: 25%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Tano UI Sans SC';
+  src: url('../fonts/TanoUISansSC-Bold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 550 900;
+  font-display: swap;
+  unicode-range: U+2010-2027, U+2030-203B, U+3000-303F, U+4E00-9FFF, U+FF00-FFEF;
+  /* Same metrics as the regular face. */
+  ascent-override: 102%;
+  descent-override: 25%;
+  line-gap-override: 0%;
+}
+
 :root {
   color-scheme: light;
-  /* One family for chrome and prose: Latin uses the platform UI face and CJK
-     falls back to the platform Chinese face, so mixed lines share a baseline
-     and weight instead of pairing Inter with Microsoft YaHei. */
+  /* Chrome uses bundled Inter for Latin and bundled Noto Sans CJK SC for
+     Chinese, every weight from the same family. On Windows, Segoe UI next to
+     Microsoft YaHei read lighter than the Chinese glyphs and YaHei lacks
+     500/600; the platform stack still renders sharper at 12–13px on 100%
+     scaling because YaHei carries screen hinting. Settings → 外观 → 界面字体
+     can switch back to the platform stack (--font-ui-system) or a local font; see
+     appearance/interface-font.ts. Traditional Chinese and Japanese locales
+     keep platform CJK (see below) so Han glyphs follow their regional forms. */
   --font-cjk-sans: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', 'Source Han Sans SC';
-  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
+  --font-ui-system: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
     var(--font-cjk-sans), ui-sans-serif, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-ui: 'Tano UI Inter', 'Tano UI Sans SC', var(--font-ui-system);
   /* UI glyphs sit slightly below their line-box centre. Align navigation icons
      with the visible text rather than only the surrounding flex boxes. */
   --navigation-icon-offset-y: 0.5px;
@@ -122,6 +200,13 @@
   --diff-remove-bg: #fcefea;
   --quote-border: #d3d2ce;
 }
+
+/* Bundled Noto is the Simplified Chinese design; other Han locales use their
+   platform faces (overridden per locale in print-and-locale.css). */
+:root:is(:lang(zh-TW), :lang(zh-HK), :lang(ja), :lang(ko)) {
+  --font-ui: 'Tano UI Inter', var(--font-ui-system);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1033,44 +1118,52 @@ button:hover {
   justify-content: center;
   gap: 5px;
   min-height: 28px;
-  padding: 0 9px;
+  padding: 0 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 7px;
   color: var(--text-secondary);
   font-size: 12px;
   white-space: nowrap;
 }
 .calendar-topbar-today:hover,
 .calendar-topbar-events:hover,
-.calendar-topbar-mode:hover { background: var(--hover); color: var(--text); }
+.calendar-topbar-mode:hover,
+.calendar-topbar-mode[aria-expanded='true'] {
+  border-color: var(--control-border);
+  background: var(--hover);
+  color: var(--text);
+}
+.calendar-topbar-controls > .icon-button { width: 28px; height: 28px; border-radius: 7px; }
 .calendar-view-picker { position: relative; }
-.calendar-topbar-mode { min-width: 58px; }
+.calendar-topbar-mode { min-width: 62px; }
+.calendar-topbar-mode > svg { color: var(--muted); }
+.calendar-topbar-mode[aria-expanded='true'] > svg { rotate: 180deg; }
 .calendar-view-menu {
   position: absolute;
   z-index: 20;
   top: calc(100% + 6px);
   right: 0;
-  width: 154px;
-  padding: 5px;
+  width: 160px;
+  padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--paper);
-  box-shadow: 0 8px 24px #0002;
+  box-shadow: var(--overlay-shadow, 0 8px 24px #0002);
 }
 .calendar-view-menu button {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 34px;
-  padding: 0 9px;
-  border-radius: 5px;
-  color: var(--text);
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text-secondary);
   font-size: 12px;
   text-align: left;
 }
 .calendar-view-menu button:hover,
-.calendar-view-menu button:focus-visible { background: var(--hover); }
+.calendar-view-menu button:focus-visible { background: var(--hover); color: var(--text); }
 .calendar-view-menu button[aria-checked='true'] { color: var(--text); font-weight: 500; }
 @media (max-width: 900px) {
   .calendar-topbar-period { display: none; }

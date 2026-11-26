@@ -12,7 +12,7 @@ import MarkdownEditor from '../views/MarkdownEditor.vue';
 import { defaultCapabilities } from '../core/runtime';
 const targets: ReferenceTarget[] = [
   { workspace: 'ws', type: 'person', id: 'a00001', name: 'Alice', path: 'objects/a.tano.json' },
-  { workspace: 'ws', type: 'project', id: 'b00002', name: 'Alice', path: 'objects/b.tano.json' },
+  { workspace: 'ws', type: 'task', id: 'b00002', name: 'Alice', path: 'objects/b.tano.json' },
 ];
 let app: App | undefined, root: HTMLDivElement;
 afterEach(async () => {
@@ -58,7 +58,7 @@ async function mount(
   await nextTick();
   return { value, editor, candidates, capabilities, opened, errors };
 }
-it.each(['task', 'project', 'person', 'document', 'event', 'asset'])(
+it.each(['task', 'person', 'document', 'event', 'asset'])(
   'opens the %s reference as editable Markdown when selected',
   async (type) => {
     const target = {
@@ -117,17 +117,17 @@ it('places a Todo reference in a paragraph after selected fenced code', async ()
   expect(value.value).toContain('```ts\nselected code\n```\n\n[[object://event/b00001]]');
 });
 it('keeps a core object card rendered when clicked with Markdown reveal enabled', async () => {
-  const source = '[Plan](object://project/b00002 "tano:object-card")\n';
+  const source = '[Plan](object://task/b00002 "tano:object-card")\n';
   const { value, opened, errors } = await mount(source, true);
   const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
   prose.focus();
   root.querySelector<HTMLButtonElement>('.tano-reference-card button')!.click();
   expect(root.querySelector('pre[data-tano-live-source]')).toBeNull();
   expect(root.querySelector('.tano-reference-card')?.getAttribute('data-reference-url')).toBe(
-    'object://project/b00002',
+    'object://task/b00002',
   );
   expect(value.value).toBe(source);
-  expect(opened).toEqual([{ type: 'project', id: 'b00002' }]);
+  expect(opened).toEqual([{ type: 'task', id: 'b00002' }]);
   expect(errors).toEqual([]);
 });
 it('opens a core object target with Ctrl-click while Markdown reveal is enabled', async () => {
@@ -174,7 +174,7 @@ it('keeps an unavailable card readable and prevents opening its details', async 
   expect(value.value).toBe(source);
 });
 it('switches directly between core object reference sources', async () => {
-  const source = '[[object://person/a00001]] and [[object://project/b00002]]\n';
+  const source = '[[object://person/a00001]] and [[object://task/b00002]]\n';
   const { value, opened, errors } = await mount(source, true);
   const prose = root.querySelector<HTMLElement>('.ProseMirror')!;
   prose.focus();
@@ -185,7 +185,7 @@ it('switches directly between core object reference sources', async () => {
   root.querySelector<HTMLButtonElement>('.tano-reference button')!.click();
   await nextTick();
   expect(root.querySelector('[data-tano-live-inline-source]')?.textContent).toBe(
-    '[[object://project/b00002]]',
+    '[[object://task/b00002]]',
   );
   expect(value.value).toBe(source);
   expect(opened).toEqual([]);

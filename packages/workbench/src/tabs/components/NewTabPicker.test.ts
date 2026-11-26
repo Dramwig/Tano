@@ -8,7 +8,8 @@ const fixture = vi.hoisted(() => ({ store: null as any }));
 vi.mock('../../stores/workspace', () => ({ useWorkspaceStore: () => fixture.store }));
 let app: App, root: HTMLDivElement, trigger: HTMLButtonElement;
 const close = vi.fn(),
-  create = vi.fn();
+  create = vi.fn(),
+  createTable = vi.fn();
 const files = [
   { id: 'one', path: '项目/计划.md', kind: 'file', modified: 1 },
   { id: 'two', path: '归档/计划.md', kind: 'file', modified: 3 },
@@ -25,7 +26,7 @@ async function search(text: string) {
 }
 async function mount(readOnly = false) {
   fixture.store.workspace.readOnly = readOnly;
-  app = createApp(NewTabPicker, { onClose: close, onNewDocument: create });
+  app = createApp(NewTabPicker, { onClose: close, onNewDocument: create, onNewTable: createTable });
   app.mount(root);
   await nextTick();
   for (const option of options()) option.scrollIntoView = vi.fn();
@@ -64,6 +65,7 @@ it('focuses search and groups open Markdown documents before recently modified f
   expect(document.activeElement).toBe(input());
   expect(options().map((row) => row.dataset.tooltip ?? '')).toEqual([
     '',
+    '',
     '项目/计划.md',
     '归档/计划.md',
     '说明.markdown',
@@ -76,8 +78,8 @@ it('focuses search and groups open Markdown documents before recently modified f
 it('finds a document by title and folder, then opens the selected result with Enter', async () => {
   await mount();
   await search('归档 计划');
-  expect(options()).toHaveLength(2);
-  expect(options()[1].getAttribute('aria-selected')).toBe('true');
+  expect(options()).toHaveLength(3);
+  expect(options()[2].getAttribute('aria-selected')).toBe('true');
   input().dispatchEvent(
     new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }),
   );
@@ -94,6 +96,7 @@ it('allows opening existing tabs in a read-only workspace without offering creat
   await nextTick();
   expect(fixture.store.openFile).toHaveBeenCalledWith(expect.objectContaining({ id: 'one' }));
   expect(create).not.toHaveBeenCalled();
+  expect(createTable).not.toHaveBeenCalled();
   expect(close).toHaveBeenCalledOnce();
 });
 it('supports keyboard selection and leaves the picker open after an open failure', async () => {
@@ -104,8 +107,8 @@ it('supports keyboard selection and leaves the picker open after an open failure
   await search('归档');
   input().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
   await nextTick();
-  expect(options()[0].getAttribute('aria-selected')).toBe('true');
-  options()[1].click();
+  expect(options()[1].getAttribute('aria-selected')).toBe('true');
+  options()[2].click();
   await vi.waitFor(() =>
     expect(document.querySelector('[role="alert"]')?.textContent).toBe('文件已移走'),
   );
@@ -125,20 +128,23 @@ it('shows an empty result and restores focus when dismissed', async () => {
   expect(document.activeElement).toBe(trigger);
 });
 
-it('offers no table creation but opens existing tables without turning them into documents', async () => {
+it('offers table creation and opens existing tables without turning them into documents', async () => {
   fixture.store.workspace.files = [
     ...files,
     { id: 'abcdef', path: '项目/配件选择.table.json', kind: 'file', modified: 6 },
   ];
   await mount();
-  expect(options().some(option => option.textContent?.includes('新建数据表'))).toBe(false);
+  const createTableOption = options().find((option) => option.textContent?.includes('新建数据表'));
+  expect(createTableOption).toBeTruthy();
+  createTableOption!.click();
+  expect(createTable).toHaveBeenCalledOnce();
   await search('配件');
-  expect(options()).toHaveLength(2);
+  expect(options()).toHaveLength(3);
   input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   await nextTick();
   expect(fixture.store.openFile).toHaveBeenCalledWith(
     expect.objectContaining({ id: 'abcdef', path: '项目/配件选择.table.json' }),
   );
-  expect(options()[1].dataset.tooltip).toBe('项目/配件选择.table.json');
+  expect(options()[2].dataset.tooltip).toBe('项目/配件选择.table.json');
   expect(close).toHaveBeenCalledOnce();
 });

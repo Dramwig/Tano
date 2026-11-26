@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import LoadingSkeleton from '../../shell/components/LoadingSkeleton.vue';
 import { retiredSystemPlugin } from '../workspace-plugins';
+import { userScopeUnsupportedReason } from '../user-plugins';
 import { uiLocale, t } from '../../i18n/i18n';
 import { computed, onScopeDispose, ref, watch } from 'vue';
-import { canonicalPluginJson, comparePluginVersions, type PluginCatalogRelease, type PluginReleaseCatalog } from '@tano/protocol';
+import { canonicalPluginJson, checkPluginCompatibility, comparePluginVersions, type PluginCatalogRelease, type PluginReleaseCatalog } from '@tano/protocol';
 import { useWorkspaceStore } from '../../stores/workspace';
 import PluginDialog from './PluginDialog.vue';
 import PluginChangeSummary from './PluginChangeSummary.vue';
+import { pluginPermissionLabels as labels } from '../plugin-permissions';
 
 const store = useWorkspaceStore();
 const catalog = ref<PluginReleaseCatalog>();
@@ -15,6 +17,7 @@ const selectedId = ref('');
 const selectedHash = ref('');
 const loading = ref(false);
 const installing = ref(false);
+const installScope = ref<'workspace' | 'user'>('workspace');
 const error = ref('');
 const status = ref('');
 const visibleLimit = ref(24);
@@ -31,6 +34,10 @@ const latest = computed(() => {
 });
 const versions = computed(() => sorted(releases.value.filter(item => item.manifest.id === selectedId.value)));
 const selected = computed(() => versions.value.find(item => item.integrity === selectedHash.value));
+const userScopeReason = computed(() => (selected.value ? userScopeUnsupportedReason(selected.value.manifest) : undefined));
+const selectedCompat = computed(() =>
+  selected.value ? checkPluginCompatibility(selected.value.manifest, store.pluginHostEnvironment) : { compatible: true },
+);
 const installed = computed(() => store.installedPlugins.find(item => item.manifest.id === selectedId.value));
 function isInstalled(release: PluginCatalogRelease) {
   return store.installedPlugins.some(item => item.manifest.id === release.manifest.id && (item.rule?.integrity === release.integrity ||
@@ -41,9 +48,8 @@ const downgrading = computed(() => selected.value && installed.value && compareP
 const selectedPublisher = computed(() => catalog.value?.publishers.find(item => item.id === selected.value?.publisher));
 const permissions = computed(() => selected.value?.manifest.manifestVersion === 2 ? selected.value.manifest.permissions : []);
 const addedPermissions = computed(() => permissions.value.filter(permission => installed.value?.manifest.manifestVersion !== 2 || !installed.value.manifest.permissions.includes(permission)));
-const labels: Record<string, string> = { get 'documents.read'() { return t('读取与打开文档'); }, get 'documents.write'() { return t('创建与修改文档'); }, get 'objects.read'() { return t('读取对象'); }, get 'objects.write'() { return t('创建与修改对象'); }, get 'relations.read'() { return t('读取关系'); }, get 'relations.write'() { return t('修改关系'); }, get storage() { return t('保存插件本机状态'); }, get network() { return t('访问指定网络来源'); }, get connections() { return t('使用单独授权的服务凭据'); }, get native() { return t('调用指定本机能力'); }, get ui() { return t('运行自定义界面'); } };
 function publisher(release: PluginCatalogRelease) { return catalog.value?.publishers.find(item => item.id === release.publisher)?.name ?? release.publisher; }
-function details(release: PluginCatalogRelease) { selectedId.value = release.manifest.id; selectedHash.value = release.integrity; error.value = ''; status.value = ''; }
+function details(release: PluginCatalogRelease) { selectedId.value = release.manifest.id; selectedHash.value = release.integrity; installScope.value = 'workspace'; error.value = ''; status.value = ''; }
 async function refresh() {
   const current = ++sequence;
   const signal = controller.signal;
@@ -62,7 +68,7 @@ async function install() {
   const signal = controller.signal;
   installing.value = true; error.value = ''; status.value = '';
   try {
-    await store.installCatalogRelease(release, workspace, signal);
+    await store.installCatalogRelease(release, workspace, signal, installScope.value);
     if (!signal.aborted) status.value = release.manifest.manifestVersion === 2
       ? t('已安装 {0}，请在“已安装”详情中核对并授权此版本运行。', [release.manifest.version]) : t('已安装 {0}。', [release.manifest.version]);
   } catch (cause) { if (!signal.aborted) error.value = String(cause); }
@@ -116,15 +122,18 @@ onScopeDispose(() => controller.abort());
       <p v-if="selected.status === 'withdrawn'" role="status">{{ t('此版本已撤回：') }}{{ selected.reason }}{{ t('。已安装内容不会自动删除。') }}</p>
       <pre class="catalog-notes">{{ selected.notes || t('此版本未提供更新说明。') }}</pre>
       <PluginChangeSummary v-if="!unchanged" :before="installed?.manifest" :after="selected.manifest" :workspace="store.workspace?.name" />
-      <p>{{ t('所需权限：') }}{{ permissions.map(permission => labels[permission]).join('、') || t('无代码权限') }}</p>
-      <p v-if="installed && addedPermissions.length">{{ t('新增权限：') }}{{ addedPermissions.map(permission => labels[permission]).join('、') }}</p>
+      <p>{{ t('所需权限：') }}{{ permissions.map(permission => labels[permission] ?? permission).join('、') || t('无代码权限') }}</p>
+      <p v-if="installed && addedPermissions.length">{{ t('新增权限：') }}{{ addedPermissions.map(permission => labels[permission] ?? permission).join('、') }}</p>
       <template v-if="selected.manifest.manifestVersion === 2">
         <p v-if="selected.manifest.networkOrigins.length">{{ t('网络来源：') }}{{ selected.manifest.networkOrigins.join('、') }}</p>
         <p v-if="selected.manifest.nativeCommands.length">{{ t('本机能力：') }}{{ selected.manifest.nativeCommands.join('、') }}</p>
       </template>
       <p class="catalog-origin">{{ (selected.bytes / 1024).toFixed(1) }} KiB · SHA-256 {{ selected.integrity }}</p>
-      <p v-if="!store.canManagePlugins">{{ t('需要工作区管理员安装或更新插件。') }}</p>
-      <button class="pc-button pc-primary" :disabled="installing || !store.canManagePlugins || selected.status !== 'published' || unchanged" @click="install">{{ installing ? t('正在校验并安装…') : unchanged ? t('已安装此版本') : t('安装所选版本') }}</button>
+      <label>{{ t('安装范围') }} <select v-model="installScope" :aria-label="t('目录插件安装范围')" :disabled="installing"><option value="workspace">{{ t('当前工作区（随工作区同步）') }}</option><option value="user" :disabled="!!userScopeReason">{{ t('全局插件（跨工作区生效）') }}</option></select></label>
+      <p v-if="!selectedCompat.compatible" class="pc-feedback error" role="alert">{{ selectedCompat.reason }}</p>
+      <p v-if="installScope === 'workspace' && !store.canManagePlugins">{{ t('需要工作区管理员安装或更新插件。') }}</p>
+      <p v-if="userScopeReason">{{ userScopeReason }}</p>
+      <button class="pc-button pc-primary" :disabled="installing || (installScope === 'workspace' ? !store.canManagePlugins : !!userScopeReason) || selected.status !== 'published' || unchanged" @click="install">{{ installing ? t('正在校验并安装…') : unchanged ? t('已安装此版本') : t('安装所选版本') }}</button>
     </PluginDialog>
   </section>
 </template>

@@ -1,5 +1,5 @@
 import { documentLinkDetails, parseDocumentMarkdown } from '@tano/editor/document-links';
-import { validEventDate, validEventTime } from '@tano/protocol';
+import { isActionableTask, isPlanCompleted, isPlanObject, validEventDate, validEventTime } from '@tano/protocol';
 import type { WorkspaceObject } from '@tano/protocol';
 import type { Root, RootContent } from 'mdast';
 import type { HelpChecklistId } from './help-content';
@@ -66,15 +66,13 @@ export function newMarkdownMilestones(before: string, after: string): HelpCheckl
 
 /** Receives only successfully saved user changes, not hydrated or remote records. */
 export function planMilestones(before: WorkspaceObject | undefined, after: WorkspaceObject): HelpChecklistId[] {
-  if (!['event', 'task'].includes(after.type)) return [];
+  if (!isPlanObject(after)) return [];
   const result: HelpChecklistId[] = before ? [] : ['plan'];
   const previous = before?.properties ?? {}, current = after.properties;
   if ((validEventDate(current.date) && current.date !== previous.date) ||
       (validEventTime(current.start) && validEventTime(current.end) &&
        (current.start !== previous.start || current.end !== previous.end))) result.push('plan-date');
   if (after.description.trim() && after.description !== before?.description) result.push('plan-description');
-  const complete = (object?: WorkspaceObject) => object?.properties.completed === true ||
-    (object?.type === 'task' && ['done', 'completed'].includes(String(object.properties.status)));
-  if ((after.type === 'task' || current.checkable === true) && complete(after) && !complete(before)) result.push('plan-complete');
+  if (isActionableTask(after) && isPlanCompleted(after) && !(before && isPlanCompleted(before))) result.push('plan-complete');
   return result;
 }

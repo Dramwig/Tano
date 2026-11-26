@@ -73,6 +73,7 @@ const iconNotices = await Promise.all([
 ].map(async ([name, url, folder, license = 'MIT', licenseFile = 'LICENSE', attribution = '']) =>
   `${name}\nLicense: ${license}\n${url}\n${attribution}\n\n${await readFile(join(root, folder, licenseFile), 'utf8')}`,
 ));
+iconNotices.push((await readFile(join(root, 'packages/workbench/src/assets/mail-provider-icons/NOTICE.txt'), 'utf8')).trimEnd());
 for (const target of ['apps/client/public/THIRD_PARTY_NOTICES.txt', 'apps/mcp/THIRD_PARTY_NOTICES.txt']) {
   await mkdir(dirname(join(root, target)), { recursive: true });
   await writeFile(join(root, target), target.startsWith('apps/client/')

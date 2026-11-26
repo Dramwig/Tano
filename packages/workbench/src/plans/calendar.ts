@@ -1,4 +1,11 @@
-import { validEventDate, validEventTime, validateObjectProperties } from '@tano/protocol';
+import {
+  isActionableTask,
+  isPlanCompleted,
+  isPlanObject,
+  validEventDate,
+  validEventTime,
+  validateObjectProperties,
+} from '@tano/protocol';
 import type { ObjectRecord } from '../objects/workspace-objects';
 import { uiLocale } from '../i18n/i18n';
 
@@ -58,18 +65,47 @@ export function monthDays(month: Date) {
     (_, index) => new Date(month.getFullYear(), month.getMonth(), index - offset + 1),
   );
 }
-export const isCheckableEvent = ({ object }: ObjectRecord) =>
-  object.type === 'task' || (object.type === 'event' && object.properties.checkable === true);
-export const isEventCompleted = ({ object }: ObjectRecord) =>
-  object.properties.completed === true || (object.type === 'task' && ['done', 'completed'].includes(String(object.properties.status)));
+export const isCheckableEvent = ({ object }: ObjectRecord) => isActionableTask(object);
+export const isEventCompleted = ({ object }: ObjectRecord) => isPlanCompleted(object);
 export const hasEventTime = ({ object: { properties } }: ObjectRecord) =>
   validEventTime(properties.start) && validEventTime(properties.end) && Date.parse(properties.end) >= Date.parse(properties.start);
+export const eventDueDate = ({ object: { properties } }: ObjectRecord): string | null =>
+  validEventDate(properties.due) ? properties.due : null;
+export const isEventOverdue = (record: ObjectRecord, today = localDayKey(new Date())) => {
+  const due = eventDueDate(record);
+  return isCheckableEvent(record) && !isEventCompleted(record) && due !== null && due < today;
+};
+export const isDateOnlyOnDay = ({ object: { properties } }: ObjectRecord, day: Date) => {
+  if (validEventTime(properties.start) && validEventTime(properties.end)) return false;
+  if (!validEventDate(properties.date)) return false;
+  const key = localDayKey(day);
+  if (validEventDate(properties.endDate)) return properties.date <= key && key <= properties.endDate;
+  return properties.date === key;
+};
+
+export interface CalendarFilter {
+  kind: 'all' | 'task' | 'event';
+  showCompleted: boolean;
+  query: string;
+}
+
+export function filterCalendarRecords(records: readonly ObjectRecord[], filter: CalendarFilter) {
+  const needle = filter.query.trim().toLocaleLowerCase();
+  return records.filter((record) => {
+    const checkable = isCheckableEvent(record);
+    if (filter.kind === 'task' && !checkable) return false;
+    if (filter.kind === 'event' && checkable) return false;
+    if (!filter.showCompleted && checkable && isEventCompleted(record)) return false;
+    if (needle && !`${record.object.name}\n${record.object.description}`.toLocaleLowerCase().includes(needle)) return false;
+    return true;
+  });
+}
 
 /** Planning includes date-only and unscheduled tasks as well as timed events. */
 export function planningEvents(records: readonly ObjectRecord[]) {
   return records
     .filter(({ object }) => {
-      if (!['event', 'task'].includes(object.type) || object.archived) return false;
+      if (!isPlanObject(object) || object.archived) return false;
       try {
         validateObjectProperties(object.type, object.properties);
         return true;
@@ -89,7 +125,27 @@ export function calendarEvents(records: readonly ObjectRecord[]) {
 }
 export function plannedEventsOnDay(records: readonly ObjectRecord[], day: Date) {
   const timed = new Set(eventsOnDay(records.filter(hasEventTime), day));
-  return records.filter(record => timed.has(record) || (!hasEventTime(record) && record.object.properties.date === localDayKey(day)));
+  return records.filter(record => timed.has(record) || isDateOnlyOnDay(record, day));
+}
+export interface CalendarDayEntry {
+  record: ObjectRecord;
+  kind: 'timed' | 'all-day' | 'due';
+}
+/** Combines scheduled items on a day with tasks whose due date falls on that day. */
+export function calendarDayEntries(records: readonly ObjectRecord[], day: Date): CalendarDayEntry[] {
+  const dayKey = localDayKey(day);
+  const timed = new Set(eventsOnDay(records.filter(hasEventTime), day));
+  const entries: CalendarDayEntry[] = [];
+  for (const record of records) {
+    if (timed.has(record)) {
+      entries.push({ record, kind: record.object.properties.allDay === true ? 'all-day' : 'timed' });
+    } else if (isDateOnlyOnDay(record, day)) {
+      entries.push({ record, kind: 'all-day' });
+    } else if (eventDueDate(record) === dayKey) {
+      entries.push({ record, kind: 'due' });
+    }
+  }
+  return entries;
 }
 export function unscheduledTasks(records: readonly ObjectRecord[]) {
   return records.filter(record => isCheckableEvent(record) && !hasEventTime(record) && !validEventDate(record.object.properties.date));

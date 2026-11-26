@@ -13,6 +13,7 @@ export type { FeatureChannel, FeatureDefinition };
 
 export const features = defineFeatures({
   assistantClipboardAttachments: { status: 'dev', note: 'Paste local files and images into the assistant composer.' },
+  desktopMailClient: { status: 'dev', note: 'Desktop native IMAP/SMTP mail client with calendar and document integration.' },
   markdownSpacingAutocomplete: { status: 'dev', note: 'Insert real Markdown spaces at mixed-script boundaries while editing.' },
 });
 // Optional env keeps the pure API usable in Node as well as Vite consumers.

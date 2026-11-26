@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { verifyPlugin } from '../plugin/plugin-build.mjs';
+import { protocol, verifyPlugin } from '../plugin/plugin-build.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const version = '5.40.0';
@@ -61,10 +61,12 @@ try {
       theme[field][normalized] = id;
     }
   }
+  const { externalizeHeavyIconAssets, parsePluginPackage } = await protocol();
   const manifest = { manifestVersion: 1, id: 'material-icon-theme', name: 'Material 文件图标', version: '1.0.0',
     description: `Material Icon Theme ${version} 的同页独立适配版（非官方）。彩色文件与目录图标，支持目录展开和深浅色变体；离线可用，无脚本权限。原作：Material Extensions，MIT。`,
     objectTypes: [], relationTypes: [], appearance: { version: 2, icons: [theme] } };
-  const { canonical, integrity: digest } = await verifyPlugin(JSON.stringify({ packageVersion: 1, manifest }));
+  const pkg = externalizeHeavyIconAssets(parsePluginPackage(JSON.stringify({ packageVersion: 1, manifest })));
+  const { canonical, integrity: digest } = await verifyPlugin(JSON.stringify(pkg));
   await mkdir(target, { recursive: true });
   await writeFile(join(target, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   await writeFile(join(target, 'material-icon-theme-1.0.0.tano-plugin.json'), canonical + '\n');

@@ -3,7 +3,6 @@ import { inject, toRefs } from 'vue';
 import {
   AppWindow,
   ArrowDownToLine,
-  Blocks,
   Check,
   CopyPlus,
   Eye,
@@ -176,6 +175,13 @@ const {
           </button>
           <button
             role="menuitem"
+            :disabled="fileMutationDisabled(fileContextMenu.file)"
+            @click="fileContextAction('table')"
+          >
+            <Table2 :size="15" />{{ t('在此新建数据表') }}
+          </button>
+          <button
+            role="menuitem"
             :disabled="
               fileMutationDisabled(fileContextMenu.file) ||
               directoryHasManagedFile(fileContextMenu.file)
@@ -218,6 +224,13 @@ const {
             @click="fileContextAction('open-new-tab')"
           >
             <PanelsTopLeft :size="15" />{{ t('在新标签页中打开') }}
+          </button>
+          <button
+            v-if="store.hasMarkdownFileHandler(fileContextMenu.file)"
+            role="menuitem"
+            @click="fileContextAction('open-markdown-source')"
+          >
+            <FileText :size="15" />{{ t('用 Markdown 源码打开') }}
           </button>
           <div
             v-if="
@@ -358,13 +371,6 @@ const {
           >
             <FileSliders :size="15" />{{ t('文件属性') }}
           </button>
-          <button
-            v-if="!isWorkspaceInternalPath(fileContextMenu.file.path)"
-            role="menuitem"
-            @click="fileContextAction('object')"
-          >
-            <Blocks :size="15" />{{ t('查看文件对象') }}
-          </button>
         </template>
         <PluginMenu
           v-if="fileContextMenu.file.kind === 'file'"
@@ -422,6 +428,13 @@ const {
         @click="directoryContextAction('folder')"
       >
         <FolderPlus :size="15" />{{ t('新建文件夹') }}
+      </button>
+      <button
+        role="menuitem"
+        :disabled="!workspace || workspace.readOnly || busy"
+        @click="directoryContextAction('table')"
+      >
+        <Table2 :size="15" />{{ t('新建数据表') }}
       </button>
       <button
         v-if="!directoryContextMenu.parent"

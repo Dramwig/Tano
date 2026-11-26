@@ -14,5 +14,6 @@
     { "id": "open", "label": "Excalidraw：打开白板", "menus": ["workspace", "document", "file"] },
     { "id": "create", "label": "Excalidraw：新建白板", "menus": ["workspace"] }
   ],
-  "views": [{ "id": "board", "label": "Excalidraw 白板", "location": "tab" }]
+  "views": [{ "id": "board", "label": "Excalidraw 白板", "location": "tab", "layout": "fill" }],
+  "fileHandlers": [{ "extensions": [".excalidraw.md"], "mode": "editor", "view": "board", "command": "open" }]
 }

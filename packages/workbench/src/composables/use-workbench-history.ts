@@ -2,7 +2,7 @@ import { ref, watch, type Ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { isMarkdown } from '@tano/protocol';
 import { native } from '../workspace/adapter';
-import { isTableTab, tableFileId, TABLES_TAB_ID } from '../data-tables/data-tables';
+import { isTableTab, tableFileId } from '../data-tables/data-tables';
 import { t } from '../i18n/i18n';
 import type { useWorkspaceStore } from '../stores/workspace';
 import { pageRoutePath, parsePageRoute } from '../shell/web-navigation';
@@ -135,9 +135,7 @@ export function useWorkbenchHistory(deps: WorkbenchHistoryDeps) {
       if (workspace.value?.id !== route.workspaceId) {
         store.report(t('链接中的工作区不存在或你已失去访问权限'));
       } else if (isTableTab(route.fileId)) {
-        await store.openDataTable(
-          route.fileId === TABLES_TAB_ID ? undefined : tableFileId(route.fileId),
-        );
+        await store.openDataTable(tableFileId(route.fileId));
       } else if (route.fileId.startsWith('plugin:')) {
         const view = store.pluginViews.find(
           (view) => view.key === route.fileId && view.location === 'tab',

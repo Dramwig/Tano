@@ -26,9 +26,9 @@ it('uses the shared MCP SDK for file, object, relation and formula-aware table q
     expect(await sdk.files('.csv')).toMatchObject({ total: 1, items: [{ fileId: '444444', sha256: expect.stringMatching(/^[a-f0-9]{64}$/) }] });
     expect(await sdk.read('222222')).toMatchObject({ encoding: 'base64', path: 'papers/methods.pdf' });
     expect(await sdk.files('', 0, 100, { ...defaultFileDatabaseQuery(), filters: [{ field: 'property:owner', operator: 'equals', value: '研究组' }] })).toMatchObject({ total: 1, items: [{ fileId: '222222', metadataHash: expect.any(String) }] });
-    expect(await sdk.objects()).toMatchObject({ total: 3 });
+    expect(await sdk.objects()).toMatchObject({ total: 2 });
     expect(await sdk.table('777777', undefined, 0, 2)).toMatchObject({ total: 3, nextOffset: 2, items: [{ computed: expect.any(Object) }, { computed: expect.any(Object) }] });
-    expect(await sdk.relations()).toMatchObject({ relations: expect.arrayContaining([expect.objectContaining({ type: 'contains' })]) });
+    expect(await sdk.relations()).toMatchObject({ relations: expect.arrayContaining([expect.objectContaining({ type: 'related' })]) });
   } finally { await client.close(); await server.close(); }
 });
 it('refuses hidden configuration and duplicate identities instead of inventing resource identity', () => {
@@ -65,7 +65,7 @@ it('bounds Markdown metadata reads and reports oversized sources as incomplete',
   expect(store.queryFiles()).toMatchObject({ complete: false, errors: [{ path: snapshot.path, error: expect.stringContaining('8 MiB') }] });
 });
 it('queues a cross-resource batch atomically, keeps source bytes and returns per-item outcomes', () => {
-  const snapshots = ['111111', 'e30001', '777777'].map(id => store.readFile(id));
+  const snapshots = ['111111', 'e30002', '777777'].map(id => store.readFile(id));
   const operationId = randomUUID();
   const batch = { operationId, edits: snapshots.map((snapshot, index) => ({ fileId: snapshot.fileId, path: snapshot.path, expectedHash: snapshot.sha256, reason: '跨文件更新',
     content: index ? JSON.stringify({ ...JSON.parse(snapshot.content), name: 'Revised name' }) : snapshot.content + '\nNew note\n' })) };
@@ -87,7 +87,7 @@ it('queues a cross-resource batch atomically, keeps source bytes and returns per
   expect(store.activity().items).toHaveLength(1);
 });
 it('refuses stale batches without queuing their other edits and requires explicit direct-write grants', () => {
-  const a = store.readFile('111111'), b = store.readFile('e30001');
+  const a = store.readFile('111111'), b = store.readFile('e30002');
   writeFileSync(join(root, b.path), b.content + ' ');
   expect(() => store.proposeChanges({ operationId: randomUUID(), edits: [a, b].map(snapshot => ({ fileId: snapshot.fileId, path: snapshot.path, expectedHash: snapshot.sha256, content: snapshot.content, reason: 'test' })) }, 'client')).toThrow('revision');
   expect(store.activity().items).toHaveLength(0);

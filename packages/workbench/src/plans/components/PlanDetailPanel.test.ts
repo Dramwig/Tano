@@ -57,7 +57,7 @@ it('edits descriptions and document references without exposing the object inspe
   expect(root.querySelector('[role=dialog]')?.getAttribute('aria-label')).toBe('任务详情');
   expect(root.textContent).not.toContain('结构化属性');
   expect(root.textContent).not.toContain('Level 2');
-  expect([...root.querySelectorAll('select')].filter(select => !select.closest('[aria-label="重复任务"]'))).toHaveLength(0);
+  expect([...root.querySelectorAll('select')].filter(select => !select.closest('[aria-label="重复任务"]') && !select.closest('.plan-detail-field'))).toHaveLength(0);
   await input('textarea', '需要阅读 ');
   root.querySelector<HTMLTextAreaElement>('[aria-label=描述]')!.setSelectionRange(5, 5);
   await click('插入文档引用');
@@ -159,4 +159,52 @@ it('keeps legacy task completion and status consistent', async () => {
   completed.checked = false; completed.dispatchEvent(new Event('change', { bubbles: true })); await nextTick();
   await click('保存'); await vi.waitFor(() => expect(plans.update).toHaveBeenCalledOnce());
   expect(plans.update.mock.calls[0]![1]).toMatchObject({ type: 'task', properties: { completed: false, status: 'todo' } });
+});
+
+it('edits status and priority on unified event tasks and keeps completion in sync', async () => {
+  const original = record();
+  const { plans } = mountPanel(original);
+  const selects = [...root.querySelectorAll<HTMLSelectElement>('.plan-detail-field select')];
+  expect(selects).toHaveLength(3);
+  selects[0]!.value = '已完成';
+  selects[0]!.dispatchEvent(new Event('change', { bubbles: true }));
+  selects[1]!.value = '1';
+  selects[1]!.dispatchEvent(new Event('change', { bubbles: true }));
+  await nextTick();
+  expect(root.querySelector<HTMLInputElement>('[aria-label=已完成]')!.checked).toBe(true);
+  await click('保存'); await vi.waitFor(() => expect(plans.update).toHaveBeenCalledOnce());
+  expect(plans.update.mock.calls[0]![1].properties).toMatchObject({
+    checkable: true,
+    completed: true,
+    status: '已完成',
+    priority: 1,
+  });
+});
+
+it('edits location and reminder and supports explicit move between workspace and personal', async () => {
+  const original = record();
+  const { plans, openRecord } = mountPanel(original);
+  const locationInput = root.querySelector<HTMLInputElement>('input[placeholder="会议室或链接…"]')!;
+  locationInput.value = 'https://meet.example.com/abc';
+  locationInput.dispatchEvent(new Event('input', { bubbles: true }));
+  const reminderSelect = [...root.querySelectorAll<HTMLSelectElement>('.plan-detail-field select')].at(-1)!;
+  reminderSelect.value = '30';
+  reminderSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  await nextTick();
+  expect(root.querySelector('[aria-label="打开链接"]')).not.toBeNull();
+  await click('保存');
+  await vi.waitFor(() => expect(plans.update).toHaveBeenCalledOnce());
+  expect(plans.update.mock.calls[0]![1].properties).toMatchObject({
+    location: 'https://meet.example.com/abc',
+    reminders: [30],
+  });
+
+  // Trigger explicit move to personal
+  const moveBtn = root.querySelector<HTMLButtonElement>('[aria-label="移动到个人"]')!;
+  moveBtn.click();
+  await nextTick();
+  await click('确认移动');
+  await vi.waitFor(() => expect(plans.create).toHaveBeenCalledTimes(1));
+  expect(plans.create.mock.calls[0]![1]).toBe('personal');
+  expect(openRecord).toHaveBeenCalledTimes(1);
 });

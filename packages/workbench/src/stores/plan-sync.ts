@@ -1,6 +1,7 @@
 import { computed, onScopeDispose, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { nativeInvoke as invoke } from '../platform/native-bridge';
+import { isPlanObject } from '@tano/protocol';
 import type { WorkspaceObject } from '@tano/protocol';
 import { useWorkbenchRuntime } from '../runtime';
 import { useWorkspaceStore } from './workspace';
@@ -64,7 +65,7 @@ export const usePlanSyncStore = defineStore('plan-sync', () => {
     return { type: 'event', name: value.name, description: value.description, archived: value.archived, properties: { ...itemProperties(value, kind), ...extra } };
   }
   function port(connection: Connection): LocalSyncPort {
-    const list = async () => (await records(connection.scope, connection.workspaceId)).filter(r => ['event', 'task'].includes(r.object.type) && (connection.kind === 'todo' ? isCheckableEvent(r) : !isCheckableEvent(r)));
+    const list = async () => (await records(connection.scope, connection.workspaceId)).filter(r => isPlanObject(r.object) && (connection.kind === 'todo' ? isCheckableEvent(r) : !isCheckableEvent(r)));
     return {
       list,
       create: (value, remoteId, readOnly) => plans.create(draft(value, connection.kind, { syncConnection: connection.id, syncRemoteId: remoteId, syncReadOnly: readOnly }), connection.scope, connection.workspaceId),

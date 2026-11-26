@@ -131,7 +131,7 @@ export class AgentWorkspace {
   private db: DatabaseSync;
   private rootIdentity: { dev: bigint; ino: bigint };
   readonly policy: AgentGatewayPolicy;
-  constructor(root: string, dataDirectory: string, policy: AgentGatewayPolicy = { access: 'review', directories: [''], objectTypes: ['task', 'project', 'experiment', 'person', 'event'] }) {
+  constructor(root: string, dataDirectory: string, policy: AgentGatewayPolicy = { access: 'review', directories: [''], objectTypes: ['task', 'person', 'event'] }) {
     if (!['read', 'review', 'write'].includes(policy.access) || !Array.isArray(policy.directories) || policy.directories.some(path => path !== '' && !!validatePath(`${path}/scope.md`)) || !Array.isArray(policy.objectTypes) || policy.objectTypes.some(type => !/^[a-z][a-z0-9.-]{0,79}$/.test(type))) throw new Error('Agent 授权范围无效');
     this.policy = Object.freeze({ ...policy, directories: Object.freeze([...policy.directories]) as unknown as string[], objectTypes: Object.freeze([...policy.objectTypes]) as unknown as string[] });
     if (lstatSync(root).isSymbolicLink()) throw new Error('工作区不能是符号链接');

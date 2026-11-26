@@ -91,13 +91,12 @@ files automatically.
 
 The former `check.yml` has been removed. Remaining workflows are manual
 `workflow_dispatch` entries.
-They package, release or create synchronization PRs, and do not execute test suites.
+They package, tag or release, and do not execute test suites.
 Release-time source identity, tag/version matching, package hashes, signing and
 clean Core export guards remain part of the requested operation.
 
-Normally merge main into dev locally with `git merge --no-ff main` and push dev.
-**Sync main into dev** is an optional manual PR helper; it never merges the PR itself.
-Run **Export reviewed Core** manually for an immutable Core tag; then request the consumer sync manually.
+Merge main into dev locally with `git merge --no-ff main` and push dev.
+After publishing an immutable Core tag, run the consumer sync locally.
 Creating a version PR or tag no longer starts the next workflow. Follow the manual
 sequence in [release automation](release-automation.md). Manually running a build
 still uses Actions minutes; ordinary development does not.

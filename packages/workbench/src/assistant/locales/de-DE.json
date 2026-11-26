@@ -46,7 +46,10 @@
     "propose_relation": "Schlagen Sie vor, eine Beziehung zu erstellen",
     "propose_task_update": "Schlagen Sie vor, eine Aufgabe zu aktualisieren",
     "propose_assignment": "Schlagen Sie vor, einen Beauftragten zu aktualisieren",
-    "propose_relation_change": "Schlagen Sie vor, eine Beziehung zu ändern"
+    "propose_relation_change": "Schlagen Sie vor, eine Beziehung zu ändern",
+    "inspect_plugins": "Aktivierte Plugins prüfen",
+    "inspect_plugin_logs": "Plugin-Laufzeitprotokolle prüfen",
+    "open_plugin_view": "Plugin-Ansicht öffnen"
   },
   "result": {
     "toolCall": "Werkzeugaufruf",

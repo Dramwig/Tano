@@ -46,7 +46,10 @@
     "propose_relation": "创建关系建议",
     "propose_task_update": "修改任务建议",
     "propose_assignment": "调整负责人建议",
-    "propose_relation_change": "维护关系建议"
+    "propose_relation_change": "维护关系建议",
+    "inspect_plugins": "查看已启用插件",
+    "inspect_plugin_logs": "查看插件运行日志",
+    "open_plugin_view": "打开插件视图"
   },
   "result": {
     "toolCall": "工具调用",

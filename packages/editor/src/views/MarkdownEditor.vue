@@ -53,7 +53,12 @@ import { composeMarkdownSchemaPlugins } from '../markdown/markdown-schema-plugin
 import { blockControls } from '../plugins/blocks';
 import { expandBlockSelection } from '../plugins/block-selection';
 import { emptyBlockDeletion } from '../plugins/empty-block';
-import { slashCommands, type SlashTranslate } from '../plugins/slash-commands';
+import { slashCommands, type ExternalSlashCommand, type SlashTranslate } from '../plugins/slash-commands';
+import {
+  createExternalDecorationsPlugin,
+  type ExternalCodeBlockRenderer,
+  type ExternalEditorDecoration,
+} from '../plugins/external-decorations';
 import { wikiLinkInput } from '../markdown/wiki-link';
 import { commandEnabled, selectionContext, type EditorSelectionContext } from '../core/document-model';
 import { availableBlockConversions } from '../plugins/block-commands';
@@ -122,6 +127,9 @@ const props = withDefaults(
     resolveImage?: (reference: string) => string | null;
     importFile?: (file: File, requireImage: boolean) => Promise<ImportedResource>;
     customCalloutIcon?: Component;
+    slashCommands?: readonly ExternalSlashCommand[];
+    decorations?: readonly ExternalEditorDecoration[];
+    codeBlockRenderers?: readonly ExternalCodeBlockRenderer[];
   }>(),
   { revealMarkdown: true, showDocumentProperties: true },
 );
@@ -351,6 +359,7 @@ const editorCommands = createEditorCommandsApi({
   getModelValue: () => props.modelValue,
   getLastValue: () => lastValue,
   getFrontmatterPrefix: () => frontmatter.prefix,
+  publishFrontmatter,
   getCommentAnchors: () => props.commentAnchors,
   getLocalSource: inlineSource.getLocalSource,
   toggleSourceSyntax: inlineSource.toggleSourceSyntax,
@@ -376,6 +385,11 @@ const buildDocumentDecorations = createEditorDecorationsBuilder({
 
 const referenceFlash = createReferenceFlashPlugin();
 const commentMarks = createCommentMarksPlugin(() => props.commentAnchors);
+const externalDecorations = createExternalDecorationsPlugin({
+  getDecorations: () => props.decorations ?? [],
+  getMarkdown: () => lastValue,
+  getFrontmatterPrefix: () => frontmatter.prefix,
+});
 
 const clipboardPlugin = $prose(
   (ctx) =>
@@ -729,7 +743,7 @@ const changeBridge = $prose(
               isElement(event.target) &&
               !inlineSource.inlineAtomSourceRange(view, event) &&
               !event.target.closest(
-                '[contenteditable="false"], .math-preview, .tano-mermaid-preview, .tano-image-block',
+                '[contenteditable="false"], .math-preview, .tano-mermaid-preview, .tano-plugin-code-preview, .tano-image-block',
               )
             ) {
               const hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
@@ -821,6 +835,7 @@ const changeBridge = $prose(
           referencesEnabled,
           referenceTargets: () => props.referenceTargets ?? [],
           renderMermaid,
+          codeBlockRenderers: () => props.codeBlockRenderers ?? [],
           getLocalSource: inlineSource.getLocalSource,
           activateReferenceSource: inlineSource.activateReferenceSource,
           onOpenReference: (identity) => emit('openReference', identity),
@@ -957,6 +972,7 @@ onMounted(async () => {
             levels: () => props.enabledLevels,
             features: () => policy().features,
             aiShortcut: () => preferences().blankBlockAiShortcut,
+            extraItems: () => props.slashCommands ?? [],
           }),
         ),
       )
@@ -965,6 +981,7 @@ onMounted(async () => {
       .use(changeBridge)
       .use(commentMarks)
       .use(referenceFlash)
+      .use(externalDecorations)
       .use($prose(richViewport))
       .use($prose(gapCursor))
       .use($prose(visualAnchorPlugin))
@@ -1173,6 +1190,24 @@ watch(
     }),
 );
 watch(
+  () => props.decorations,
+  () => {
+    editor?.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      view.dispatch(view.state.tr.setMeta('addToHistory', false));
+    });
+  },
+);
+watch(
+  () => props.codeBlockRenderers,
+  () => {
+    editor?.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      view.dispatch(view.state.tr.setMeta('addToHistory', false));
+    });
+  },
+);
+watch(
   () => props.revealMarkdown,
   () => {
     linkPanel.closeLinkPanel();
@@ -1231,6 +1266,8 @@ defineExpose({
   revealSourceRange: editorCommands.revealSourceRange,
   modeCursorTop: editorCommands.modeCursorTop,
   applyPluginEdit: editorCommands.applyPluginEdit,
+  pluginSelection: editorCommands.pluginSelection,
+  applyPluginSelectionEdit: editorCommands.applyPluginSelectionEdit,
   search: editorCommands.search,
   replaceSearch: editorCommands.replaceSearch,
   searchSelection: editorCommands.searchSelection,

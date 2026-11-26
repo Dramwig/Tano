@@ -9,6 +9,8 @@ import { uiLocaleOptions } from '../../i18n/locale';
 import { settingHint } from '../setting-examples';
 import type { ThemePreference } from '../../appearance/theme';
 import { useEditorFontFamily } from '../../appearance/use-editor-font';
+import { type InterfaceFontChoice } from '../../appearance/interface-font';
+import { useInterfaceFont } from '../../appearance/use-interface-font';
 import GlassWallpaperSetting from '../../appearance/components/GlassWallpaperSetting.vue';
 import ThemePresetPicker from '../../appearance/components/ThemePresetPicker.vue';
 import { settingsPanelContextKey } from './settings-context';
@@ -91,6 +93,14 @@ function customFontInput(event: Event, target: FontTarget = 'unified') {
       ...splitFonts.value,
       [target]: { ...splitFonts.value[target], customName: value },
     });
+}
+
+const { preference: interfaceFont, update: updateInterfaceFont } = useInterfaceFont();
+function interfaceFontInput(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const value = sanitizeCustomFontName(input.value);
+  if (input.value !== value) input.value = value;
+  updateInterfaceFont({ customName: value });
 }
 
 type MotionOptionKey =
@@ -234,6 +244,42 @@ const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPref
           </template>
           <p v-for="message in props.appearance.errors" :key="message" role="alert">{{ message }}</p>
         </template>
+      </div>
+    </section>
+
+    <section class="settings-section" :aria-label="t('界面字体')">
+      <h3>{{ t('界面字体') }}</h3>
+      <div class="settings-card">
+        <div class="settings-row" data-settings-key="appearance-interface-font">
+          <div>
+            <strong>{{ t('界面字体') }}</strong>
+            <p>{{ t('用于侧栏、标签、菜单和对话框，不影响文档正文。仅保存在当前设备。') }}</p>
+          </div>
+          <select
+            :value="interfaceFont.choice"
+            :aria-label="t('界面字体')"
+            @change="updateInterfaceFont({ choice: ($event.target as HTMLSelectElement).value as InterfaceFontChoice })"
+          >
+            <option value="builtin">{{ t('内置（Inter + 思源黑体）') }}</option>
+            <option value="system">{{ t('系统字体') }}</option>
+            <option value="custom">{{ t('自定义字体') }}</option>
+          </select>
+        </div>
+        <div v-if="interfaceFont.choice === 'custom'" class="settings-row settings-custom-font-row" data-settings-key="appearance-interface-custom-font">
+          <div>
+            <strong>{{ t('界面字体名称') }}</strong>
+            <p>{{ t('输入本机字体名称；未安装时会回退到系统字体。') }}</p>
+          </div>
+          <input
+            :value="interfaceFont.customName"
+            type="text"
+            maxlength="80"
+            autocomplete="off"
+            :aria-label="t('自定义界面字体名称')"
+            :placeholder="t('例如：HarmonyOS Sans SC')"
+            @input="interfaceFontInput"
+          />
+        </div>
       </div>
     </section>
 

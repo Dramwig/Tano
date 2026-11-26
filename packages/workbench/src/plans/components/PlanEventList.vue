@@ -7,9 +7,10 @@ import { t, uiLocale } from '../../i18n/i18n';
 import { onBeforeUnmount, ref, TransitionGroup, watch } from 'vue';
 import { animate } from 'motion/mini';
 import { CalendarDays } from 'lucide-vue-next';
-import { taskReview } from '@tano/protocol';
+import { isPlanCompletionLocked } from '@tano/protocol';
 import type { ObjectRecord } from '../../objects/workspace-objects';
 import { hasEventTime, isCheckableEvent, isEventCompleted, localDayKey } from '../calendar';
+import { PLAN_DRAG_MIME } from '../calendar-interaction';
 import { planKey, planSourceLabel } from '../personal-plans';
 import { readPlanDate } from '../plan-date';
 
@@ -48,8 +49,7 @@ function visualCompleted(record: ObjectRecord) {
   return completionFeedback.value[planKey(record)] ?? isEventCompleted(record);
 }
 function completionLocked(record: ObjectRecord) {
-  const review = taskReview(record.object);
-  return !!review && review.state !== 'approved';
+  return isPlanCompletionLocked(record.object);
 }
 function complete(record: ObjectRecord, event: Event) {
   const input = event.target as HTMLInputElement;
@@ -123,6 +123,16 @@ onBeforeUnmount(() => {
   leavingAnimations.clear();
   enteringAnimations.clear();
 });
+function canDrag(record: ObjectRecord) {
+  return !props.disabled && props.canEdit?.(record) !== false && !props.pending.includes(planKey(record));
+}
+function onDragStart(record: ObjectRecord, event: DragEvent) {
+  if (!canDrag(record) || !event.dataTransfer) return;
+  const key = planKey(record);
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData(PLAN_DRAG_MIME, key);
+  event.dataTransfer.setData('text/plain', record.object.name);
+}
 function eventTime(record: ObjectRecord, day: Date) {
   if (props.showDate) {
     const { date, time, end } = readPlanDate(record.object.properties);
@@ -156,9 +166,11 @@ function eventTime(record: ObjectRecord, day: Date) {
       v-for="record in records"
       :key="planKey(record)"
       :data-plan-layout="planKey(record)"
-      :class="{ completed: visualCompleted(record), 'context-target': contextKey === planKey(record) }"
+      :class="{ completed: visualCompleted(record), 'context-target': contextKey === planKey(record), draggable: canDrag(record) }"
+      :draggable="canDrag(record)"
       :aria-busy="pending.includes(planKey(record))"
       :data-completion-transition="completionFeedback[planKey(record)] !== undefined || undefined"
+      @dragstart="onDragStart(record, $event)"
       @contextmenu.prevent="emit('context', record, $event)"
       @keydown="contextKeydown(record, $event)"
     >

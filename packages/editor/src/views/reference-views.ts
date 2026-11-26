@@ -1,7 +1,15 @@
 import { h, render as renderIcon, watch, type Component } from 'vue';
 import { ArrowUpRight, Bot, Box, CalendarDays, Circle, CircleCheck, FileText, Folder, Link2Off, Paperclip, UserRound } from 'lucide-vue-next';
 import type { EditorView, NodeViewConstructor } from '@milkdown/kit/prose/view';
-import { parseReferenceUrl, referenceSyntax, resolveReference, referenceTypeLabel, isAgentPerson } from '@tano/protocol';
+import {
+  isActionableTask,
+  isAgentPerson,
+  isPlanCompleted,
+  parseReferenceUrl,
+  referenceSyntax,
+  referenceTypeLabel,
+  resolveReference,
+} from '@tano/protocol';
 import type { ReferenceTarget, ReferenceIdentity } from '@tano/protocol';
 
 const referenceIcons: Record<string, Component> = {
@@ -94,8 +102,8 @@ export function referenceViews(
             ? target?.name ?? `引用不可用 · ${identity?.id ?? current.attrs.url}`
             : identity ? referenceSyntax(identity, block, current.attrs.mentionId) : current.attrs.url;
           button.disabled = (!enabled() || missing) && !canEditSource();
-          const task = target && (target.type === 'task' || (target.type === 'event' && target.properties?.checkable === true));
-          const completed = target?.properties?.completed === true || ['done', 'completed'].includes(String(target?.properties?.status));
+          const task = !!target && isActionableTask({ type: target.type, properties: target.properties ?? {} });
+          const completed = !!target && isPlanCompleted({ type: target.type, properties: target.properties ?? {} });
           dom.dataset.referenceType = task ? 'task' : identity?.type ?? '';
           dom.classList.toggle('is-completed', !!task && completed);
           renderIcon(h(missing ? Link2Off : task ? completed ? CircleCheck : Circle : isAgentPerson(target) ? Bot : referenceIcons[target.type] ?? Box, {
@@ -131,7 +139,24 @@ export function referenceViews(
           );
         }
         render();
-        const stop = watch(() => [targets(), enabled(), revealSource()], render, { deep: true });
+        const stop = watch(() => {
+          const identity = parseReferenceUrl(current.attrs.url);
+          const result = identity ? resolveReference(targets(), identity) : { error: 'missing' };
+          const target = 'target' in result ? result.target : undefined;
+          return [
+            enabled(),
+            revealSource(),
+            target?.id,
+            target?.type,
+            target?.name,
+            target?.archived,
+            target?.description,
+            target?.path,
+            target?.size,
+            target?.mime,
+            target ? JSON.stringify(target.properties ?? null) : '',
+          ];
+        }, render);
         return {
           dom,
           update(next) {

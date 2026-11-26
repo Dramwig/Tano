@@ -99,8 +99,52 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 [data-preview-structure='document'] .theme-preview-heading { width: 44%; align-self: center; height: 3px; margin-bottom: 2px; }
 [data-preview-structure='document'] .theme-preview-callout { display: none; }
 [data-preview-structure='document'] .theme-preview-paragraph-short { display: flex; }
+/* Raised card: clean flat surfaces with crisp 1px edge bevels and quiet double-bezel tray (see layout-themes.css). */
+.theme-preview[data-preview-surface='raised'] .theme-preview-scene {
+  --preview-raised-edge: color-mix(in srgb, var(--preview-text) 5%, var(--preview-line));
+  --preview-raised-highlight: #ffffff;
+  --preview-raised-underside: color-mix(in srgb, var(--preview-text) 4%, transparent);
+  --preview-raised-groove: color-mix(in srgb, var(--preview-sidebar) 92%, var(--preview-paper) 8%);
+  --preview-raised-outer: color-mix(in srgb, var(--preview-line) 85%, var(--preview-paper) 15%);
+  --preview-raised-shadow:
+    inset 0 1px 0 var(--preview-raised-highlight),
+    inset 0 -1px 0 var(--preview-raised-underside),
+    0 1px 2px 0 color-mix(in srgb, var(--preview-text) 4.5%, transparent),
+    0 0 0 2px var(--preview-raised-groove),
+    0 0 0 2.5px var(--preview-raised-outer),
+    0 3px 6px -2px color-mix(in srgb, var(--preview-text) 5%, transparent);
+  background: color-mix(in srgb, var(--preview-sidebar) 97.5%, var(--preview-text) 2.5%);
+}
+.theme-preview[data-preview-surface='raised'] .theme-preview-scene[data-preview-mode='dark'] {
+  --preview-raised-edge: color-mix(in srgb, #ffffff 11%, var(--preview-paper));
+  --preview-raised-highlight: rgb(255 255 255 / 15%);
+  --preview-raised-underside: rgb(0 0 0 / 38%);
+  --preview-raised-groove: color-mix(in srgb, var(--preview-sidebar) 56%, #000000);
+  --preview-raised-outer: color-mix(in srgb, #ffffff 9%, var(--preview-sidebar));
+  --preview-raised-shadow:
+    inset 0 1px 0 var(--preview-raised-highlight),
+    inset 0 -1px 0 var(--preview-raised-underside),
+    0 1px 2px 0 rgb(0 0 0 / 52%),
+    0 0 0 2px var(--preview-raised-groove),
+    0 0 0 2.5px var(--preview-raised-outer),
+    0 4px 8px -2px rgb(0 0 0 / 50%);
+  background: color-mix(in srgb, var(--preview-sidebar) 70%, #000000 30%);
+}
+.theme-preview[data-preview-surface='raised'] .theme-preview-window {
+  border-color: var(--preview-raised-edge);
+  box-shadow: var(--preview-raised-shadow);
+}
+.theme-preview[data-preview-surface='raised'][data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
+.theme-preview[data-preview-surface='raised'][data-preview-structure='islands'] .theme-preview-main,
+.theme-preview[data-preview-surface='raised'][data-preview-structure='document'] .theme-preview-document {
+  border-color: var(--preview-raised-edge);
+  box-shadow: var(--preview-raised-shadow);
+}
+.theme-preview[data-preview-surface='raised'][data-preview-structure='continuous'] .theme-preview-main {
+  box-shadow: inset 1px 0 0 var(--preview-raised-edge), inset 0 1px 0 var(--preview-raised-highlight);
+}
 /* Frosted glass: the same two cards, milky and translucent over soft orbs of colour (see layout-themes.css). */
-.theme-preview[data-preview-surface] .theme-preview-scene {
+.theme-preview:is([data-preview-surface='frost'], [data-preview-surface='liquid']) .theme-preview-scene {
   --preview-syntax-blue: #2d5fb8;
   --preview-syntax-purple: #6a45b8;
   --preview-syntax-teal: #0b7480;
@@ -114,7 +158,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
     radial-gradient(36% 40% at 94% 4%, color-mix(in srgb, var(--preview-syntax-teal) 26%, transparent), transparent 70%),
     linear-gradient(170deg, color-mix(in srgb, var(--preview-sidebar) 70%, #ffffff), color-mix(in srgb, var(--preview-sidebar) 40%, #ffffff));
 }
-.theme-preview[data-preview-surface] .theme-preview-scene[data-preview-mode='dark'] {
+.theme-preview:is([data-preview-surface='frost'], [data-preview-surface='liquid']) .theme-preview-scene[data-preview-mode='dark'] {
   --preview-syntax-blue: #9cbcff;
   --preview-syntax-purple: #cbb5ff;
   --preview-glass: 60%;
@@ -126,20 +170,20 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
     radial-gradient(30% 40% at 82% 40%, color-mix(in srgb, var(--preview-syntax-purple) 16%, transparent), transparent 70%),
     linear-gradient(170deg, var(--preview-sidebar), color-mix(in srgb, var(--preview-sidebar) 86%, var(--preview-text) 14%));
 }
-.theme-preview[data-preview-surface] .theme-preview-window,
-.theme-preview[data-preview-surface] .theme-preview-toolbar,
-.theme-preview[data-preview-surface] .theme-preview-workspace { background: transparent; }
-.theme-preview[data-preview-surface] .theme-preview-window { border-color: transparent; box-shadow: none; }
+.theme-preview:is([data-preview-surface='frost'], [data-preview-surface='liquid']) .theme-preview-window,
+.theme-preview:is([data-preview-surface='frost'], [data-preview-surface='liquid']) .theme-preview-toolbar,
+.theme-preview:is([data-preview-surface='frost'], [data-preview-surface='liquid']) .theme-preview-workspace { background: transparent; }
+.theme-preview:is([data-preview-surface='frost'], [data-preview-surface='liquid']) .theme-preview-window { border-color: transparent; box-shadow: none; }
 .theme-preview[data-preview-surface='frost']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
 .theme-preview[data-preview-surface='liquid'][data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
-.theme-preview[data-preview-surface] .theme-preview-main {
+.theme-preview:is([data-preview-surface='frost'], [data-preview-surface='liquid']) .theme-preview-main {
   border-color: var(--preview-rim);
   border-radius: 6px;
   background: linear-gradient(160deg, var(--preview-sheen), transparent 55%), color-mix(in srgb, var(--preview-paper) var(--preview-glass), transparent);
   box-shadow: inset 0 1px 0 var(--preview-rim), 0 6px 12px -8px #1c305a4d;
   -webkit-backdrop-filter: blur(8px) saturate(170%) brightness(1.04); backdrop-filter: blur(8px) saturate(170%) brightness(1.04);
 }
-.theme-preview[data-preview-surface] .theme-preview-main { --preview-glass: 74%; }
+.theme-preview:is([data-preview-surface='frost'], [data-preview-surface='liquid']) .theme-preview-main { --preview-glass: 74%; }
 /* Liquid glass: clearer cards whose edges catch the light (see layout-themes.css). */
 .theme-preview[data-preview-surface='liquid'] .theme-preview-scene { --preview-glass: 10%; --preview-rim: #ffffff80; --preview-edge: #ffffff80; --preview-outline: #1c24301f; }
 .theme-preview[data-preview-surface='liquid'] .theme-preview-scene[data-preview-mode='dark'] { --preview-glass: 16%; --preview-rim: #ffffff42; --preview-edge: #ffffff1a; --preview-outline: #00000073; }

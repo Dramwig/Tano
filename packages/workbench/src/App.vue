@@ -2,7 +2,6 @@
 import { provide, proxyRefs, ref, shallowReactive, toRefs } from 'vue';
 import {
   ArrowDownToLine,
-  Blocks,
   Bot,
   CalendarDays,
   Check,
@@ -14,8 +13,8 @@ import {
   FolderPlus,
   GitFork,
   House,
+  Mail,
   PanelLeftOpen,
-  RefreshCw,
   Search,
   SquarePen,
   Trash2,
@@ -33,7 +32,9 @@ import HelpLauncher from './help/components/HelpLauncher.vue';
 import OpenWorkspaceIcon from './shell/components/OpenWorkspaceIcon.vue';
 import PluginExplorer from './plugins/components/PluginExplorer.vue';
 import PluginMenu from './plugins/components/PluginMenu.vue';
+import PluginStatusBar from './plugins/components/PluginStatusBar.vue';
 import PluginView from './plugins/components/PluginView.vue';
+import { isOverlaySidebarNavHidden } from './plugins/overlay-mapping';
 import ReferenceGraphPopover from './objects/components/ReferenceGraphPopover.vue';
 import SidebarNavigation from './shell/components/SidebarNavigation.vue';
 import SidebarUpdateButton from './shell/components/SidebarUpdateButton.vue';
@@ -53,7 +54,9 @@ import WindowScope from './windows/WindowScope.vue';
 import {
   CalendarView,
   InlineAssistantInput,
+  MailWorkspaceView,
   SidebarAssistant,
+  SidebarMail,
   SidebarPlan,
 } from './shell/workbench-async-components';
 import { workbenchContextKey } from './shell/workbench-context';
@@ -108,6 +111,9 @@ const {
   modal,
   settingsPanel,
   SETTINGS_TAB_ID,
+  MAIL_TAB_ID,
+  mailEnabled,
+  openMail,
   repositoryActionItems,
   showModal,
   activeId,
@@ -131,7 +137,6 @@ const {
   fileDragStart,
   finishTreeRename,
   noteCount,
-  showObjects,
   sidebarCalendarDate,
   openCalendar,
   showPlanEvent,
@@ -143,7 +148,6 @@ const {
   extensions,
   extensionActions,
   commandPaletteOpened,
-  openSystemSync,
   openImport,
   openTemplateLibrary,
   openSettings,
@@ -195,6 +199,32 @@ const {
 // The brand icon opens the self-drawn application menu on desktop; the web build keeps it as a home link.
 const appMenuOpen = ref(false);
 const brandButton = ref<HTMLElement | null>(null);
+function runPluginCommandById(commandId: string) {
+  const builtin = workbenchCommands.value.find((item) => item.id === commandId);
+  if (builtin) {
+    void builtin.run();
+    return;
+  }
+  const ws = workspace.value;
+  if (!ws) return;
+  const cmd = store.value.pluginCommands.find(
+    (item) => `${item.pluginId}:${item.id}` === commandId || item.id === commandId,
+  );
+  if (!cmd) return;
+  void store.value
+    .interactWithPlugin({
+      workspaceId: ws.id,
+      pluginId: cmd.pluginId,
+      instanceId: cmd.instanceId,
+      kind: 'command',
+      name: cmd.id,
+      payload: {
+        workspaceId: ws.id,
+        ...(store.value.active?.id ? { fileId: store.value.active.id } : {}),
+      },
+    })
+    .catch(() => {});
+}
 </script>
 
 <template>
@@ -320,7 +350,7 @@ const brandButton = ref<HTMLElement | null>(null);
         >
           <template v-if="navigationModule === 'workspace'">
             <button
-              v-if="isVisible('search')"
+              v-if="isVisible('search') && !isOverlaySidebarNavHidden('search', store.overlaySnapshot?.hiddenSidebarItems)"
               type="button"
               class="icon-button"
               :aria-label="t('查找文档')"
@@ -332,7 +362,7 @@ const brandButton = ref<HTMLElement | null>(null);
               <Search :size="16" :stroke-width="1.6" />
             </button>
             <button
-              v-if="store.workspaceSettings.showGraph && isVisible('graph')"
+              v-if="store.workspaceSettings.showGraph && isVisible('graph') && !isOverlaySidebarNavHidden('graph', store.overlaySnapshot?.hiddenSidebarItems)"
               type="button"
               class="icon-button"
               :aria-label="t('打开关系图谱')"
@@ -359,14 +389,18 @@ const brandButton = ref<HTMLElement | null>(null);
       </div>
       <SidebarNavigation
         v-if="navigationContext === 'home'"
-        v-slot="{ isVisible }"
+        v-slot="{ isVisible, orderStyle }"
         :items="sidebarNavigationItems"
         :active="sidebar"
+        :overlay-hidden-ids="store.overlaySnapshot?.hiddenSidebarItems"
+        :overlay-order="store.overlaySnapshot?.sidebarOrder"
         @open="closeButtonVisibilityMenus"
       >
         <button
+          v-if="isVisible('plan')"
           type="button"
           class="sidebar-navigation-button"
+          :style="orderStyle('plan')"
           :aria-label="t('计划')"
           :data-tooltip="t('计划')"
           aria-controls="sidebar-plan-panel"
@@ -378,6 +412,22 @@ const brandButton = ref<HTMLElement | null>(null);
             ><span>{{ t('计划') }}</span></span
           >
         </button>
+        <button
+          v-if="mailEnabled && isVisible(MAIL_TAB_ID)"
+          type="button"
+          class="sidebar-navigation-button"
+          :style="orderStyle(MAIL_TAB_ID)"
+          :aria-label="t('邮箱')"
+          :data-tooltip="t('邮箱')"
+          :aria-controls="`sidebar-${MAIL_TAB_ID}`"
+          :aria-pressed="sidebarView === MAIL_TAB_ID"
+          @click="openMail()"
+        >
+          <Mail :size="18" :stroke-width="1.6" aria-hidden="true" />
+          <span :aria-hidden="sidebarView !== MAIL_TAB_ID"
+            ><span>{{ t('邮箱') }}</span></span
+          >
+        </button>
         <template v-for="view in extensionViews" :key="view.id">
           <button
             v-if="
@@ -385,6 +435,7 @@ const brandButton = ref<HTMLElement | null>(null);
             "
             type="button"
             class="sidebar-navigation-button"
+            :style="orderStyle(view.id)"
             :aria-label="view.label"
             :data-tooltip="view.label"
             :aria-controls="`sidebar-${view.id}`"
@@ -528,6 +579,11 @@ const brandButton = ref<HTMLElement | null>(null);
         @select-date="openCalendar"
         @select-event="showPlanEvent"
       />
+      <SidebarMail
+        v-if="mailEnabled && sidebarView === MAIL_TAB_ID"
+        :id="`sidebar-${MAIL_TAB_ID}`"
+        @open-mail="openMail"
+      />
       <template v-for="view in extensionViews" :key="view.id">
         <div
           v-if="view.sidebar"
@@ -627,13 +683,6 @@ const brandButton = ref<HTMLElement | null>(null);
                   :actions="extensionActions"
                 />
                 <button
-                  v-if="workspace && native && !mobile && !store.isWeb"
-                  role="menuitem"
-                  @click="openSystemSync()"
-                >
-                  <RefreshCw :size="16" />{{ t('Git 与同步') }}
-                </button>
-                <button
                   v-if="workspace"
                   role="menuitem"
                   :disabled="workspace.readOnly || busy"
@@ -651,9 +700,6 @@ const brandButton = ref<HTMLElement | null>(null);
                   "
                 >
                   <Files :size="16" />{{ t('文档模板') }}
-                </button>
-                <button role="menuitem" @click="showObjects()">
-                  <Blocks :size="16" />{{ t('工作区对象') }}
                 </button>
                 <button role="menuitem" @click="openSettings('about')">
                   <CircleHelp :size="16" />{{ t('关于 Tano / 同页')
@@ -931,6 +977,7 @@ const brandButton = ref<HTMLElement | null>(null);
         </template>
         <template #default="{ pane }">
           <WorkbenchSettings v-if="pane.activeId === SETTINGS_TAB_ID" tabbed />
+          <MailWorkspaceView v-else-if="mailEnabled && pane.activeId === MAIL_TAB_ID" />
           <template v-for="view in extensionViews" :key="view.id"
             ><component
               v-if="pane.activeId === view.id"
@@ -953,6 +1000,7 @@ const brandButton = ref<HTMLElement | null>(null);
           @select-month="showCalendarMonth"
           @select-event="showPlanEvent"
         />
+        <MailWorkspaceView v-else-if="mailEnabled && homeContent === MAIL_TAB_ID" />
         <component
           v-else-if="homeExtension"
           :is="homeExtension.component"
@@ -960,6 +1008,17 @@ const brandButton = ref<HTMLElement | null>(null);
         />
       </template>
       <div v-else class="editor-empty"><div class="editor-empty-mark" aria-hidden="true" /></div>
+      <PluginStatusBar
+        v-if="workspace && !isAuxiliaryWindow"
+        :items="store.pluginStatusBarItems"
+        :workspace-id="workspace.id"
+        :active-document-id="store.active?.id"
+        :execute="store.interactWithPlugin"
+        :safe-mode="store.overlaySnapshot?.safeMode"
+        :pinned-commands="store.overlaySnapshot?.pinnedCommands"
+        @exit-safe-mode="store.setSafeMode(false)"
+        @run-pinned-command="runPluginCommandById"
+      />
       <Teleport :to="activeWindow.overlays"
         ><WindowScope :key="activeWindow.id" :context="activeWindow">
           <InlineAssistantInput

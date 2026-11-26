@@ -211,13 +211,6 @@
 .change-diff > .panel-hint {
   padding: 10px 14px;
 }
-.activity-diff-button {
-  display: block;
-  color: #5f5e5b;
-  font-size: 12px;
-  margin: 6px 0;
-  text-decoration: underline;
-}
 @media (max-width: 720px) {
   .agent-history {
     grid-template-columns: 155px minmax(0, 1fr);

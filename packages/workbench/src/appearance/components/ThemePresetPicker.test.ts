@@ -83,6 +83,9 @@ it('collapses into current, previous and more once the choices no longer fit', a
   expect(root.querySelector('.theme-preset-popover')).toBeNull();
   expect(rowIds()).toEqual(['builtin:islands', 'builtin:paper']);
   expect(pressed()).toEqual(['builtin:islands']);
+  controller.select({ workspaceId: 'one', kind: 'material', id: 'builtin:raised' });
+  await nextTick();
+  expect(root.querySelector('.theme-preset-quick-row [aria-pressed="true"] [data-preview-surface="raised"]')).not.toBeNull();
 });
 
 it('closes on Escape without closing settings and restores keyboard focus', async () => {

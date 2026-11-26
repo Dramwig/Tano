@@ -25,9 +25,12 @@ it('uses one filter/sort/relationship query for every layout, including numeric 
   expect(viewEngine.query([{ ...rows[0]!, archived: true }], defaultObjectViewQuery()).rows).toEqual([]);
 });
 it('validates schemas and rejects duplicate record IDs instead of creating duplicate views', () => {
-  for (const type of ['task', 'project', 'experiment']) expect(schemaRegistry.get(type)?.storage).toBe('record');
-  expect(() => schemaRegistry.validate('experiment', { metric: 'not a number' })).toThrow();
+  for (const type of ['task', 'event', 'person']) expect(schemaRegistry.get(type)?.storage).toBe('record');
+  for (const type of ['project', 'experiment']) {
+    expect(schemaRegistry.get(type)).toBeUndefined();
+    expect(() => schemaRegistry.validate(type, {})).toThrow('未启用');
+  }
   expect(() => schemaRegistry.validate('task', { due: '2026-02-30' })).toThrow();
-  expect(() => schemaRegistry.validate('project', { custom: { preserved: true } })).not.toThrow();
+  expect(() => schemaRegistry.validate('person', { custom: { preserved: true } })).not.toThrow();
   expect(() => viewEngine.query([rows[0]!, rows[0]!], defaultObjectViewQuery())).toThrow('重复');
 });

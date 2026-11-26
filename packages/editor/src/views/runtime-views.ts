@@ -1,9 +1,11 @@
 import { ownerWindow } from '../primitives/dom-realm';
 import { setSurfaceVisible, showSurface, removeSurface } from '../primitives/surface-motion';
-import { DOMSerializer } from '@milkdown/kit/prose/model';
+import { DOMSerializer, Fragment } from '@milkdown/kit/prose/model';
 import type { Mark, Node } from '@milkdown/kit/prose/model';
 import type { NodeViewConstructor, MarkViewConstructor } from '@milkdown/kit/prose/view';
 import { Selection, TextSelection } from '@milkdown/kit/prose/state';
+import { closeHistory } from '@milkdown/kit/prose/history';
+import type { ExternalCodeBlockRenderer } from '../plugins/external-decorations';
 import { createMermaidRenderer } from './mermaid-preview';
 import type { MermaidRenderer } from './mermaid-preview';
 import type { WorkspaceCapabilities } from '../core/runtime';
@@ -140,12 +142,113 @@ export function mermaidView(
   readonly: () => boolean,
   revealMarkdown: () => boolean,
   renderMermaid: MermaidRenderer = createMermaidRenderer(),
+  codeBlockRenderers?: () => readonly ExternalCodeBlockRenderer[],
 ): NodeViewConstructor {
   return (node, view, getPos) => {
     const window = ownerWindow(view.dom);
     const document = window.document;
 
-    const isDiagram = node.attrs.language?.toLowerCase() === 'mermaid' && enabled();
+    const langKey = String(node.attrs.language ?? '').trim().toLowerCase();
+    const isDiagram = langKey === 'mermaid' && enabled();
+    const matchRenderer = (lang: string) =>
+      lang ? codeBlockRenderers?.().find((item) => item.languages.includes(lang)) : undefined;
+    const customRenderer = !isDiagram ? matchRenderer(langKey) : undefined;
+    if (customRenderer) {
+      const { dom: codeDom, contentDOM } = DOMSerializer.renderSpec(document, node.type.spec.toDOM!(node));
+      const wrapper = document.createElement('section');
+      wrapper.className = 'tano-plugin-code-block';
+      wrapper.dataset.language = langKey;
+      const header = document.createElement('header');
+      header.className = 'tano-plugin-code-header';
+      header.contentEditable = 'false';
+      const meta = document.createElement('div');
+      meta.className = 'tano-plugin-code-meta';
+      const titleEl = document.createElement('strong');
+      titleEl.textContent = customRenderer.label;
+      const langBadge = document.createElement('span');
+      langBadge.className = 'tano-plugin-code-lang';
+      langBadge.textContent = langKey;
+      meta.append(titleEl, langBadge);
+      const toggleBtn = document.createElement('button');
+      toggleBtn.type = 'button';
+      toggleBtn.className = 'tano-plugin-code-toggle';
+      toggleBtn.textContent = '源码';
+      toggleBtn.setAttribute('aria-pressed', 'false');
+      header.append(meta, toggleBtn);
+      const sourceBox = document.createElement('div');
+      sourceBox.className = 'tano-plugin-code-source';
+      sourceBox.append(codeDom);
+      const preview = document.createElement('div');
+      preview.className = 'tano-plugin-code-preview';
+      preview.contentEditable = 'false';
+      preview.style.height = `${customRenderer.height ?? 260}px`;
+      wrapper.append(header, sourceBox, preview);
+      let currentNode = node;
+      let editingSource = false;
+      let destroyed = false;
+      const syncToggle = () => {
+        wrapper.classList.toggle('is-editing-source', editingSource);
+        toggleBtn.setAttribute('aria-pressed', String(editingSource));
+        toggleBtn.textContent = editingSource ? '隐藏源码' : '源码';
+      };
+      toggleBtn.onclick = (event) => {
+        event.preventDefault();
+        editingSource = !editingSource;
+        syncToggle();
+      };
+      const updateSource = (nextSource: string) => {
+        const pos = getPos();
+        if (pos === undefined || readonly() || nextSource === currentNode.textContent) return;
+        const content = nextSource ? view.state.schema.text(nextSource) : Fragment.empty;
+        const tr = closeHistory(view.state.tr.replaceWith(pos + 1, pos + currentNode.nodeSize - 1, content));
+        view.dispatch(tr);
+        view.dispatch(closeHistory(view.state.tr));
+      };
+      const mounted = customRenderer.mount(preview, {
+        language: langKey,
+        source: currentNode.textContent,
+        readonly: readonly(),
+        updateSource,
+      });
+      return {
+        dom: wrapper,
+        contentDOM,
+        update(next) {
+          const nextLang = String(next.attrs.language ?? '').trim().toLowerCase();
+          const nextRenderer = matchRenderer(nextLang);
+          const sameRenderer =
+            nextRenderer === customRenderer ||
+            (!!nextRenderer?.id && nextRenderer.id === customRenderer.id);
+          if (
+            next.type !== node.type ||
+            (nextLang === 'mermaid' && enabled()) ||
+            !sameRenderer
+          ) {
+            return false;
+          }
+          currentNode = next;
+          wrapper.dataset.language = nextLang;
+          langBadge.textContent = nextLang;
+          mounted.update({ language: nextLang, source: next.textContent, readonly: readonly() });
+          return true;
+        },
+        stopEvent: (event) => {
+          const target = event.target as globalThis.Node | null;
+          return !!target && (header.contains(target) || preview.contains(target));
+        },
+        ignoreMutation: (mutation) => {
+          const target = mutation.target;
+          if (mutation.type === 'attributes' && target === wrapper) return true;
+          return target === header || header.contains(target) || target === preview || preview.contains(target);
+        },
+        destroy() {
+          if (destroyed) return;
+          destroyed = true;
+          toggleBtn.onclick = null;
+          mounted.dispose();
+        },
+      };
+    }
     if (!isDiagram) {
       const { dom, contentDOM } = DOMSerializer.renderSpec(document, node.type.spec.toDOM!(node));
       const block = dom as HTMLElement;
@@ -338,7 +441,8 @@ export function mermaidView(
         dom,
         contentDOM,
         update(next) {
-          if (next.type !== node.type || (next.attrs.language?.toLowerCase() === 'mermaid' && enabled()))
+          const nextLang = String(next.attrs.language ?? '').trim().toLowerCase();
+          if (next.type !== node.type || (nextLang === 'mermaid' && enabled()) || !!matchRenderer(nextLang))
             return false;
           currentNode = next;
           submitted = String(next.attrs.language ?? '');

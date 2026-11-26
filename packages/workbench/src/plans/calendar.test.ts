@@ -1,5 +1,20 @@
 import { expect, it } from 'vitest';
-import { calendarEvents, calendarPeriodTitle, eventsOnDay, monthDays, shiftCalendarDate, visibleCalendarDays, weekDays, planningEvents, plannedEventsOnDay, unscheduledTasks, isEventCompleted } from './calendar';
+import {
+  calendarDayEntries,
+  calendarEvents,
+  calendarPeriodTitle,
+  eventsOnDay,
+  filterCalendarRecords,
+  isEventCompleted,
+  isEventOverdue,
+  monthDays,
+  plannedEventsOnDay,
+  planningEvents,
+  shiftCalendarDate,
+  unscheduledTasks,
+  visibleCalendarDays,
+  weekDays,
+} from './calendar';
 import type { ObjectRecord } from '../objects/workspace-objects';
 const event = (id: string, start: string, end: string, archived = false): ObjectRecord => ({
   path: `${id}.tano.json`,
@@ -82,4 +97,29 @@ it('keeps anniversaries on their local date without a time slot or completion st
   expect(plannedEventsOnDay(rows, new Date(2028, 2, 1))).toEqual([]);
   expect(calendarEvents(rows)).toEqual([]);
   expect(unscheduledTasks(rows)).toEqual([]);
+});
+
+it('projects due-only tasks, multi-day date ranges, overdue detection, and calendar filters', () => {
+  const make = (id: string, name: string, properties: Record<string, unknown>): ObjectRecord => ({
+    ...event(id, '', ''),
+    object: { ...event(id, '', '').object, name, properties },
+  });
+  const dueOnly = make('a00001', '提交评审', { checkable: true, completed: false, due: '2026-09-29' });
+  const multiDay = make('a00002', '季度冲刺', { checkable: false, date: '2026-09-28', endDate: '2026-09-30' });
+  const scheduledWithSameDue = make('a00003', '写报告', { checkable: true, completed: true, date: '2026-09-29', due: '2026-09-29' });
+  const rows = planningEvents([dueOnly, multiDay, scheduledWithSameDue]);
+
+  const entries = calendarDayEntries(rows, new Date(2026, 8, 29));
+  expect(entries.map((entry) => [entry.record.object.id, entry.kind])).toEqual([
+    ['a00001', 'due'],
+    ['a00002', 'all-day'],
+    ['a00003', 'all-day'],
+  ]);
+  expect(isEventOverdue(dueOnly, '2026-09-30')).toBe(true);
+  expect(isEventOverdue(dueOnly, '2026-09-29')).toBe(false);
+  expect(isEventOverdue(scheduledWithSameDue, '2026-09-30')).toBe(false);
+
+  expect(filterCalendarRecords(rows, { kind: 'task', showCompleted: false, query: '' }).map((r) => r.object.id)).toEqual(['a00001']);
+  expect(filterCalendarRecords(rows, { kind: 'event', showCompleted: true, query: '' }).map((r) => r.object.id)).toEqual(['a00002']);
+  expect(filterCalendarRecords(rows, { kind: 'all', showCompleted: true, query: '冲刺' }).map((r) => r.object.id)).toEqual(['a00002']);
 });

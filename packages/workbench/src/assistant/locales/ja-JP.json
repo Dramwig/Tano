@@ -46,7 +46,10 @@
     "propose_relation": "関係の作成を提案する",
     "propose_task_update": "タスクの更新を提案する",
     "propose_assignment": "担当者の更新を提案する",
-    "propose_relation_change": "関係の変更を提案する"
+    "propose_relation_change": "関係の変更を提案する",
+    "inspect_plugins": "有効なプラグインを確認",
+    "inspect_plugin_logs": "プラグインの実行ログを確認",
+    "open_plugin_view": "プラグインビューを開く"
   },
   "result": {
     "toolCall": "ツール呼び出し",

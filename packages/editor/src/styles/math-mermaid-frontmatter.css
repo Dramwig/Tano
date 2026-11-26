@@ -691,6 +691,13 @@
 .tano-reference-picker input {
   margin: 0 16px 10px;
   width: calc(100% - 32px);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: inherit;
+  padding: 8px;
+  font: inherit;
+  min-width: 0;
 }
 .tano-reference-picker-filters {
   display: flex;

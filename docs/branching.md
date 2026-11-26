@@ -43,8 +43,7 @@ to bypass the rejection. Delete only fully merged short-lived task branches.
 ## Releases and hotfixes
 
 Version changes happen on main only when preparing a release. Run the release-plan
-script locally, commit and push; the **Prepare release PR** workflows
-remain optional helpers for review. Tags must retain main ancestry and immutable
+script locally, commit and push. Tags must retain main ancestry and immutable
 source identity. Before creating a release tag or publishing a new version,
 complete [local release validation](local-validation.md) on the final candidate
 and record its exact SHA. Pushing main or a tag does not publish anything automatically.
@@ -69,12 +68,6 @@ git push origin dev
 Resolve conflicts on dev or a temporary branch based on dev; do not change main
 just to resolve a synchronization conflict. Review the resolved changes and
 commit/push normally; release validation applies when publishing a version.
-
-[Sync main into dev](../.github/workflows/sync-development.yml) is an optional
-manual helper that opens/reuses a main-to-dev PR. It does not merge, rewrite
-branches or deploy. It needs the release-automation App/token; ordinary local
-merge and push use the developer's existing Git authentication and need no App.
-If using this helper, choose **Create a merge commit**.
 
 ## GitHub protection
 

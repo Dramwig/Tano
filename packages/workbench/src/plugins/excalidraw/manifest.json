@@ -37,7 +37,18 @@
     {
       "id": "board",
       "label": "Excalidraw 白板",
-      "location": "tab"
+      "location": "tab",
+      "layout": "fill"
+    }
+  ],
+  "fileHandlers": [
+    {
+      "extensions": [
+        ".excalidraw.md"
+      ],
+      "mode": "editor",
+      "view": "board",
+      "command": "open"
     }
   ]
 }

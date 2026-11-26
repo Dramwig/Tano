@@ -36,7 +36,7 @@ const emit = defineEmits<{
   close: [];
   diff: [value: { title: string; before: string; after: string }];
 }>();
-const page = ref<Page>(props.initialPage ?? 'versions');
+const page = ref<Page>(props.historyView ? (props.initialPage ?? 'versions') : 'updates');
 const firstNav = ref<HTMLButtonElement>();
 const originalFocus = document.activeElement as HTMLElement | null;
 
@@ -84,6 +84,7 @@ onBeforeUnmount(() => originalFocus?.focus());
         </div>
         <nav>
           <button
+            v-if="historyView"
             ref="firstNav"
             :class="{ active: page === 'versions' }"
             :aria-current="page === 'versions' ? 'page' : undefined"
@@ -94,6 +95,7 @@ onBeforeUnmount(() => originalFocus?.focus());
             <small>Beta</small>
           </button>
           <button
+            :ref="(el) => { if (!historyView) firstNav = (el as HTMLButtonElement | null) ?? undefined; }"
             :class="{ active: page === 'updates' }"
             :aria-current="page === 'updates' ? 'page' : undefined"
             @click="page = 'updates'"

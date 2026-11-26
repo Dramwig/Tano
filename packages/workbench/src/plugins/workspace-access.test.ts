@@ -161,3 +161,68 @@ it('queries filtered object pages, remembers their hashes and emits property del
   expect((await call('objects.query', { options: { properties: { completed: false } } })).items).toEqual([]);
   await expect(call('relations.query')).rejects.toThrow('relations.read');
 });
+
+it('routes third-party fileHandlers for compound Markdown and attachments, while preserving raw Markdown escape hatch', async () => {
+  await adapter.create('board.canvas.md', '# Canvas\n');
+  await adapter.create('report.csv', 'a,b\n1,2\n');
+  store.workspace = await adapter.refresh();
+
+  const pkg: PluginPackage = {
+    ...documentOverviewPlugin,
+    manifest: {
+      ...documentOverviewPlugin.manifest,
+      version: '1.1.0',
+      permissions: ['documents.read', 'attachments.read', 'ui'],
+      commands: [
+        { id: 'open-canvas', label: '打开画布' },
+        { id: 'open-csv', label: '预览 CSV' },
+      ],
+      views: [
+        { id: 'canvas', label: '画布', location: 'tab', layout: 'fill' },
+        { id: 'csv-view', label: 'CSV 预览', location: 'tab', layout: 'fill' },
+      ],
+      fileHandlers: [
+        { extensions: ['.canvas.md'], mode: 'editor', view: 'canvas', command: 'open-canvas' },
+        { extensions: ['.csv'], mode: 'preview', view: 'csv-view', command: 'open-csv' },
+      ],
+    },
+  };
+  bridge.receive = undefined;
+  await store.changePlugin({ install: pkg.manifest, package: pkg }, store.workspace!.id);
+  const installed = store.installedPlugins.find(item => item.manifest.id === pkg.manifest.id)!;
+  await store.authorizePlugin(pkg.manifest.id, installed.rule!.integrity, store.workspace!.id);
+  await vi.waitFor(() => expect(bridge.receive).toBeDefined());
+  bridge.receive!({ type: 'ready' });
+  await call('commands.register', { id: 'open-canvas' });
+  await call('commands.register', { id: 'open-csv' });
+
+  const canvasFile = store.workspace!.files.find(file => file.path === 'board.canvas.md')!;
+  const csvFile = store.workspace!.files.find(file => file.path === 'report.csv')!;
+  expect(store.hasMarkdownFileHandler(canvasFile)).toBe(true);
+  expect(store.hasMarkdownFileHandler(store.workspace!.files.find(file => file.path === 'note.md')!)).toBe(false);
+
+  // Opening compound-suffix Markdown routes to plugin editor command
+  bridge.send.mockClear();
+  const openCanvasPromise = store.openFile(canvasFile);
+  await vi.waitFor(() => expect(bridge.send.mock.calls.some(([msg]) => msg.type === 'invoke' && msg.kind === 'command' && msg.name === 'open-canvas')).toBe(true));
+  const canvasInvoke = bridge.send.mock.calls.find(([msg]) => msg.type === 'invoke' && msg.name === 'open-canvas')![0];
+  expect(canvasInvoke.payload).toEqual({ workspaceId: store.workspace!.id, fileId: canvasFile.id });
+  bridge.receive!({ type: 'invoked', id: canvasInvoke.id });
+  await openCanvasPromise;
+  expect(store.documents.some(doc => doc.id === canvasFile.id)).toBe(false);
+
+  // Escape hatch opens the exact Markdown source directly in the editor
+  await store.openFile(canvasFile, { rawSource: true });
+  expect(store.documents.some(doc => doc.id === canvasFile.id)).toBe(true);
+  expect(store.activeId).toBe(canvasFile.id);
+
+  // Opening attachment routes to third-party preview view tab with viewAlreadyOpen: true
+  bridge.send.mockClear();
+  const openCsvPromise = store.openFile(csvFile);
+  await vi.waitFor(() => expect(bridge.send.mock.calls.some(([msg]) => msg.type === 'invoke' && msg.kind === 'command' && msg.name === 'open-csv')).toBe(true));
+  const csvInvoke = bridge.send.mock.calls.find(([msg]) => msg.type === 'invoke' && msg.name === 'open-csv')![0];
+  expect(csvInvoke.payload).toEqual({ workspaceId: store.workspace!.id, fileId: csvFile.id, viewAlreadyOpen: true });
+  expect(store.activeId).toBe('plugin:document-overview:csv-view');
+  bridge.receive!({ type: 'invoked', id: csvInvoke.id });
+  await openCsvPromise;
+});

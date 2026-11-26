@@ -2,6 +2,7 @@ import { appearanceVersion, themeTokenNames, themeColorTokens, themeRadiusTokens
 // Legacy v2 shapes may declare fonts. Accept the package, but keep typography
 // under the user's font settings rather than applying it with component shape.
 const componentShapeTokens = [...themeRadiusTokens, ...themeSpaceTokens, ...themeShadowTokens];
+export const THEME_STYLE_ID = 'tano-theme-tokens';
 export type ThemePreference = 'light' | 'dark' | 'system';
 export interface ResolvedTheme {
   version: typeof appearanceVersion;
@@ -14,12 +15,34 @@ export const themeChangedEvent = 'tano-theme-changed';
 let currentPreference: ThemePreference = 'system';
 type ColorAppearance = Pick<ColorThemeDefinition, 'light' | 'dark'> & { id?: string };
 let appearance: ColorAppearance = { light: {}, dark: {} };
-const applied = new Set<string>();
 let layout: LayoutThemeDefinition | undefined;
 let shape: ShapeThemeDefinition | undefined;
 
+function writeThemeStyle(resolved: ResolvedTheme['mode'], tokens: Record<string, string>): void {
+  if (typeof document === 'undefined' || !document.head) return;
+  const declarations = Object.entries(tokens)
+    .map(([key, value]) => `--${key}: ${value};`)
+    .join(' ');
+  let style = document.getElementById(THEME_STYLE_ID) as HTMLStyleElement | null;
+  if (!declarations) {
+    style?.remove();
+    return;
+  }
+  const css = `:root[data-theme="${resolved}"] { ${declarations} }`;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = THEME_STYLE_ID;
+    style.textContent = css;
+    const overlayStyle = document.head.querySelector('style[data-tano-overlay-style], #tano-workbench-overlay-style');
+    if (overlayStyle) document.head.insertBefore(style, overlayStyle);
+    else document.head.appendChild(style);
+  } else if (style.textContent !== css) {
+    style.textContent = css;
+  }
+}
+
 /** Only validated contract tokens reach the host. Empty maps restore built-in CSS. */
-/** `material` is a host-drawn card material (e.g. builtin:frost); undefined is the flat default. */
+/** `material` is a host-drawn card material (e.g. builtin:raised, builtin:frost, builtin:liquid); undefined is the flat default. */
 export function applyAppearance(value?: ColorAppearance, layoutValue?: LayoutThemeDefinition, shapeValue?: ShapeThemeDefinition, mode = currentPreference, material?: string): void {
   appearance = value ?? { light: {}, dark: {} };
   layout = layoutValue ? { ...layoutValue } : undefined;
@@ -47,8 +70,6 @@ export function resolvedTheme(): ResolvedTheme {
     shape: shape ? { ...shape, tokens: { ...shape.tokens } } : { id: 'builtin:tano', label: '标准圆角', tokens: {} },
     tokens: Object.fromEntries(themeTokenNames.map(key => [key, styles.getPropertyValue(`--${key}`).trim()]).filter(([, value]) => value)) };
 }
-
-
 
 export function parseThemePreference(value: unknown): ThemePreference {
   return value === 'light' || value === 'dark' ? value : 'system';
@@ -79,14 +100,9 @@ export function applyTheme(preference: ThemePreference): void {
   const resolved = resolveThemeMode(preference, appearance);
   document.documentElement.dataset.theme = resolved;
   document.documentElement.style.colorScheme = resolved;
-  for (const key of applied) document.documentElement.style.removeProperty(`--${key}`);
-  applied.clear();
   const colors = appearance[resolved] ?? {};
   const tokens = { ...Object.fromEntries(themeColorTokens.flatMap(key => colors[key] === undefined ? [] : [[key, colors[key]]])),
     ...Object.fromEntries(componentShapeTokens.flatMap(key => shape?.tokens[key] === undefined ? [] : [[key, shape.tokens[key]]])) };
-  for (const [key, value] of Object.entries(tokens)) {
-    document.documentElement.style.setProperty(`--${key}`, value);
-    applied.add(key);
-  }
+  writeThemeStyle(resolved, tokens);
   window.dispatchEvent(new Event(themeChangedEvent));
 }

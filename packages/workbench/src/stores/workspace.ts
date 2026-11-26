@@ -21,7 +21,7 @@ import {
 } from '@tano/protocol';
 import { createWorkspaceAssistantBridge } from '../assistant/workspace-bridge';
 import { createDataTableController } from '../data-tables/data-table-controller';
-import { isTableTab, TABLES_TAB_ID, tableFileId, tableTabId } from '../data-tables/data-tables';
+import { isTableTab, tableFileId, tableTabId } from '../data-tables/data-tables';
 import { GRAPH_TAB_ID } from '../documents/document-graph';
 import { useDocumentIndex } from '../documents/document-index';
 import { createDocumentSession, documentDirty as dirty, type OpenDocument } from '../documents/document-session';
@@ -30,7 +30,11 @@ import { recordHelpCompleted } from '../help/help-checklist';
 import { createHelpEditQueue } from '../help/help-edit-queue';
 import { optimisticFiles } from '../files/optimistic-files';
 import { layoutPanes, restoreLayout } from '../shell/pane-layout';
-import type { PluginWorkbenchView } from '../plugins/workbench';
+import {
+  resolvePluginFileHandler,
+  type PluginWorkbenchFileHandler,
+  type PluginWorkbenchView,
+} from '../plugins/workbench';
 import { useWorkbenchRuntime, type WorkbenchViewTab } from '../runtime';
 import { SessionJournal } from '../shell/session-journal';
 import {
@@ -42,7 +46,6 @@ import {
 import { WorkspaceLifecycle } from '../workspace/workspace-lifecycle';
 import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../plugins/workspace-plugins';
 import { readStartupWorkspace, rememberStartupWorkspace } from '../workspace/workspace-startup';
-import type { WorkspaceViewRecord } from '../workspace/workspace-views';
 import { addWorkspaceWelcome, workspaceWelcomePath } from '../workspace/workspace-welcome';
 import { createWorkspaceFileOps } from './workspace-file-ops';
 import { createWorkspaceKnowledge } from './workspace-knowledge';
@@ -60,7 +63,6 @@ export interface DocumentTab {
   plugins: boolean;
   calendar: boolean;
   view?: WorkbenchViewTab;
-  workspaceView?: WorkspaceViewRecord;
   directory?: { path: string; name: string; missing: boolean };
   pluginView?: PluginWorkbenchView;
   pluginDetail?: PluginManifest;
@@ -114,7 +116,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     tables: false,
     plugins: false,
     objects: false,
-    views: false,
     relations: false,
     capabilities: false,
   });
@@ -247,7 +248,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     report,
   });
 
-  // 2. Knowledge (objects, relations, workspace views/databases, metadata, templates, repeats, references)
+  // 2. Knowledge (objects, relations, metadata, templates, repeats, references)
   const knowledge = createWorkspaceKnowledge({
     adapter,
     workspace,
@@ -262,7 +263,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     loadWorkspacePart,
     refreshPlugins: (current) => plugins.refreshPlugins(current),
     disposePluginExecutor: () => plugins.pluginExecutor.dispose(),
-    openWorkspaceView: (id, options) => openWorkspaceView(id, options),
   });
 
   // 3. Plugins state (plugin runtime, host/executor/developer, pluginCall, OAuth/connections/packages)
@@ -301,7 +301,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     documents,
     documentIndex,
     dataTables,
-    workspaceViews: knowledge.workspaceViews,
     installedPlugins,
     pluginViews: plugins.pluginViews,
     activePluginSidebar,
@@ -842,11 +841,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       ...new Set([
         ...requested.filter(
           (id) =>
-            id !== TABLES_TAB_ID &&
-            (planned.has(id) ||
-              tabsLayout.isUtilityTab(id) ||
-              tabsLayout.isWorkspaceViewTab(id) ||
-              id.startsWith('plugin:')),
+            planned.has(id) ||
+            tabsLayout.isUtilityTab(id) ||
+            id.startsWith('plugin:'),
         ),
         ...planned,
       ]),
@@ -918,7 +915,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     ]);
     // Resolve legacy table identities only after table records are available.
     for (const id of saved.tabs ?? [])
-      if (isTableTab(id) && id !== TABLES_TAB_ID)
+      if (isTableTab(id))
         remapped.set(id, tableTabId(dataTableFileId(tableFileId(id))));
     const byId = new Map(documents.value.map((doc) => [doc.id, doc]));
     documents.value = pendingDocs
@@ -928,8 +925,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       ?.map((id) => remapped.get(id) ?? id)
       .filter(
         (id) =>
-          id !== TABLES_TAB_ID &&
-          (tabsLayout.isUtilityTab(id) || documents.value.some((doc) => doc.id === id)),
+          tabsLayout.isUtilityTab(id) || documents.value.some((doc) => doc.id === id),
       );
     tabIds.value = [...new Set([...(restored ?? []), ...documents.value.map((doc) => doc.id)])];
     const currentActive = remapped.get(activeId.value) ?? activeId.value;
@@ -1077,22 +1073,26 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       recordHelpCompleted('folder-home');
   }
 
-  /** The bundled drawing plugin handles its own Markdown; disabled plugins keep source access. */
-  function drawingPluginHandles(file: FileEntry) {
-    return (
-      file.kind === 'file' &&
-      /\.excalidraw\.md$/i.test(file.path) &&
-      !!workspace.value &&
-      plugins.pluginRuntime.value.some(
-        (plugin) => plugin.id === 'excalidraw' && plugin.status === 'running',
-      )
-    );
+  /** Running plugins that declare fileHandlers can handle compound-suffix Markdown or attachments. */
+  function fileEditorHandler(file: FileEntry) {
+    if (file.kind !== 'file' || !workspace.value || !isMarkdown(file.path)) return undefined;
+    return resolvePluginFileHandler(file.path, 'editor', plugins.pluginFileHandlers.value);
   }
-  async function openDrawingPlugin(file: FileEntry) {
+  function filePreviewHandler(file: FileEntry) {
+    if (
+      file.kind !== 'file' ||
+      !workspace.value ||
+      isMarkdown(file.path) ||
+      isDataTableFilePath(file.path)
+    )
+      return undefined;
+    return resolvePluginFileHandler(file.path, 'preview', plugins.pluginFileHandlers.value);
+  }
+  async function openFileWithEditorHandler(file: FileEntry, handler: PluginWorkbenchFileHandler) {
     const currentWorkspace = workspace.value;
     if (!currentWorkspace) return false;
     try {
-      await plugins.pluginExecutor.invoke('excalidraw', 'command', 'open', {
+      await plugins.pluginExecutor.invoke(handler.pluginId, 'command', handler.command, {
         workspaceId: currentWorkspace.id,
         fileId: file.id,
       });
@@ -1102,17 +1102,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return false;
     }
   }
-  function officePluginId(file: FileEntry) {
-    return /\.pptx?$/i.test(file.path)
-      ? 'presentation-preview'
-      : /\.docx?$/i.test(file.path)
-        ? 'word-preview'
-        : undefined;
+  function hasMarkdownFileHandler(file: FileEntry) {
+    return !!fileEditorHandler(file);
   }
 
-  async function openFile(file: FileEntry, options?: { historyIndex?: number }) {
-    if (file.kind === 'file' && officePluginId(file)) return openAttachment(file, options);
-    if (drawingPluginHandles(file) && (await openDrawingPlugin(file))) return;
+  async function openFile(
+    file: FileEntry,
+    options?: { historyIndex?: number; rawSource?: boolean },
+  ) {
+    if (filePreviewHandler(file)) return openAttachment(file, options);
+    const editorHandler = options?.rawSource ? undefined : fileEditorHandler(file);
+    if (editorHandler && (await openFileWithEditorHandler(file, editorHandler))) return;
     const creationAtRequest = fileOps.getCreationRevision();
     const request = ++fileOpenRevision;
     const paneId = tabsLayout.activePaneId.value;
@@ -1159,10 +1159,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  async function openFileInNewTab(file: FileEntry) {
+  async function openFileInNewTab(file: FileEntry, options?: { rawSource?: boolean }) {
     try {
-      if (file.kind === 'file' && officePluginId(file)) return openAttachmentInNewTab(file);
-      if (drawingPluginHandles(file) && (await openDrawingPlugin(file))) return;
+      if (filePreviewHandler(file)) return openAttachmentInNewTab(file);
+      const editorHandler = options?.rawSource ? undefined : fileEditorHandler(file);
+      if (editorHandler && (await openFileWithEditorHandler(file, editorHandler))) return;
       await serial(async () => {
         if (file.kind === 'file' && isDataTableFilePath(file.path)) {
           const target = tableTabId(dataTableFileId(file.id));
@@ -1211,17 +1212,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const activation = tabsLayout.getActivationRevision();
     const current = () => request === fileOpenRevision && !busy.value && !disposed;
     const target = `attachment:${file.id}`;
-    const pluginId = officePluginId(file);
-    const viewTab =
-      pluginId === 'word-preview' ? tabsLayout.wordPreviewTab : tabsLayout.presentationPreviewTab;
+    const handler = filePreviewHandler(file);
     const usePlugin =
-      !!pluginId &&
-      plugins.pluginRuntime.value.some(
-        (plugin) => plugin.id === pluginId && plugin.status === 'running',
-      ) &&
-      plugins.pluginViews.value.some((view) => view.key === viewTab);
-    const id = usePlugin ? viewTab : target;
-    // The bundled viewers share a tab per plugin, while history follows individual files.
+      !!handler && plugins.pluginViews.value.some((view) => view.key === handler.viewKey);
+    const id = usePlugin && handler ? handler.viewKey : target;
+    // Preview plugins share one tab per view while navigation history follows individual files.
     const opened = await openPageTab(id, {
       ...options,
       target,
@@ -1230,6 +1225,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (
       !opened ||
       !usePlugin ||
+      !handler ||
       !current() ||
       activeId.value !== id ||
       workspace.value?.id !== workspaceId
@@ -1237,7 +1233,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return;
     const previewActivation = tabsLayout.getActivationRevision();
     try {
-      await plugins.pluginExecutor.invoke(pluginId, 'command', 'open', {
+      await plugins.pluginExecutor.invoke(handler.pluginId, 'command', handler.command, {
         workspaceId,
         fileId: file.id,
         viewAlreadyOpen: true,
@@ -1365,14 +1361,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     );
     if (path && !entry) return;
     await openPageTab(path ? `directory:${entry!.id}` : 'directory:/', options);
-  }
-  async function openWorkspaceView(
-    id: string,
-    options?: { newTab?: boolean; historyIndex?: number },
-  ) {
-    if (!knowledge.workspaceViews.value.some((record) => record.view.id === id))
-      throw new Error('工作区视图已不存在，请刷新后重试');
-    await openPageTab(tabsLayout.workspaceViewTabId(id), options);
   }
   async function openPluginDetail(
     pluginId: string,
@@ -1667,7 +1655,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     resizeSplit: tabsLayout.resizeSplit,
     installedPlugins,
     installedPluginWorkspace: plugins.installedPluginWorkspace,
+    personalCodePluginPolicy: plugins.personalCodePluginPolicy,
     pluginRuntime: plugins.pluginRuntime,
+    pluginHostEnvironment: plugins.pluginHostEnvironment,
+    userPluginIntegrities: plugins.userPluginIntegrities,
     canManagePlugins: plugins.canManagePlugins,
     canManageSettings: policy.canManageSettings,
     authorizePlugin: plugins.pluginServices.authorizePlugin,
@@ -1698,7 +1689,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     relations: knowledge.relations,
     relationError: knowledge.relationError,
     relationDefinitions: knowledge.relationDefinitions,
-    relationIndex: knowledge.relationIndex,
     createRelation: knowledge.createRelation,
     removeRelation: knowledge.removeRelation,
     setRelationSource: knowledge.setRelationSource,
@@ -1728,12 +1718,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     fileRegistry,
     readFileMetadata: knowledge.readFileMetadata,
     updateFileMetadata: knowledge.updateFileMetadata,
-    createFileDatabase: knowledge.createFileDatabase,
-    saveFileDatabase: knowledge.saveFileDatabase,
-    createObjectDatabase: knowledge.createObjectDatabase,
     deleteObject: knowledge.deleteObject,
-    workspaceViews: knowledge.workspaceViews,
-    workspaceViewErrors: knowledge.workspaceViewErrors,
     displayPath,
     fileMutationPending: fileMutations.pending,
     documents,
@@ -1774,18 +1759,36 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openFilesInNewTabsAt,
     createBlankTab: tabsLayout.createBlankTab,
     openGraphTab,
-    openWorkspaceView,
     openPluginsTab,
     openPluginDetail,
     openCalendarTab: tabsLayout.openCalendarTab,
     registerViews: tabsLayout.registerViews,
     pluginViews: plugins.pluginViews,
     pluginCommands: plugins.pluginCommands,
+    pluginFileHandlers: plugins.pluginFileHandlers,
+    pluginSlashCommands: plugins.pluginSlashCommands,
+    pluginCodeBlockRenderers: plugins.pluginCodeBlockRenderers,
+    pluginDecorationsFor: plugins.pluginDecorationsFor,
+    pluginStatusBarItems: plugins.pluginStatusBarItems,
+    hasMarkdownFileHandler,
     activePluginSidebar,
+    activeDocumentPluginSidebar: plugins.activeDocumentPluginSidebar,
+    activePluginDialog: plugins.activePluginDialog,
+    resolvePluginDialog: plugins.resolvePluginDialog,
+    pluginToasts: plugins.pluginToasts,
+    dismissPluginToast: plugins.dismissPluginToast,
     pluginSettingsRequest: plugins.pluginSettingsRequest,
     pluginSettingsPages: plugins.pluginSettingsPages,
     openPluginView: plugins.openPluginView,
     interactWithPlugin: plugins.interactWithPlugin,
+    pluginContextProviders: plugins.pluginContextProviders,
+    invokePluginAssistantTool: plugins.invokePluginAssistantTool,
+    queryPluginAssistantContext: plugins.queryPluginAssistantContext,
+    setPluginAiRunner: plugins.setPluginAiRunner,
+    overlaySnapshot: plugins.overlaySnapshot,
+    setSafeMode: plugins.setSafeMode,
+    pluginHomeTabView: plugins.pluginHomeTabView,
+    pluginNewTabView: plugins.pluginNewTabView,
     openViewTab: tabsLayout.openViewTab,
     readGraphDocument,
     assistantSnapshot: assistantBridge.assistantSnapshot,

@@ -8,7 +8,7 @@ use crate::{personal_plans, printing, updates};
 
 #[cfg(desktop)]
 use crate::{
-    assistant, import_connections, plan_connections, plugin_connections, plugin_native,
+    assistant, import_connections, mail, plan_connections, plugin_connections, plugin_native,
     plugin_oauth, workspace_git, workspace_sync,
 };
 
@@ -64,6 +64,31 @@ fn desktop_handler(command: &str) -> Option<InvokeHandler> {
             assistant::assistant_session_delete,
             assistant::assistant_external_sessions,
             assistant::assistant_external_result,
+        ]);
+    }
+    if command.starts_with("mail_") {
+        return Some(tauri::generate_handler![
+            mail::commands::mail_presets_list,
+            mail::commands::mail_accounts_list,
+            mail::commands::mail_account_test,
+            mail::commands::mail_account_save,
+            mail::commands::mail_account_remove,
+            mail::commands::mail_folders_list,
+            mail::commands::mail_sync_account,
+            mail::commands::mail_sync_folder,
+            mail::commands::mail_messages_list,
+            mail::commands::mail_messages_search,
+            mail::commands::mail_message_get,
+            mail::commands::mail_message_flags_update,
+            mail::commands::mail_message_move,
+            mail::commands::mail_invite_update,
+            mail::commands::mail_attachment_download,
+            mail::commands::mail_send,
+            mail::commands::mail_cache_stats,
+            mail::commands::mail_cache_clear,
+            mail::commands::mail_drafts_list,
+            mail::commands::mail_draft_save,
+            mail::commands::mail_draft_delete,
         ]);
     }
     if matches!(

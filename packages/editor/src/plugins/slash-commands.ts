@@ -3,6 +3,7 @@ import { ownerWindow } from '../primitives/dom-realm';
 import { isNode } from '../primitives/dom-realm';
 import { setSurfaceVisible } from '../primitives/surface-motion';
 import { h, render, type Component } from 'vue';
+import { Puzzle } from 'lucide-vue-next';
 import { blockIcons, headingIcons, customCalloutIcon, blockIconStrokeWidth } from '../core/block-icons';
 import { Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState, Transaction } from '@milkdown/kit/prose/state';
@@ -15,6 +16,14 @@ import { safeResourceUrl } from '../markdown/enhanced-markdown';
 import { referencePickerKey } from '../core/reference-picker';
 import { isCalloutHeader } from '../markdown/callout';
 
+export interface ExternalSlashCommand {
+  id: string;
+  label: string;
+  marker?: string;
+  keywords?: string;
+  description?: string;
+  execute: () => void;
+}
 interface SlashItem {
   command: string;
   label: string;
@@ -23,6 +32,7 @@ interface SlashItem {
   value?: string;
   keywords: string;
   icon: Component;
+  external?: ExternalSlashCommand;
 }
 export type SlashTranslate = (message: string, values?: readonly unknown[]) => string;
 const defaultTranslate: SlashTranslate = (message, values = []) =>
@@ -30,6 +40,7 @@ const defaultTranslate: SlashTranslate = (message, values = []) =>
     Number(index) < values.length ? String(values[Number(index)]) : token);
 
 function itemLabel(item: SlashItem, translate: SlashTranslate) {
+  if (item.external) return item.label;
   return item.command === 'heading'
     ? translate('{0} 级标题', [item.value])
     : translate(item.label);
@@ -129,15 +140,33 @@ export function slashItems(
   levels?: readonly number[],
   features?: DocumentFeatures,
   translate: SlashTranslate = defaultTranslate,
+  extraItems?: readonly ExternalSlashCommand[],
 ) {
   const words = query.trim().toLowerCase().split(/\s+/);
-  return items.filter(
+  const builtin = items.filter(
     (item) =>
       commandEnabled(item.command, levels, features) &&
       words.every((word) =>
         `${itemLabel(item, translate)} ${item.englishLabel} ${item.label} ${item.keywords}`.toLowerCase().includes(word),
       ),
   );
+  if (!extraItems?.length) return builtin;
+  const external: SlashItem[] = extraItems
+    .map((extra): SlashItem => ({
+      command: `external:${extra.id}`,
+      label: extra.label,
+      englishLabel: extra.id,
+      marker: extra.marker ?? '',
+      keywords: `${extra.id} ${extra.keywords ?? ''} ${extra.description ?? ''}`,
+      icon: Puzzle,
+      external: extra,
+    }))
+    .filter((item) =>
+      words.every((word) =>
+        `${item.label} ${item.englishLabel} ${item.marker} ${item.keywords}`.toLowerCase().includes(word),
+      ),
+    );
+  return [...builtin, ...external];
 }
 
 /** Delete the query and convert only its own text block in one undoable transaction. */
@@ -189,6 +218,7 @@ export function slashCommands(options: {
   features?: () => DocumentFeatures;
   aiShortcut?: () => boolean;
   translate?: SlashTranslate;
+  extraItems?: () => readonly ExternalSlashCommand[];
 }) {
   const translate = options.translate ?? defaultTranslate;
   const session = new PluginKey<ReturnType<typeof slashQuery>>('tano-slash-session');
@@ -426,7 +456,21 @@ export function slashCommands(options: {
       }
       function execute(item: SlashItem, value?: string) {
         if (!session.getState(view.state)) return;
-        if (options.readonly() || !commandEnabled(item.command, options.levels())) {
+        if (item.external) {
+          if (options.readonly()) {
+            close();
+            return;
+          }
+          const query = slashQuery(view.state);
+          if (!query) return;
+          const tr = closeHistory(view.state.tr.delete(query.from, query.to)).scrollIntoView();
+          close();
+          view.dispatch(tr);
+          view.focus();
+          item.external.execute();
+          return;
+        }
+        if (options.readonly() || !commandEnabled(item.command, options.levels(), options.features?.())) {
           close();
           return;
         }
@@ -501,7 +545,7 @@ export function slashCommands(options: {
           if (
             formState?.doc !== view.state.doc ||
             !formState.selection.eq(view.state.selection) ||
-            !commandEnabled(formItem.command, options.levels())
+            !commandEnabled(formItem.command, options.levels(), options.features?.())
           )
             close();
           return;
@@ -515,7 +559,7 @@ export function slashCommands(options: {
           close();
           return;
         }
-        matches = slashItems(query.query, options.levels(), options.features?.(), translate);
+        matches = slashItems(query.query, options.levels(), options.features?.(), translate, options.extraItems?.());
         menu.setAttribute('aria-label', translate('切换块类型'));
         list.setAttribute('aria-label', translate('块类型搜索结果'));
         const queryLength = Array.from(query.query).length;
@@ -529,7 +573,7 @@ export function slashCommands(options: {
               // Count committed characters even when an IME/paste inserts them
               // in one transaction, rather than counting preedit updates.
               unmatchedLength = !changed ? queryLength : characters.findIndex((_, index) => !slashItems(
-                characters.slice(0, index + 1).join(''), options.levels(), options.features?.(), translate,
+                characters.slice(0, index + 1).join(''), options.levels(), options.features?.(), translate, options.extraItems?.(),
               ).length) + 1;
             }
             if (queryLength - unmatchedLength >= 2) {

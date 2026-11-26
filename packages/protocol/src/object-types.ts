@@ -1,6 +1,7 @@
 /** Declarative object types shared by the editor, storage validation and future plugin hosts. */
 import { parseTaskReview } from './task-review';
 import { validateTaskRepeat } from './task-repeat';
+import { isActionableTask, isPlanCompleted } from './plan-item';
 export interface ObjectField {
   key: string;
   label: string;
@@ -15,32 +16,18 @@ export interface ObjectTypeDefinition {
   storage: 'record' | 'resource';
   /** Retained for existing files and references; not offered for new objects. */
   legacy?: boolean;
-  /** Compatibility metadata only; excluded from available types and all mutations. */
-  retired?: boolean;
   plugin?: string;
   fields: readonly ObjectField[];
 }
 export const coreObjectTypes: readonly ObjectTypeDefinition[] = [
   {
-    type: 'task', label: '任务', level: 2, category: 'core', storage: 'record', fields: [
+    type: 'task', label: '任务', level: 2, category: 'core', storage: 'record', legacy: true, fields: [
       { key: 'status', label: '状态', type: 'text' },
       { key: 'due', label: '截止日期', type: 'text' },
       { key: 'priority', label: '优先级', type: 'number' },
       { key: 'completed', label: '已完成', type: 'boolean' },
     ],
   },
-  { type: 'project', label: '项目', level: 2, category: 'core', storage: 'record', fields: [
-    { key: 'status', label: '状态', type: 'text' },
-    { key: 'goal', label: '项目目标', type: 'text' },
-    { key: 'due', label: '截止日期', type: 'text' },
-  ] },
-  { type: 'experiment', label: '实验', level: 2, category: 'core', storage: 'record', fields: [
-    { key: 'status', label: '状态', type: 'text' },
-    { key: 'hypothesis', label: '假设', type: 'text' },
-    { key: 'result', label: '实验结果', type: 'text' },
-    { key: 'metric', label: '指标', type: 'number' },
-    { key: 'runAt', label: '运行时间', type: 'datetime' },
-  ] },
   { type: 'person', label: '人物', level: 2, category: 'core', storage: 'record', fields: [] },
   { type: 'document', label: '文档', level: 2, category: 'core', storage: 'resource', fields: [] },
   {
@@ -52,10 +39,16 @@ export const coreObjectTypes: readonly ObjectTypeDefinition[] = [
     fields: [
       { key: 'checkable', label: '需要完成', type: 'boolean' },
       { key: 'completed', label: '已完成', type: 'boolean' },
+      { key: 'status', label: '状态', type: 'text' },
+      { key: 'priority', label: '优先级', type: 'number' },
       { key: 'due', label: '截止日期', type: 'text' },
       { key: 'date', label: '计划日期（不指定时间）', type: 'text' },
+      { key: 'endDate', label: '结束日期', type: 'text' },
       { key: 'start', label: '开始时间', type: 'datetime' },
       { key: 'end', label: '结束时间', type: 'datetime' },
+      { key: 'allDay', label: '全天', type: 'boolean' },
+      { key: 'timezone', label: '时区', type: 'text' },
+      { key: 'location', label: '地点', type: 'text' },
     ],
   },
   { type: 'asset', label: '资产', level: 2, category: 'core', storage: 'resource', fields: [] },
@@ -180,13 +173,11 @@ export function validateObjectProperties(
   validateTaskRepeat(type, properties);
   if (properties.deliveryReview !== undefined) {
     const review = parseTaskReview(properties.deliveryReview);
-    if (!(type === 'task' || (type === 'event' && properties.checkable === true))) throw new Error('只有任务可以提交交付审阅');
-    if ((properties.completed === true || type === 'task' && ['done', 'completed'].includes(String(properties.status))) && review.state !== 'approved') throw new Error('此任务需由指定审阅人确认通过后完成');
+    if (!isActionableTask({ type, properties })) throw new Error('只有任务可以提交交付审阅');
+    if (isPlanCompleted({ type, properties }) && review.state !== 'approved') throw new Error('此任务需由指定审阅人确认通过后完成');
   }
   const definition = registry.get(type);
   if (!definition) throw new Error(`类型 ${type} 未启用，请先注册对应领域插件；原文件已保留`);
-  if (definition.retired)
-    throw new Error('项目对象已停用；请使用工作区文件夹和 Markdown 文档组织项目，旧记录只读保留');
   if (definition.storage !== 'record')
     throw new Error('文档和资产来自工作区文件，不创建重复内容对象');
   for (const field of definition.fields) {
@@ -208,17 +199,36 @@ export function validateObjectProperties(
         `${field.label}格式无效${field.type === 'datetime' ? '，请使用带时区的日期时间' : ''}`,
       );
   }
-  if (['task', 'project'].includes(type) && properties.due !== undefined && properties.due !== '' && !validEventDate(properties.due)) throw new Error('截止日期格式无效，请使用 YYYY-MM-DD');
+  if (type === 'task' && properties.due !== undefined && properties.due !== '' && !validEventDate(properties.due)) throw new Error('截止日期格式无效，请使用 YYYY-MM-DD');
   if (type === 'event') {
     const hasStart = properties.start !== undefined && properties.start !== '';
     const hasEnd = properties.end !== undefined && properties.end !== '';
     const hasDate = properties.date !== undefined && properties.date !== '';
+    const hasEndDate = properties.endDate !== undefined && properties.endDate !== '';
     if (hasStart !== hasEnd) throw new Error('开始时间和结束时间需要一起填写');
     if (hasStart && Date.parse(String(properties.end)) < Date.parse(String(properties.start)))
       throw new Error('结束时间不能早于开始时间');
     if (hasDate && !validEventDate(properties.date)) throw new Error('计划日期格式无效');
+    if (hasEndDate) {
+      if (!hasDate) throw new Error('结束日期需要与计划日期一起填写');
+      if (!validEventDate(properties.endDate)) throw new Error('结束日期格式无效');
+      if (String(properties.endDate) < String(properties.date)) throw new Error('结束日期不能早于计划日期');
+    }
     if (properties.due !== undefined && properties.due !== '' && !validEventDate(properties.due)) throw new Error('截止日期格式无效，请使用 YYYY-MM-DD');
     if (hasDate && hasStart) throw new Error('计划日期与具体时间段只能选择一种安排方式');
+    if (properties.timezone !== undefined && properties.timezone !== '' && (typeof properties.timezone !== 'string' || properties.timezone.length > 100))
+      throw new Error('时区格式无效');
+    if (properties.location !== undefined && properties.location !== '' && (typeof properties.location !== 'string' || properties.location.length > 500))
+      throw new Error('地点格式无效');
+    if (properties.reminders !== undefined) {
+      if (
+        !Array.isArray(properties.reminders) ||
+        properties.reminders.length > 5 ||
+        !properties.reminders.every((item) => typeof item === 'number' && Number.isInteger(item) && item >= 0 && item <= 43200)
+      ) {
+        throw new Error('提醒设置无效');
+      }
+    }
     if (properties.completed === true && properties.checkable !== true)
       throw new Error('只有需要完成的事件可以标记为已完成');
   }

@@ -37,7 +37,6 @@ export function useWorkbenchOutline(deps: WorkbenchOutlineDeps) {
   } = deps;
 
   const hoverOutline = window.matchMedia('(hover: hover)').matches;
-  const panel = ref<'outline' | 'activity'>('outline');
   const showOutline = ref(readPreference('showOutline', true));
   const touchOutlineOpen = ref(false);
   watch(activeId, () => {
@@ -155,7 +154,6 @@ export function useWorkbenchOutline(deps: WorkbenchOutlineDeps) {
   function releaseOutlinePointerFocus(event: PointerEvent) {
     const { document } = activeWindow.value;
     if (
-      panel.value !== 'outline' ||
       touchLayout.value ||
       !hoverOutline ||
       outlinePinned.value ||
@@ -180,7 +178,6 @@ export function useWorkbenchOutline(deps: WorkbenchOutlineDeps) {
 
   function openOutlineContextMenu(event: MouseEvent) {
     const { window: activeWin } = activeWindow.value;
-    if (panel.value !== 'outline') return;
     event.preventDefault();
     closeOtherContextMenus();
     if (hoverOutline && !outlinePinned.value) toggleOutlinePin(event);
@@ -318,7 +315,6 @@ export function useWorkbenchOutline(deps: WorkbenchOutlineDeps) {
 
   function resetOnActiveChange() {
     closeOutlineContextMenu();
-    panel.value = 'outline';
     outlineSearchOpen.value = false;
     outlineSearch.value = '';
     activeHeading.value = 0;
@@ -327,7 +323,6 @@ export function useWorkbenchOutline(deps: WorkbenchOutlineDeps) {
 
   return {
     hoverOutline,
-    panel,
     showOutline,
     touchOutlineOpen,
     outlineOnLeft,

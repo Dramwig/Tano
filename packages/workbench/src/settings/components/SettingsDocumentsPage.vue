@@ -78,7 +78,6 @@ const mathSyntaxDescription = computed(
           </button>
         </div>
       </div>
-      <p class="settings-local-note">{{ t('Kanban 与数据库块尚未实现；相关源码会保留。') }}</p>
     </section>
 
     <section class="settings-section" :aria-label="t('Markdown 语法')">

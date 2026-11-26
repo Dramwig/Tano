@@ -5,5 +5,6 @@
   "objectTypes": [], "relationTypes": [], "permissions": ["attachments.read", "ui"],
   "networkOrigins": [], "nativeCommands": [],
   "commands": [{ "id": "open", "label": "演示文稿：打开预览" }],
-  "views": [{ "id": "slides", "label": "演示文稿预览", "location": "tab" }]
+  "views": [{ "id": "slides", "label": "演示文稿预览", "location": "tab", "layout": "fill" }],
+  "fileHandlers": [{ "extensions": [".ppt", ".pptx"], "mode": "preview", "view": "slides", "command": "open" }]
 }

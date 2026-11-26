@@ -215,3 +215,64 @@ it('keeps the popover inside a narrow, short viewport', async () => {
     expect(panel()!.style.top).toBe('8px'); expect(panel()!.style.maxHeight).toBe('284px');
   } finally { vi.unstubAllGlobals(); }
 });
+
+it('renders optional upload-actions slot content and lets it dismiss the popover', async () => {
+  const extra = vi.fn();
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp({
+    render: () => h(
+      WorkspaceIconPicker,
+      { icon: '', mode: 'web' },
+      {
+        'upload-actions': ({ close }: { close: (restoreFocus?: boolean) => void }) =>
+          h('button', { type: 'button', onClick: () => { extra(); close(true); } }, '从外部获取'),
+      },
+    ),
+  });
+  app.mount(root);
+  await open();
+  tab('upload').click(); await nextTick();
+  const action = [...panel()!.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === '从外部获取')!;
+  expect(action).not.toBeNull();
+  action.click(); await nextTick();
+  expect(extra).toHaveBeenCalledOnce();
+  expect(panel()).toBeNull();
+  expect(document.activeElement).toBe(trigger());
+});
+
+it('supports an optional extraTab as the first tab and opens on it when matched or defaultOpen', async () => {
+  const select = vi.fn();
+  const state = reactive({ icon: '' });
+  root = document.createElement('div'); document.body.append(root);
+  app = createApp({
+    render: () => h(
+      WorkspaceIconPicker,
+      {
+        icon: state.icon,
+        mode: 'web',
+        extraTab: { id: 'avatars', label: '头像', defaultOpen: true, matches: (value: string) => value.startsWith('avatar:') },
+        onSelect: select,
+      },
+      {
+        'extra-tab': ({ select: choose }: { select: (value: string) => void }) =>
+          h('div', { class: 'workspace-icon-picker-grid' }, [
+            h('button', { type: 'button', 'data-icon-choice': '', onClick: () => choose('avatar:mint') }, '薄荷'),
+          ]),
+      },
+    ),
+  });
+  app.mount(root);
+  await open();
+  expect(tab('avatars').getAttribute('aria-selected')).toBe('true');
+  const choice = panel()!.querySelector<HTMLButtonElement>('[data-icon-choice]')!;
+  choice.click(); await nextTick();
+  expect(select).toHaveBeenCalledWith('avatar:mint');
+  expect(panel()).toBeNull();
+  state.icon = 'avatar:mint'; await nextTick();
+  await open();
+  expect(tab('avatars').getAttribute('aria-selected')).toBe('true');
+  state.icon = 'icon:book'; await nextTick();
+  trigger().click(); await nextTick();
+  await open();
+  expect(tab('icons').getAttribute('aria-selected')).toBe('true');
+});

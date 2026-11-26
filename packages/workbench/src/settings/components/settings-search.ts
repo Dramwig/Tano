@@ -62,7 +62,7 @@ export function buildSettingSearchEntries(options: {
           settingSearchEntry('appearance', 'appearance-color', '配色主题', '选择工作区主题插件。', 'theme 插件 风格 配色'),
           settingSearchEntry('appearance', 'appearance-icons', '文件与目录图标', '选择工作区图标主题。', 'icon 文件夹 图标 插件'),
           settingSearchEntry('appearance', 'appearance-layout', '布局风格', '选择页面结构，可与任意配色、图标混搭。留边布局的内容区四周留空，侧栏融入背景。', 'layout inset islands paper 贴边 留边 卡片岛 纸感 纸质 布局 结构'),
-          settingSearchEntry('appearance', 'appearance-material', '材质', '选择侧栏和页面的质感，可与任意布局、配色混搭。', 'material glass frost frosted liquid translucent 材质 玻璃 磨砂 毛玻璃 液态 液态玻璃 透明 质感'),
+          settingSearchEntry('appearance', 'appearance-material', '材质', '选择侧栏和页面的质感，可与任意布局、配色混搭。', 'material flat raised elevated bevel card glass frost frosted liquid translucent 材质 平面 立体 立体卡片 浮雕 边框 玻璃 磨砂 毛玻璃 液态 液态玻璃 透明 质感'),
           ...(frostActive
             ? [
                 settingSearchEntry('appearance', 'appearance-wallpaper', '背景图片', '玻璃材质会透出这张图片，卡片透明度会按图片自动调整以保证文字清晰。图片只保存在这台设备。', 'wallpaper background image glass overlay opacity 壁纸 背景 图片 柔化 蒙版 不透明度'),
@@ -70,6 +70,7 @@ export function buildSettingSearchEntries(options: {
             : []),
         ]
       : []),
+    settingSearchEntry('appearance', 'appearance-interface-font', '界面字体', '用于侧栏、标签、菜单和对话框，不影响文档正文。仅保存在当前设备。', 'interface UI font Inter Noto 思源黑体 system sidebar menu 界面 字体 侧栏 菜单'),
     ...(!splitFontsEnabled
       ? [
           settingSearchEntry('appearance', 'appearance-visual-font', '可视化编辑字体', '选择内置字体，或使用本机已安装的字体。', 'font system serif mono Maple custom'),
@@ -141,8 +142,6 @@ export function buildSettingSearchEntries(options: {
     settingSearchEntry('workspace', 'workspace-show-plugins', '显示插件', '在侧栏显示已安装插件与插件管理入口。', 'sidebar plugins'),
     settingSearchEntry('workspace', 'workspace-show-collaboration-views', '显示协作应用', '在侧栏显示聊天等协作入口，不影响账户收件箱。', 'sidebar collaboration chat inbox'),
     settingSearchEntry('workspace', 'workspace-export', '工作区内容', '将已保存的 Markdown、附件和工作区设置导出为 ZIP，保留文件夹结构。', 'export ZIP backup'),
-    settingSearchEntry('workspace', 'workspace-page-views', '保存并显示页面浏览统计', '页面浏览量统计尚未实现，当前不会收集浏览数据。', 'analytics statistics views'),
-    settingSearchEntry('workspace', 'workspace-people', '人物目录', '在工作区对象列表中显示人物；关闭后仍可通过已有引用访问人物。', 'people directory'),
     settingSearchEntry('workspace', 'workspace-id', '工作区 ID', '', 'workspace id identifier'),
     settingSearchEntry('workspace', 'workspace-delete', '删除当前工作区', '移除当前设备上的工作区注册。', 'workspace delete remove'),
     settingSearchEntry('about', 'about-updates', '版本与更新', '检查并安装同页更新。', 'version update'),

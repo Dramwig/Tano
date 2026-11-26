@@ -1,4 +1,10 @@
 import { parsePluginAppearance, type PluginAppearance } from './appearance';
+import {
+  parsePluginEngines,
+  parsePluginPlatforms,
+  type PluginEngines,
+  type PluginPlatform,
+} from './plugin-compat';
 import { ObjectTypeRegistry, coreObjectTypes, validObjectType } from './object-types';
 import type { ObjectField } from './object-types';
 import type { RelationTypeDefinition } from './relations';
@@ -6,6 +12,8 @@ import type { RelationTypeDefinition } from './relations';
 export interface ObjectPluginManifest {
   manifestVersion: 1;
   appearance?: PluginAppearance;
+  engines?: PluginEngines;
+  platforms?: PluginPlatform[];
   id: string;
   name: string;
   version: string;
@@ -40,6 +48,8 @@ export function parseObjectPlugin(content: string): ObjectPluginManifest {
     'objectTypes',
     'relationTypes',
     'appearance',
+    'engines',
+    'platforms',
   ]);
   if (
     value.manifestVersion !== 1 ||
@@ -104,6 +114,8 @@ export function parseObjectPlugin(content: string): ObjectPluginManifest {
   return {
     ...value,
     ...(value.appearance === undefined ? {} : { appearance: parsePluginAppearance(value.appearance) }),
+    ...(value.engines === undefined ? {} : { engines: parsePluginEngines(value.engines) }),
+    ...(value.platforms === undefined ? {} : { platforms: parsePluginPlatforms(value.platforms) }),
     objectTypes: value.objectTypes.map((type: { fields?: ObjectField[] }) => ({
       ...type,
       fields: type.fields ?? [],

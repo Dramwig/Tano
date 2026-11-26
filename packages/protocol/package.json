@@ -5,13 +5,20 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./agent-inbox": "./src/domain/agent-inbox.ts",
+    "./assistant-files": "./src/domain/assistant-files.ts",
+    "./assistant-history": "./src/domain/assistant-history.ts",
     "./features": "./src/features.ts",
     "./frontmatter": "./src/frontmatter.ts",
-    "./markdown-file-metadata": "./src/markdown-file-metadata.ts"
+    "./markdown-file-metadata": "./src/markdown-file-metadata.ts",
+    "./untrusted-data": "./src/domain/untrusted-data.ts",
+    "./workspace-comments": "./src/domain/workspace-comments.ts",
+    "./manifest.schema.json": "./manifest.schema.json"
   },
   "license": "MIT",
   "files": [
     "src",
+    "manifest.schema.json",
     "LICENSE"
   ],
   "dependencies": {

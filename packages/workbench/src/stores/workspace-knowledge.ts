@@ -2,10 +2,7 @@ import { computed, onScopeDispose, ref, type Ref } from 'vue';
 import type { WorkspaceCapabilities } from '@tano/editor/runtime';
 import {
   assetTargets,
-  basename,
   coreRelationTypes,
-  defaultFileDatabaseQuery,
-  defaultObjectViewQuery,
   documentTargets,
   FileRegistry,
   isMarkdown,
@@ -14,14 +11,11 @@ import {
   objectDirectory,
   objectTypeRegistry,
   parseObject,
-  parseWorkspaceView,
   referenceKey,
-  RelationIndex,
   relationKey,
   validateObjectProperties,
   validateRelation,
   WorkspaceAccessRevokedError,
-  workspaceViewPath,
   type FileSnapshot,
   type ReferenceIdentity,
   type ReferenceTarget,
@@ -29,7 +23,6 @@ import {
   type WorkspaceAdapter,
   type WorkspaceObject,
   type WorkspaceRelation,
-  type WorkspaceViewDefinition,
 } from '@tano/protocol';
 import { contentReferences, referenceContext } from '../objects/content-references';
 import type { useDocumentIndex } from '../documents/document-index';
@@ -47,7 +40,6 @@ import { loadObjects, saveObject, type ObjectRecord } from '../objects/workspace
 import type { InstalledObjectPlugin } from '../plugins/workspace-plugins';
 import { loadRelations, saveRelationChange, type RelationChange } from '../objects/workspace-relations';
 import { loadTemplates, saveTemplate, type DocumentTemplate } from '../workspace/workspace-templates';
-import { loadWorkspaceViews, type WorkspaceViewRecord } from '../workspace/workspace-views';
 import type { Activity } from './workspace';
 
 export interface WorkspaceKnowledgeDeps {
@@ -67,12 +59,11 @@ export interface WorkspaceKnowledgeDeps {
     change?: Activity['change'],
   ) => void;
   loadWorkspacePart: (
-    part: 'plugins' | 'objects' | 'views' | 'relations',
+    part: 'plugins' | 'objects' | 'relations',
     load: () => Promise<unknown>,
   ) => Promise<void>;
   refreshPlugins: (current: Workspace) => Promise<void>;
   disposePluginExecutor: () => void;
-  openWorkspaceView: (id: string, options?: { newTab?: boolean; historyIndex?: number }) => Promise<void>;
 }
 
 export function createWorkspaceKnowledge(deps: WorkspaceKnowledgeDeps) {
@@ -90,11 +81,8 @@ export function createWorkspaceKnowledge(deps: WorkspaceKnowledgeDeps) {
     loadWorkspacePart,
     refreshPlugins,
     disposePluginExecutor,
-    openWorkspaceView,
   } = deps;
 
-  const workspaceViews = ref<WorkspaceViewRecord[]>([]);
-  const workspaceViewErrors = ref<string[]>([]);
   const objects = ref<ObjectRecord[]>([]);
   const objectErrors = ref<string[]>([]);
   const relations = ref<WorkspaceRelation[]>([]);
@@ -107,7 +95,6 @@ export function createWorkspaceKnowledge(deps: WorkspaceKnowledgeDeps) {
       .filter((item) => item.enabled)
       .flatMap((item) => item.manifest.relationTypes),
   ]);
-  const relationIndex = computed(() => new RelationIndex(relations.value));
   const objectDefinitions = ref(objectTypeRegistry.list());
   onScopeDispose(
     objectTypeRegistry.subscribe(() => {
@@ -133,7 +120,6 @@ export function createWorkspaceKnowledge(deps: WorkspaceKnowledgeDeps) {
                 objectDefinitions.value.find((entry) => entry.type === object.type) ??
                 objectTypeRegistry.get(object.type);
               if (definition?.storage !== 'record') return false;
-              if (definition.retired) return true;
               try {
                 validateObjectProperties(object.type, object.properties);
                 return true;
@@ -219,16 +205,6 @@ export function createWorkspaceKnowledge(deps: WorkspaceKnowledgeDeps) {
         objects.value = loaded.records;
         objectErrors.value = loaded.errors;
       }),
-      loadWorkspacePart('views', async () => {
-        try {
-          const loadedViews = await loadWorkspaceViews(adapter, current);
-          workspaceViews.value = loadedViews.records;
-          workspaceViewErrors.value = loadedViews.errors;
-        } catch (error) {
-          workspaceViews.value = [];
-          workspaceViewErrors.value = [`无法读取工作区视图：${String(error)}`];
-        }
-      }),
       loadWorkspacePart('relations', async () => {
         try {
           const loadedRelations = await loadRelations(adapter, current);
@@ -277,86 +253,6 @@ export function createWorkspaceKnowledge(deps: WorkspaceKnowledgeDeps) {
       const saved = await saveFileMetadata(adapter, state);
       workspace.value = await adapter.refresh();
       return saved;
-    });
-
-  // Workspace databases / views
-  async function createObjectDatabase() {
-    const scope = workspace.value?.id;
-    const id = `objects-${crypto.randomUUID()}`;
-    await serial(async () => {
-      if (!scope || workspace.value?.id !== scope) throw new Error(t('工作区已切换'));
-      writable();
-      if (!capabilities.value.features.objectReferences)
-        throw new Error('「工作区对象与引用」已关闭');
-      const view = parseWorkspaceView(
-        JSON.stringify({
-          version: 1,
-          layer: 'view',
-          workspaceId: scope,
-          id,
-          name: '对象数据库',
-          kind: 'objects',
-          sources: [],
-          objectDatabase: defaultObjectViewQuery(),
-        }),
-      );
-      await adapter.create(workspaceViewPath(id), JSON.stringify(view, null, 2) + '\n');
-      workspace.value = await adapter.refresh();
-      await refreshObjects();
-    });
-    await openWorkspaceView(id, { newTab: true });
-  }
-
-  async function createFileDatabase(directory = '') {
-    const scope = workspace.value?.id;
-    const id = `files-${crypto.randomUUID()}`;
-    await serial(async () => {
-      if (!scope || workspace.value?.id !== scope) throw new Error(t('工作区已切换'));
-      writable();
-      if (
-        directory &&
-        !workspace.value.files.some((f) => f.kind === 'directory' && f.path === directory)
-      )
-        throw new Error('目录已不存在');
-      const view = parseWorkspaceView(
-        JSON.stringify({
-          version: 1,
-          layer: 'view',
-          workspaceId: scope,
-          id,
-          name: `${directory ? basename(directory) : workspace.value.name} · 文件数据库`,
-          kind: 'files',
-          sources: [],
-          database: defaultFileDatabaseQuery(directory),
-        }),
-      );
-      await adapter.create(workspaceViewPath(id), JSON.stringify(view, null, 2) + '\n');
-      workspace.value = await adapter.refresh();
-      await refreshObjects();
-    });
-    await openWorkspaceView(id, { newTab: true });
-  }
-
-  const saveFileDatabase = (view: WorkspaceViewDefinition, base: FileSnapshot) =>
-    serial(async () => {
-      if (workspace.value?.id !== view.workspaceId) throw new Error(t('工作区已切换'));
-      writable();
-      const checked = parseWorkspaceView(JSON.stringify(view));
-      const result = await adapter.write(
-        workspaceViewPath(checked.id),
-        JSON.stringify(checked, null, 2) + '\n',
-        base.hash,
-      );
-      if (result.status !== 'saved') {
-        const copy = `.tano/conflicts/view-${checked.id}-${crypto.randomUUID()}.tano.json`;
-        await adapter.create(copy, JSON.stringify(checked, null, 2) + '\n');
-        throw new Error(
-          t('视图已被外部修改或删除，外部版本未覆盖；当前设置已保留在 {0}', [copy]),
-        );
-      }
-      workspace.value = await adapter.refresh();
-      await refreshObjects();
-      return result.snapshot;
     });
 
   // Relations CRUD
@@ -704,16 +600,12 @@ export function createWorkspaceKnowledge(deps: WorkspaceKnowledgeDeps) {
   function resetKnowledge(clearErrors = false) {
     objects.value = [];
     objectErrors.value = [];
-    workspaceViews.value = [];
-    workspaceViewErrors.value = [];
     relations.value = [];
     relationBase = null;
     if (clearErrors) relationError.value = '';
   }
 
   return {
-    workspaceViews,
-    workspaceViewErrors,
     objects,
     objectErrors,
     objectDefinitions,
@@ -721,7 +613,6 @@ export function createWorkspaceKnowledge(deps: WorkspaceKnowledgeDeps) {
     relationError,
     getRelationBase: () => relationBase,
     relationDefinitions,
-    relationIndex,
     referenceTargets,
     referenceRevision,
     referenceDocumentCache,
@@ -729,9 +620,6 @@ export function createWorkspaceKnowledge(deps: WorkspaceKnowledgeDeps) {
     refreshObjects,
     readFileMetadata,
     updateFileMetadata,
-    createObjectDatabase,
-    createFileDatabase,
-    saveFileDatabase,
     createRelation,
     removeRelation,
     setRelationSource,

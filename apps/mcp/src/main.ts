@@ -11,7 +11,7 @@ async function main() {
   if (!values.workspace || !values['data-dir'])
     throw new Error('Usage: node tano-mcp.cjs --workspace <folder> --data-dir <Tano app data>');
   if (!['read', 'review', 'write'].includes(values.access)) throw new Error('--access must be read, review or write');
-  const workspace = new AgentWorkspace(values.workspace, values['data-dir'], { access: values.access as 'read' | 'review' | 'write', directories: values.directory ?? [''], objectTypes: values['object-type'] ?? ['task', 'project', 'experiment', 'person', 'event'] });
+  const workspace = new AgentWorkspace(values.workspace, values['data-dir'], { access: values.access as 'read' | 'review' | 'write', directories: values.directory ?? [''], objectTypes: values['object-type'] ?? ['task', 'person', 'event'] });
   const server = createAgentServer(workspace);
   const transport = new StdioServerTransport();
   server.server.onclose = () => workspace.close();

@@ -41,10 +41,10 @@
   .settings-card, .review-card, .assistant-composer, .tano-prose pre, .tano-prose blockquote
 ) { border-radius: var(--radius-card); }
 :root[data-shape-theme] :is(
-  .modal, .settings-dialog, .object-panel, .import-dialog, .plugin-dialog,
+  .modal, .settings-dialog, .object-detail-panel, .import-dialog, .plugin-dialog,
   .command-palette, .document-history-dialog, .selection-todo-dialog,
   .plan-detail-panel, .plan-connections, .assistant-connection-dialog, .assistant-panel-floating,
-  .new-tab-picker, .personal-plan-dialog
+  .new-tab-picker
 ) {
   border-radius: var(--radius-dialog);
   background-color: var(--paper);
@@ -67,7 +67,7 @@
 :root[data-shape-theme] :is(.settings-row, .modal, .tano-editor-panel) {
   padding-block: var(--space-panel);
 }
-:root[data-shape-theme] :is(.modal-backdrop, .object-panel-backdrop, .plugin-dialog-backdrop) {
+:root[data-shape-theme] :is(.modal-backdrop, .object-detail-backdrop, .plugin-dialog-backdrop) {
   background: var(--backdrop);
 }
 :root[data-shape-theme] dialog::backdrop { background: var(--backdrop); }

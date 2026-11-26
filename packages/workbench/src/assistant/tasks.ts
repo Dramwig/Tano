@@ -1,4 +1,4 @@
-import { referenceKey, referenceUrl, taskReview, validatePath, validEventDate } from '@tano/protocol';
+import { isActionableTask, isPlanCompleted, referenceKey, referenceUrl, taskReview, validatePath, validEventDate } from '@tano/protocol';
 import type { ReferenceIdentity, ReferenceTarget, WorkspaceRelation } from '@tano/protocol';
 import type { ContentReference } from '../objects/content-references';
 import { localDayKey } from '../plans/calendar';
@@ -10,10 +10,8 @@ export interface TaskQuery {
   personId: string | null;
   query: string | null;
 }
-export const isTaskTarget = (target: ReferenceTarget) => target.type === 'task' ||
-  (target.type === 'event' && target.properties?.checkable === true);
-export const taskCompleted = (target: ReferenceTarget) => target.properties?.completed === true ||
-  (target.type === 'task' && ['done', 'completed'].includes(String(target.properties?.status)));
+export const isTaskTarget = (target: ReferenceTarget) => isActionableTask(target);
+export const taskCompleted = (target: ReferenceTarget) => isPlanCompleted(target);
 export function parseTaskQuery(value: unknown): TaskQuery {
   const args = value as TaskQuery;
   const keys = ['documentId', 'directory', 'state', 'personId', 'query'];

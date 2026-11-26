@@ -44,12 +44,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', dismissMenus);
   window.removeEventListener('keydown', dismissMenus);
 });
-const PluginInstaller = defineAsyncComponent(() => import('./PluginInstaller.vue'));
+const PluginImportDialog = defineAsyncComponent(() => import('./PluginImportDialog.vue'));
 const store = useWorkspaceStore();
 const query = ref(''),
   menu = ref(''),
   importing = ref(false);
-const importer = ref<{ openImport(): void }>();
 const installedOpen = ref(true),
   recommendedOpen = ref(!store.installedPlugins.length);
 const { error, status, pending, busy, change, installFromCatalog } = usePluginActions();
@@ -67,9 +66,8 @@ const recommended = computed(() =>
 function closeMenu(event: Event) {
   (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open');
 }
-async function openImport() {
-  if (importer.value) importer.value.openImport();
-  else importing.value = true;
+function openImport() {
+  importing.value = true;
   menu.value = '';
 }
 </script>
@@ -117,6 +115,7 @@ async function openImport() {
           <PluginIcon :id="item.manifest.id" /><span
             ><strong
               >{{ item.manifest.name }}
+              <small v-if="item.scope === 'user'">{{ t('全局') }}</small>
               <small v-if="!item.enabled">{{ t('已停用') }}</small></strong
             ><span class="description">{{ item.manifest.description }}</span></span
           >
@@ -131,7 +130,7 @@ async function openImport() {
               <Power :size="14" />{{ item.enabled ? t('停用插件') : t('启用插件') }}</button
             ><button
               v-if="!item.system"
-              :disabled="busy || !store.canManagePlugins"
+              :disabled="busy || (item.scope !== 'user' && !store.canManagePlugins)"
               @click="change({ uninstall: item.manifest.id })"
             >
               <Trash2 :size="14" />{{ t('卸载插件') }}</button
@@ -174,18 +173,16 @@ async function openImport() {
         </button>
       </div>
     </section>
-    <div v-if="importing" class="import-host">
-      <PluginInstaller
-        ref="importer"
-        @vue:mounted="importer?.openImport()"
-        @feedback="
-          (message, failure) => {
-            status = message;
-            error = failure;
-          }
-        "
-      />
-    </div>
+    <PluginImportDialog
+      v-if="importing"
+      @close="importing = false"
+      @feedback="
+        (message, failure) => {
+          status = message;
+          error = failure;
+        }
+      "
+    />
   </div>
 </template>
 <style scoped>
@@ -312,8 +309,5 @@ details[open] {
 strong {
   font-size: 13px;
   font-weight: 500;
-}
-.import-host {
-  display: none;
 }
 </style>

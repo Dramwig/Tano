@@ -21,6 +21,7 @@ import { activateEditorPanel, announceEditorPanel, createEditorPanel, onOtherEdi
 import type { createMermaidRenderer } from '../views/mermaid-preview';
 import type { EditorPreferences, WorkspaceCapabilities } from '../core/runtime';
 import type { LocalSourceState } from './inline-source-controller';
+import type { ExternalCodeBlockRenderer } from './external-decorations';
 import { unavailableImageLabel } from './editor-clipboard';
 
 export interface EditorNodeViewsOptions {
@@ -35,6 +36,7 @@ export interface EditorNodeViewsOptions {
   referencesEnabled: () => boolean;
   referenceTargets: () => readonly ReferenceTarget[];
   renderMermaid: ReturnType<typeof createMermaidRenderer>;
+  codeBlockRenderers?: () => readonly ExternalCodeBlockRenderer[];
   getLocalSource: () => LocalSourceState | undefined;
   activateReferenceSource: (view: EditorView, pos: number) => void;
   onOpenReference: (identity: ReferenceIdentity) => void;
@@ -55,6 +57,7 @@ export function buildEditorNodeViews(options: EditorNodeViewsOptions) {
     referencesEnabled,
     referenceTargets,
     renderMermaid,
+    codeBlockRenderers,
     getLocalSource,
     activateReferenceSource,
     onOpenReference,
@@ -105,6 +108,7 @@ export function buildEditorNodeViews(options: EditorNodeViewsOptions) {
           readonly,
           revealMarkdown,
           renderMermaid,
+          codeBlockRenderers,
         ),
         math_inline: mathView(
           false,

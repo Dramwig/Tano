@@ -10,6 +10,13 @@ import { Search, Upload } from 'lucide-vue-next';
 import WorkspaceIcon from './WorkspaceIcon.vue';
 import { filterWorkspaceIconGroups, workspaceBuiltinIconGroups, workspaceEmojiGroups } from '../workspace-icons';
 
+export interface WorkspaceIconPickerExtraTab {
+  id: string;
+  label: string;
+  matches?: (icon: string) => boolean;
+  defaultOpen?: boolean;
+}
+
 const props = withDefaults(defineProps<{
   icon: string;
   mode: 'demo' | 'web' | 'local';
@@ -18,6 +25,7 @@ const props = withDefaults(defineProps<{
   triggerClass?: string;
   align?: 'start' | 'end';
   allowUpload?: boolean;
+  extraTab?: WorkspaceIconPickerExtraTab;
 }>(), { align: 'end', allowUpload: true });
 const label = computed(() => props.label ?? t('工作区图标'));
 const emit = defineEmits<{ select: [value: string]; upload: []; pasteImage: [file: File]; 'update:open': [value: boolean] }>();
@@ -31,13 +39,16 @@ const open = ref(false);
 // movement of the document underneath the teleported picker.
 let anchorRect: DOMRect | undefined;
 watch(open, value => emit('update:open', value), { flush: 'sync' });
-const tabs = [
+const baseTabs = [
   { id: 'emoji', get label() { return t('表情符号'); } },
   { id: 'icons', get label() { return t('图标'); } },
   { id: 'upload', get label() { return t('上传'); } },
 ] as const;
-const visibleTabs = computed(() => tabs.filter(item => props.allowUpload || item.id !== 'upload'));
-type Tab = typeof tabs[number]['id'];
+const visibleTabs = computed(() => [
+  ...(props.extraTab ? [{ id: props.extraTab.id, label: props.extraTab.label }] : []),
+  ...baseTabs.filter(item => props.allowUpload || item.id !== 'upload'),
+]);
+type Tab = string;
 const tab = ref<Tab>('emoji');
 const query = ref('');
 const currentCategory = ref('');
@@ -106,7 +117,10 @@ function place() {
 async function toggle() {
   if (props.disabled) return;
   if (open.value) { close(); return; }
-  tab.value = props.icon.startsWith('icon:') ? 'icons' : 'emoji';
+  if (props.extraTab?.matches?.(props.icon)) tab.value = props.extraTab.id;
+  else if (props.icon.startsWith('icon:')) tab.value = 'icons';
+  else if ((!props.icon || props.icon.startsWith('data:')) && props.extraTab?.defaultOpen) tab.value = props.extraTab.id;
+  else tab.value = 'emoji';
   query.value = ''; focusedIcon.value = '';
   anchorRect = trigger.value?.getBoundingClientRect();
   place();
@@ -114,7 +128,11 @@ async function toggle() {
   await nextTick();
   place();
   resetScroll();
-  searchInput.value?.focus({ preventScroll: true });
+  if (tab.value === 'emoji' || tab.value === 'icons') {
+    searchInput.value?.focus({ preventScroll: true });
+  } else {
+    panel.value?.querySelector<HTMLElement>('[data-icon-choice][aria-pressed="true"], [data-icon-choice], [role="tab"][aria-selected="true"]')?.focus({ preventScroll: true });
+  }
 }
 function close(restoreFocus = false) {
   open.value = false;
@@ -238,7 +256,10 @@ onBeforeUnmount(() => {
         <button type="button" class="workspace-icon-picker-remove" :disabled="disabled || !icon" @click="select('')">{{ t('移除') }}</button>
       </header>
       <div :id="`${pickerId}-content`" class="workspace-icon-picker-content" role="tabpanel" :aria-labelledby="`${pickerId}-${tab}-tab`">
-        <template v-if="tab !== 'upload'">
+        <template v-if="extraTab && tab === extraTab.id">
+          <slot name="extra-tab" :select="select" :close="close" :disabled="disabled" :icon="icon" />
+        </template>
+        <template v-else-if="tab !== 'upload'">
           <label class="workspace-icon-picker-search"><Search :size="15" aria-hidden="true" /><input ref="searchInput" v-model="query" :aria-label="t('筛选图标')" :placeholder="t('筛选…')" /></label>
           <div ref="scrollArea" class="workspace-icon-picker-scroll" @scroll="syncCategory">
             <section v-for="group in filteredGroups" :id="`${pickerId}-${group.id}`" :key="group.id" class="workspace-icon-picker-group" :data-category="group.id" :aria-label="group.label">
@@ -267,6 +288,7 @@ onBeforeUnmount(() => {
           <p class="workspace-icon-picker-upload-title">{{ t('上传{0}', [label]) }}</p>
           <div class="workspace-icon-picker-upload-actions">
             <button type="button" class="settings-button" :disabled="disabled" @click="upload">{{ t('选择图片') }}</button>
+            <slot name="upload-actions" :close="close" />
             <p class="workspace-icon-picker-upload-paste">{{ t('或按') }} <kbd>Ctrl+V</kbd> {{ t('粘贴图片') }}</p>
           </div>
         </div>

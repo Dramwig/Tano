@@ -17,7 +17,7 @@ import { recordHelpCompleted } from '../help/help-checklist';
 import { t } from '../i18n/i18n';
 import { dockLayout, layoutPanes, reconcileLayout, type PaneDrop } from '../shell/pane-layout';
 import { bundledPluginCatalog } from '../plugins/plugin-catalog';
-import { pluginViewKey, type PluginWorkbenchView } from '../plugins/workbench';
+import { isPluginPreviewTab, type PluginWorkbenchView } from '../plugins/workbench';
 import type { WorkbenchViewTab } from '../runtime';
 import { useTabNavigation } from '../tabs/tab-navigation';
 import {
@@ -28,7 +28,6 @@ import {
   type WindowLayouts,
 } from '../windows/layout';
 import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../plugins/workspace-plugins';
-import type { WorkspaceViewRecord } from '../workspace/workspace-views';
 import type { DocumentTab } from './workspace';
 
 export interface WorkspaceTabsLayoutDeps {
@@ -37,7 +36,6 @@ export interface WorkspaceTabsLayoutDeps {
   documents: Ref<OpenDocument[]>;
   documentIndex: ReturnType<typeof useDocumentIndex>;
   dataTables: ReturnType<typeof createDataTableController>;
-  workspaceViews: Ref<WorkspaceViewRecord[]>;
   installedPlugins: Ref<InstalledObjectPlugin[]>;
   pluginViews: Ref<PluginWorkbenchView[]>;
   activePluginSidebar: Ref<string>;
@@ -48,7 +46,6 @@ export interface WorkspaceTabsLayoutDeps {
     tables: boolean;
     plugins: boolean;
     objects: boolean;
-    views: boolean;
     relations: boolean;
     capabilities: boolean;
   }>;
@@ -79,7 +76,6 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
     documents,
     documentIndex,
     dataTables,
-    workspaceViews,
     installedPlugins,
     pluginViews,
     activePluginSidebar,
@@ -99,15 +95,6 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
   } = deps;
 
   const views = shallowRef<ReadonlyMap<string, WorkbenchViewTab>>(new Map());
-  const workspaceViewTabPrefix = 'workspace-view:';
-  const workspaceViewTabId = (id: string) => `${workspaceViewTabPrefix}${id}`;
-  const workspaceViewId = (id: string) =>
-    id.startsWith(workspaceViewTabPrefix) ? id.slice(workspaceViewTabPrefix.length) : undefined;
-  const isWorkspaceViewTab = (id: string) => !!workspaceViewId(id);
-  const hasWorkspaceViewTab = (id: string) => {
-    const viewId = workspaceViewId(id);
-    return viewId !== undefined && workspaceViews.value.some((record) => record.view.id === viewId);
-  };
   const isDirectoryTab = (id: string) => id.startsWith('directory:');
   function directoryForTab(id: string) {
     if (!isDirectoryTab(id)) return undefined;
@@ -126,8 +113,6 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
       ? (installedPlugins.value.find((item) => `plugin:${item.manifest.id}` === id)?.manifest ??
         bundledPluginCatalog.find((item) => `plugin:${item.manifest.id}` === id)?.manifest)
       : undefined;
-  const wordPreviewTab = pluginViewKey('word-preview', 'document');
-  const presentationPreviewTab = pluginViewKey('presentation-preview', 'slides');
   const attachmentForTab = (id: string) =>
     id.startsWith('attachment:') ? fileRegistry.value?.get(id.slice('attachment:'.length)) : undefined;
   const isNavigationPage = (id: string) =>
@@ -136,10 +121,8 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
     id === GRAPH_TAB_ID ||
     id === PLUGINS_TAB_ID ||
     isTableTab(id) ||
-    hasWorkspaceViewTab(id) ||
     id.startsWith('attachment:') ||
-    id === wordPreviewTab ||
-    id === presentationPreviewTab;
+    isPluginPreviewTab(id, installedPlugins.value);
   const isBuiltinTab = (id: string) =>
     isDirectoryTab(id) ||
     id.startsWith('blank:') ||
@@ -148,8 +131,7 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
     id === GRAPH_TAB_ID ||
     id === PLUGINS_TAB_ID ||
     id === CALENDAR_TAB_ID ||
-    isTableTab(id) ||
-    hasWorkspaceViewTab(id);
+    isTableTab(id);
   const isUtilityTab = (id: string) =>
     isBuiltinTab(id) ||
     views.value.has(id) ||
@@ -393,7 +375,7 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
     busy: () => busy.value,
     available: (id) => {
       if (id.startsWith('attachment:')) return !!attachmentForTab(id);
-      if (id === wordPreviewTab || id === presentationPreviewTab)
+      if (isPluginPreviewTab(id, installedPlugins.value))
         return pluginViews.value.some((view) => view.key === id);
       const file = fileRegistry.value?.get(id);
       return (
@@ -455,18 +437,6 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
     if (!definitions.some((view) => view.location === 'sidebar' && view.key === activePluginSidebar.value))
       activePluginSidebar.value = '';
   });
-  watch(workspaceViews, (definitions) => {
-    if (workspaceLoading.value.views) return;
-    const keys = new Set(definitions.map((record) => workspaceViewTabId(record.view.id)));
-    const remaining = tabIds.value.filter((id) => !isWorkspaceViewTab(id) || keys.has(id));
-    if (remaining.length !== tabIds.value.length) {
-      for (const id of tabIds.value) if (!remaining.includes(id)) removeTabNavigation(id);
-      tabIds.value = remaining;
-      if (isWorkspaceViewTab(activeId.value) && !keys.has(activeId.value))
-        activeId.value = tabIds.value[0] ?? '';
-    }
-  });
-
   const active = computed(() => documentIndex.byId.value.get(tabTarget(activeId.value)));
   const tabs = computed<DocumentTab[]>(() =>
     tabIds.value.map((id) => {
@@ -483,9 +453,6 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
         : undefined;
       const tablePath = tableFile ? displayPath(tableFile) : table?.path;
       const directory = directoryForTab(targetId);
-      const workspaceView = workspaceViews.value.find(
-        (record) => workspaceViewTabId(record.view.id) === targetId,
-      );
       return {
         id,
         pluginDetail: pluginDetailManifest(targetId),
@@ -499,13 +466,12 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
                 ? displayPath(attachment)
                 : tableFile
                   ? displayPath(tableFile)
-                  : (workspaceView?.path ?? tablePath ?? (attachmentPreview ? '附件不可用' : '')))),
+                  : (tablePath ?? (attachmentPreview ? '附件不可用' : '')))),
         blank: id.startsWith('blank:'),
         graph: id === GRAPH_TAB_ID,
         plugins: id === PLUGINS_TAB_ID,
         calendar: id === CALENDAR_TAB_ID,
         view: views.value.get(id),
-        workspaceView,
         pluginView: pluginViews.value.find((view) => view.key === id && view.location === 'tab'),
         document,
         attachmentPreview,
@@ -643,11 +609,7 @@ export function createWorkspaceTabsLayout(deps: WorkspaceTabsLayoutDeps) {
 
   return {
     views,
-    workspaceViewTabId,
-    isWorkspaceViewTab,
     pluginDetailManifest,
-    wordPreviewTab,
-    presentationPreviewTab,
     attachmentForTab,
     isNavigationPage,
     isUtilityTab,

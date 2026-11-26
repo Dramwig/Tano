@@ -69,11 +69,25 @@ export interface AssistantPreview {
   path: string;
   destination?: string;
 }
+export interface AssistantProposalPluginAction {
+  pluginId: string;
+  pluginName: string;
+  toolName: string;
+  label?: string;
+  effect: 'write' | 'external';
+}
+export interface AssistantProposalExtensionAction {
+  namespace: string;
+  action: string;
+  label?: string;
+  effect: 'write' | 'external';
+  payload: Record<string, unknown>;
+}
 export interface AssistantProposal {
   id: string;
   runId: string;
   workspaceId: string;
-  kind: 'edit' | 'create' | 'delete' | 'rename' | 'move' | 'object' | 'relation';
+  kind: 'edit' | 'create' | 'delete' | 'rename' | 'move' | 'object' | 'relation' | 'plugin' | 'extension';
   fileId?: string;
   path: string;
   destination?: string;
@@ -84,10 +98,14 @@ export interface AssistantProposal {
   /** Omitted on legacy and manually reviewed proposals. */
   execution?: 'direct';
   preview?: AssistantPreview;
-  applied?: { before: string; after: string; hash: string; fileId: string };
+  applied?: { before: string; after: string; hash: string; fileId: string; undoSnapshot?: string };
   error?: string;
   /** Once published, per-edit review belongs to the portable document records. */
   suggestionGroupId?: string;
+  /** Present only when kind === 'plugin' (write/external plugin tool awaiting confirmation). */
+  pluginAction?: AssistantProposalPluginAction;
+  /** Present only when kind === 'extension' (host extension action awaiting confirmation). */
+  extensionAction?: AssistantProposalExtensionAction;
 }
 
 /** Application-recorded receipts; never inferred from the model's answer. */
@@ -373,11 +391,23 @@ export function parseAssistantSession(value: unknown): AssistantSession {
     }
     for (const proposal of message.proposals ?? []) {
       if (!proposal || proposal.workspaceId !== session.workspaceId || !text(proposal.id, 80) ||
-          !text(proposal.runId, 80) || !['edit', 'create', 'delete', 'rename', 'move', 'object', 'relation'].includes(proposal.kind) ||
+          !text(proposal.runId, 80) || !['edit', 'create', 'delete', 'rename', 'move', 'object', 'relation', 'plugin', 'extension'].includes(proposal.kind) ||
           !['ready', 'applying', 'applied', 'rejected', 'conflicted', 'unknown'].includes(proposal.status) ||
           (proposal.execution !== undefined && proposal.execution !== 'direct') ||
           !text(proposal.path, 220) || !text(proposal.base, 512_000) || !text(proposal.content, 512_000) ||
           !text(proposal.reason, 4000) || (proposal.suggestionGroupId !== undefined && (proposal.kind !== 'edit' || !text(proposal.suggestionGroupId, 80))) || ((['edit', 'delete', 'rename', 'move'].includes(proposal.kind) || (proposal.kind === 'object' && proposal.base !== '')) && !text(proposal.fileId, 80)) ||
+          (proposal.kind === 'plugin'
+            ? (!proposal.pluginAction || !text(proposal.pluginAction.pluginId, 80) || !text(proposal.pluginAction.pluginName, 120) ||
+                !text(proposal.pluginAction.toolName, 80) || !['write', 'external'].includes(proposal.pluginAction.effect) ||
+                (proposal.pluginAction.label !== undefined && !text(proposal.pluginAction.label, 80)))
+            : proposal.pluginAction !== undefined) ||
+          (proposal.kind === 'extension'
+            ? (!proposal.extensionAction || !text(proposal.extensionAction.namespace, 80) || !proposal.extensionAction.namespace.trim() ||
+                !text(proposal.extensionAction.action, 80) || !proposal.extensionAction.action.trim() ||
+                !['write', 'external'].includes(proposal.extensionAction.effect) ||
+                (proposal.extensionAction.label !== undefined && !text(proposal.extensionAction.label, 80)) ||
+                !proposal.extensionAction.payload || typeof proposal.extensionAction.payload !== 'object' || Array.isArray(proposal.extensionAction.payload))
+            : proposal.extensionAction !== undefined) ||
           (['rename', 'move'].includes(proposal.kind) ? !text(proposal.destination, 220) || !proposal.destination : proposal.destination !== undefined) ||
           (proposal.preview && (!text(proposal.preview.before, 512_000) ||
             !text(proposal.preview.after, 512_000) || !text(proposal.preview.path, 220) ||
@@ -385,7 +415,8 @@ export function parseAssistantSession(value: unknown): AssistantSession {
             (proposal.preview.diskHash !== null && !text(proposal.preview.diskHash, 128)))) ||
           (proposal.applied && (!text(proposal.applied.before, 512_000) ||
             !text(proposal.applied.after, 512_000) || !text(proposal.applied.hash, 128) ||
-            !text(proposal.applied.fileId, 80))))
+            !text(proposal.applied.fileId, 80) ||
+            (proposal.applied.undoSnapshot !== undefined && !text(proposal.applied.undoSnapshot, 512_000)))))
         throw new Error('助手修改记录格式无效，原记录已保留');
     }
   }

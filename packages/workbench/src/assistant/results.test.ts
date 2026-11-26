@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseAssistantSession, parseAssistantQuestions, parseAssistantAnswers } from '@tano/protocol';
 import type { AssistantMessage, AssistantProposal, AssistantToolResult } from '@tano/protocol';
-import { assistantHistory, assistantMessageParts, assistantDisplayParts, assistantAnswerText } from './results';
+import { assistantHistory, assistantMessageParts, assistantDisplayParts, assistantAnswerText, assistantToolLabel } from './results';
+import { setUiLocale, preloadUiLocale } from '../i18n/i18n';
 
 const message = (extra: Partial<AssistantMessage> = {}): AssistantMessage => ({
   id: 'reply', role: 'assistant', content: '我已经提出了创建 test.md 的建议，请采纳。', createdAt: 1, state: 'completed', ...extra,
@@ -120,5 +121,18 @@ describe('application-recorded assistant results', () => {
       Array.from({ length: 161 }, () => valid[0])]) {
       expect(() => parse(message({ toolResults: toolResults as AssistantToolResult[] }))).toThrow('工具回执');
     }
+  });
+
+  it('resolves localized labels for generic plugin inspection and log tools', async () => {
+    await preloadUiLocale('en-US');
+    setUiLocale('zh-CN');
+    expect(assistantToolLabel('inspect_plugins')).toBe('查看已启用插件');
+    expect(assistantToolLabel('inspect_plugin_logs')).toBe('查看插件运行日志');
+    expect(assistantToolLabel('open_plugin_view')).toBe('打开插件视图');
+    setUiLocale('en-US');
+    expect(assistantToolLabel('inspect_plugins')).toBe('Inspect enabled plugins');
+    expect(assistantToolLabel('inspect_plugin_logs')).toBe('Inspect plugin runtime logs');
+    expect(assistantToolLabel('open_plugin_view')).toBe('Open plugin view');
+    setUiLocale('zh-CN');
   });
 });

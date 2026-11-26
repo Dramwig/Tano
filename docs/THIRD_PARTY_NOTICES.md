@@ -6,6 +6,8 @@ The Inter font uses the SIL Open Font License in `apps/client/public/INTER-LICEN
 
 The Literata font uses the SIL Open Font License in `apps/client/public/LITERATA-LICENSE.txt`.
 
+The interface bundles Noto Sans CJK SC Regular, Medium and Bold (copyright 2014-2021 Adobe, Reserved Font Name "Source") under the SIL Open Font License in `apps/client/public/NOTO-SANS-CJK-LICENSE.txt`. They are Modified Versions: subset to GB2312 characters, converted to WOFF2, and renamed "Tano UI Sans SC" (`packages/workbench/src/fonts/TanoUISansSC-*.woff2`, rebuilt by `scripts/fonts/subset-ui-cjk.py`).
+
 The open workspace button embeds the [Bootstrap Icons folder-symlink SVG](https://github.com/twbs/icons/blob/main/icons/folder-symlink.svg), copyright (c) 2019-2024 The Bootstrap Authors, under MIT. Its source reference and license are retained in [packages/workbench/src/assets/bootstrap/](../packages/workbench/src/assets/bootstrap/README.md) and the client distribution notices.
 
 The source mode button embeds the [Tabler Icons source-code outline SVG](https://github.com/tabler/tabler-icons/blob/main/icons/outline/source-code.svg), copyright (c) 2020-2026 Paweł Kuna, under MIT. Its source and license are retained in [packages/workbench/src/assets/tabler/](../packages/workbench/src/assets/tabler/README.md) and the generated client distribution notices.
@@ -25,6 +27,8 @@ The Maple Mono NF font uses the SIL Open Font License in `apps/client/public/MAP
 The optional standalone [vscode-icons plugin](../examples/plugins/vscode-icons/README.md) adapts [vscode-icons 13.0.0](https://github.com/vscode-icons/vscode-icons/tree/866d4f48701ba71e39d309e9e519bcf2eaf1c3e2), Copyright The vscode-icons Contributors. Upstream source code is MIT; artwork and the derived 32×32 palette PNGs retain CC BY-SA 4.0, while branded icons retain their respective copyright licenses and trademarks as stated upstream. The separately GPL-3.0-or-later-licensed xposed artwork is excluded. The plugin source includes the full CC BY-SA 4.0 and MIT texts, attribution, changes, source and archive/package hashes; the installable package embeds attribution, license links and the upstream MIT text in its `notice`. This plugin is not bundled into the client, and its artwork license does not change Tano code's MIT license.
 
 The assistant model picker bundles 18 unmodified SVGs from [Lobe Icons](https://github.com/lobehub/lobe-icons), distributed under MIT. The license, package version, integrity hash, and asset paths are retained in [packages/workbench/src/assets/model-icons/](../packages/workbench/src/assets/model-icons/README.md) and the generated client distribution notices.
+
+The mail provider selectors bundle the original Gmail SVG and SVG adaptations of official artwork for the other mail services. Source and trademark notices are retained in the [mail provider asset notice](../packages/workbench/src/assets/mail-provider-icons/NOTICE.txt) and the client distribution notices.
 
 The code block language picker bundles SVGs from [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme) and [Devicon](https://github.com/devicons/devicon). Both sets are distributed under MIT; their license texts and source versions are recorded in `packages/editor/src/language-icons/`.
 

@@ -1,12 +1,12 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { buildPlugin, verifyPlugin } from './plugin-build.mjs';
+import { buildPlugin, buildPluginZip, verifyPlugin } from './plugin-build.mjs';
 import { startPluginWatch } from './plugin-watch.mjs';
 import { preparePluginRelease, buildPluginCatalog } from './plugin-catalog.mjs';
 import { createPlugin } from './plugin-create.mjs';
 
 const [command, input, ...args] = process.argv.slice(2);
-const help = 'Usage: npm run plugin -- create <directory> [--template vanilla|vue|react] | pack <directory> [output.json] | verify <package.json> | watch <directory> --origin <app-origin> [--port <port>] | release <package.json> <new-directory> --publisher <id> --source <https-url> --license <license> [--notes <file>] | catalog <reviewed-index.json> <new-directory> --packages <directory> (--previous <published-index.json> | --initial)';
+const help = 'Usage: npm run plugin -- create <directory> [--template vanilla|vue|react] | pack <directory> [output] [--format json|zip] | verify <package.json|archive.zip> | watch <directory> --origin <app-origin> [--port <port>] | release <package.json> <new-directory> --publisher <id> --source <https-url> --license <license> [--notes <file>] | catalog <reviewed-index.json> <new-directory> --packages <directory> (--previous <published-index.json> | --initial)';
 if (!input || !['create', 'pack', 'verify', 'watch', 'release', 'catalog'].includes(command)) throw new Error(help);
 const target = resolve(input);
 if (command === 'create') {
@@ -41,11 +41,36 @@ if (command === 'create') {
   console.log(`Development package URL: ${watcher.url}`);
   console.log('Paste this URL into the installed plugin development mode. Press Ctrl+C to stop.');
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { void watcher.close(); });
-} else {
-  const { pkg, canonical, integrity } = command === 'pack' ? await buildPlugin(target) : await verifyPlugin(await readFile(target, 'utf8'));
-  if (command === 'pack') {
-    const destination = resolve(args[0] ?? join(target, `${pkg.manifest.id}-${pkg.manifest.version}.tano-plugin.json`));
-    await writeFile(destination, canonical + '\n'); console.log(`Packed ${destination}`);
+} else if (command === 'pack') {
+  let outputArg;
+  let format;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--format') {
+      format = args[++i];
+      if (format !== 'json' && format !== 'zip') throw new Error(help);
+    } else if (!args[i].startsWith('--') && !outputArg) {
+      outputArg = args[i];
+    } else {
+      throw new Error(help);
+    }
   }
-  console.log(`${pkg.manifest.id}@${pkg.manifest.version}\nSHA-256 ${integrity}`);
+  const resolvedFormat = format ?? (outputArg && outputArg.toLowerCase().endsWith('.zip') ? 'zip' : 'json');
+  if (resolvedFormat === 'zip') {
+    const { pkg, integrity, archiveBytes, archiveDigest, binaryAssets } = await buildPluginZip(target);
+    const destination = resolve(outputArg ?? join(target, `${pkg.manifest.id}-${pkg.manifest.version}.tano-plugin.zip`));
+    await writeFile(destination, archiveBytes);
+    const assetCount = Object.keys(binaryAssets ?? {}).length;
+    console.log(`Packed ${destination} (v2 ZIP, ${archiveBytes.byteLength} bytes, ${assetCount} binary assets)`);
+    console.log(`${pkg.manifest.id}@${pkg.manifest.version}\nSHA-256 ${integrity}\nZIP-SHA-256 ${archiveDigest}`);
+  } else {
+    const { pkg, canonical, integrity } = await buildPlugin(target);
+    const destination = resolve(outputArg ?? join(target, `${pkg.manifest.id}-${pkg.manifest.version}.tano-plugin.json`));
+    await writeFile(destination, canonical + '\n');
+    console.log(`Packed ${destination}`);
+    console.log(`${pkg.manifest.id}@${pkg.manifest.version}\nSHA-256 ${integrity}`);
+  }
+} else {
+  const bytes = new Uint8Array(await readFile(target));
+  const result = await verifyPlugin(bytes);
+  console.log(`${result.pkg.manifest.id}@${result.pkg.manifest.version}\nSHA-256 ${result.integrity}${result.archiveDigest ? `\nZIP-SHA-256 ${result.archiveDigest}` : ''}`);
 }

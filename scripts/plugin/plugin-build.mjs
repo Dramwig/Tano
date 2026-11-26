@@ -12,15 +12,50 @@ export async function protocol() {
   }
   return parser;
 }
+async function collectBinaryAssets(dir, prefix = '', out = {}) {
+  let entries = [];
+  try { entries = await readdir(dir, { withFileTypes: true }); } catch (error) { if (error.code === 'ENOENT') return out; throw error; }
+  for (const entry of entries) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await collectBinaryAssets(full, rel, out);
+    } else if (entry.isFile()) {
+      out[rel] = new Uint8Array(await readFile(full));
+    }
+  }
+  return out;
+}
 export async function verifyPlugin(content) {
-  const { parsePluginPackage, canonicalPluginJson } = await protocol();
-  const pkg = parsePluginPackage(content), canonical = canonicalPluginJson(pkg);
-  return { pkg, canonical, integrity: createHash('sha256').update(canonical).digest('hex') };
+  const { parsePluginPackage, canonicalPluginJson, isPluginArchiveV2Bytes, unpackPluginArchiveV2 } = await protocol();
+  if (content instanceof Uint8Array && isPluginArchiveV2Bytes(content)) {
+    const archive = unpackPluginArchiveV2(content);
+    const canonical = canonicalPluginJson(archive.pkg);
+    return {
+      pkg: archive.pkg,
+      canonical,
+      integrity: createHash('sha256').update(canonical).digest('hex'),
+      archiveDigest: createHash('sha256').update(content).digest('hex'),
+      binaryAssets: archive.binaryAssets,
+      packageVersion: 2,
+    };
+  }
+  const text = content instanceof Uint8Array ? new TextDecoder('utf-8', { fatal: true }).decode(content) : content;
+  const pkg = parsePluginPackage(text), canonical = canonicalPluginJson(pkg);
+  return { pkg, canonical, integrity: createHash('sha256').update(canonical).digest('hex'), packageVersion: 1 };
 }
 export async function buildPlugin(target) {
-  const { parsePluginManifest } = await protocol();
-  const manifest = parsePluginManifest(JSON.parse(await readFile(join(target, 'manifest.json'), 'utf8')));
-  if (manifest.manifestVersion === 1) return verifyPlugin(JSON.stringify({ packageVersion: 1, manifest }));
+  const { parsePluginManifest, parsePluginPackage, externalizeHeavyIconAssets } = await protocol();
+  const rawManifest = JSON.parse(await readFile(join(target, 'manifest.json'), 'utf8'));
+  if (rawManifest && typeof rawManifest === 'object' && !Array.isArray(rawManifest)) {
+    delete rawManifest.$schema;
+  }
+  const manifest = parsePluginManifest(rawManifest);
+  const binaryAssets = await collectBinaryAssets(join(target, 'assets', 'bin'));
+  if (manifest.manifestVersion === 1) {
+    const pkg = externalizeHeavyIconAssets(parsePluginPackage(JSON.stringify({ packageVersion: 1, manifest })));
+    return { ...(await verifyPlugin(JSON.stringify(pkg))), binaryAssets };
+  }
   const bundled = await build({ entryPoints: [join(target, 'main.ts')], bundle: true, platform: 'browser', format: 'iife', globalName: 'TanoPlugin', write: false, logLevel: 'silent', target: 'es2022' });
   let entries = [];
   try { entries = await readdir(join(target, 'ui')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -43,5 +78,13 @@ export async function buildPlugin(target) {
       write: false, logLevel: 'silent', target: 'es2022' });
     automationSource = `${automation.outputFiles[0].text}\nreturn await TanoAutomation.default(tano, execution);`;
   }
-  return verifyPlugin(JSON.stringify({ packageVersion: 1, manifest, source: `${bundled.outputFiles[0].text}\nawait TanoPlugin.default(tano);`, ...(Object.keys(ui).length ? { ui } : {}), ...(automationSource ? { automationSource } : {}) }));
+  const pkg = externalizeHeavyIconAssets(parsePluginPackage(JSON.stringify({ packageVersion: 1, manifest, source: `${bundled.outputFiles[0].text}\nif (typeof TanoPlugin.deactivate === 'function') tano.lifecycle.onDeactivate(() => TanoPlugin.deactivate());\nawait TanoPlugin.default(tano);`, ...(Object.keys(ui).length ? { ui } : {}), ...(automationSource ? { automationSource } : {}) })));
+  return { ...(await verifyPlugin(JSON.stringify(pkg))), binaryAssets };
+}
+export async function buildPluginZip(target) {
+  const { packPluginArchiveV2 } = await protocol();
+  const built = await buildPlugin(target);
+  const archiveBytes = packPluginArchiveV2({ pkg: built.pkg, binaryAssets: built.binaryAssets });
+  const archiveDigest = createHash('sha256').update(archiveBytes).digest('hex');
+  return { ...built, archiveBytes, archiveDigest, packageVersion: 2 };
 }

@@ -163,7 +163,6 @@ export function referenceCandidates(
     .filter(
       (target) =>
         !!objectTypeRegistry.get(target.type) &&
-        !objectTypeRegistry.get(target.type)?.retired &&
         !target.archived &&
         (!qualifier || target.type === qualifier[1]!.toLowerCase()) &&
         `${target.name}\n${target.path}`.normalize('NFKC').toLocaleLowerCase().includes(name),
