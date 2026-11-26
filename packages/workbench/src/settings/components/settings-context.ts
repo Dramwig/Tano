@@ -81,7 +81,7 @@ export interface SettingsPanelContext {
   displayMode: ComputedRef<ThemePreference>;
   displayModeDescription: ComputedRef<string>;
   showDeveloperMode: ComputedRef<boolean>;
-  developerModeDescription: string;
+  developerModeDescription: ComputedRef<string>;
   splitFonts: ComputedRef<SplitFontSettings>;
   emitUpdateDeveloperMode: (value: boolean) => void;
   emitUpdateDefaultSource: (value: boolean) => void;

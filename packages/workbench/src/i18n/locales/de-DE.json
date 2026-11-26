@@ -3974,5 +3974,20 @@
   "副本已保存，原文件保持不变": "Kopie gespeichert; die Originaldatei blieb unverändert",
   "已恢复本地草稿": "Lokaler Entwurf wiederhergestellt",
   "本地草稿损坏，原记录已备份，当前显示磁盘文件。": "Der lokale Entwurf war beschädigt. Eine Sicherung wurde behalten und die Datei auf der Festplatte wird angezeigt.",
-  "本地草稿无法保存，请保存文件或另存副本后再关闭。": "Der lokale Entwurf konnte nicht gespeichert werden. Bitte speichere die Datei oder eine Kopie vor dem Schließen."
+  "本地草稿无法保存，请保存文件或另存副本后再关闭。": "Der lokale Entwurf konnte nicht gespeichert werden. Bitte speichere die Datei oder eine Kopie vor dem Schließen.",
+  "插件开发者区": "Plugin-Entwicklerbereich",
+  "开发者工具导航": "Entwicklerwerkzeug-Navigation",
+  "导入与调试": "Import & Debugging",
+  "插件工坊": "Plugin-Werkstatt",
+  "导入本地插件包": "Lokales Plugin-Paket importieren",
+  "导入 .tano-plugin.zip 归档包或声明式 JSON 清单，也可载入内置示例或仅缓存到当前设备用于调试。": "Importiere ein .tano-plugin.zip-Archiv oder ein deklaratives JSON-Manifest, lade ein integriertes Beispiel oder speichere es zum Debuggen lokal auf diesem Gerät.",
+  "导入插件包…": "Plugin-Paket importieren…",
+  "本地开发监听运行中": "Lokale Entwicklungsüberwachung aktiv",
+  "插件归档包不能超过 16 MiB": "Das Plugin-Archiv darf höchstens 16 MiB groß sein",
+  "工作台微调": "Arbeitsbereich anpassen",
+  "开发者": "Entwickler",
+  "去发现适合你的插件，扩展你的工作台能力。": "Entdecke passende Plugins, um deinen Arbeitsbereich zu erweitern.",
+  "开启开发者模式以导入或开发插件": "Entwicklermodus aktivieren, um Plugins zu importieren oder zu erstellen",
+  "开启后，可在插件中心访问开发者区（导入、工坊、调试与投稿），也可右键顶部标签栏空白处打开调试窗口。": "Aktiviert den Entwickler-Tab im Plugin-Center (Import, Werkstatt, Debugging, Veröffentlichen) sowie DevTools über das Kontextmenü der Tableiste.",
+  "开启后，可在插件中心访问开发者区（导入插件、工坊、开发监听、运行日志与投稿）。": "Aktiviert den Entwickler-Tab im Plugin-Center (Import, Werkstatt, Dev-Watch, Laufzeitprotokolle und Veröffentlichen)."
 }

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import './plugin-center.css';
-import { computed, ref, watch } from 'vue';
+import { computed, inject, ref, watch } from 'vue';
 import { ArrowUpRight, Download, LoaderCircle, ShieldCheck } from 'lucide-vue-next';
 import { checkPluginCompatibility, type PluginMode } from '@tano/protocol';
 import { t } from '../../i18n/i18n';
+import { workbenchPrefsKey } from '../../shell/workbench-context';
 import { useWorkspaceStore } from '../../stores/workspace';
 import { bundledPluginCatalog } from '../plugin-catalog';
 import { pluginPermissionLabels as permissionLabels } from '../plugin-permissions';
@@ -12,7 +13,9 @@ import { usePluginActions } from '../use-plugin-actions';
 import PluginIcon from './PluginIcon.vue';
 import PluginMaintenance from './PluginMaintenance.vue';
 import PluginSettingsForm from './PluginSettingsForm.vue';
-const props = defineProps<{ pluginId: string }>();
+const props = defineProps<{ pluginId: string; developerMode?: boolean }>();
+const workbench = inject(workbenchPrefsKey, null);
+const isDeveloperMode = computed(() => props.developerMode ?? Boolean(workbench?.developerMode));
 const store = useWorkspaceStore();
 const detail = computed(
   () =>
@@ -281,7 +284,7 @@ const modeLabels: Record<PluginMode, string> = {
       >
         <h4>{{ t('全局插件设置') }}</h4>
         <p>{{ t('此插件为全局安装，跨工作区生效；设置保存在当前设备的应用数据中，不写入工作区文件。') }}</p>
-        <PluginSettingsForm v-if="settingsSchema?.length" v-model="settingsText" :schema="settingsSchema" :disabled="busy" />
+        <PluginSettingsForm v-if="settingsSchema?.length" v-model="settingsText" :schema="settingsSchema" :disabled="busy" :developer-mode="isDeveloperMode" />
         <label v-else
           >{{ t('个人设置')
           }}<textarea
@@ -326,7 +329,7 @@ const modeLabels: Record<PluginMode, string> = {
             <option value="disabled">{{ t('禁止') }}</option>
           </select></label
         >
-        <PluginSettingsForm v-if="settingsSchema?.length" v-model="settingsText" :schema="settingsSchema" :disabled="busy" />
+        <PluginSettingsForm v-if="settingsSchema?.length" v-model="settingsText" :schema="settingsSchema" :disabled="busy" :developer-mode="isDeveloperMode" />
         <label v-else
           >{{ t('共享设置')
           }}<textarea
@@ -346,7 +349,7 @@ const modeLabels: Record<PluginMode, string> = {
             spellcheck="false"
           />
         </label>
-        <label v-if="detail.manifestVersion === 2"
+        <label v-if="detail.manifestVersion === 2 && isDeveloperMode"
           >{{ t('插件包 HTTPS 地址（可选）')
           }}<input v-model="sourceUrl" :aria-label="t('插件包下载地址')" type="url"
         /></label>
@@ -363,6 +366,7 @@ const modeLabels: Record<PluginMode, string> = {
       <PluginMaintenance
         v-if="selectedInstallation && !selectedInstallation.system && detail.manifestVersion === 2"
         :id="detail.id"
+        :developer-mode="isDeveloperMode"
       />
       <p class="detail-scope">
         <ShieldCheck :size="17" /><span

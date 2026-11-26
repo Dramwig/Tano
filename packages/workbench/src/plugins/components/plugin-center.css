@@ -581,3 +581,8 @@
 .plugin-policy { display: grid; gap: 12px; }
 .plugin-policy label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
 .plugin-policy select, .plugin-policy input, .plugin-policy textarea { padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; }
+.workspace-plugin-policy { margin: 16px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.workspace-plugin-policy label { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.workspace-plugin-policy select { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--text); font: inherit; font-size: 12.5px; }
+.dev-optin-link { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 6px; }
+.dev-optin-link:hover { color: var(--text); background: var(--hover); }

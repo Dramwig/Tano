@@ -104,7 +104,7 @@ async function importFile(event: Event) {
     const lowerName = typeof file.name === 'string' ? file.name.toLowerCase() : '';
     const isZip = lowerName.endsWith('.zip') || lowerName.endsWith('.tano-plugin');
     if (file.size > (isZip ? PLUGIN_ARCHIVE_V2_LIMIT : pluginPackageLimit)) {
-      throw new Error(t('插件包不能超过 4 MiB'));
+      throw new Error(isZip ? t('插件归档包不能超过 16 MiB') : t('插件包不能超过 4 MiB'));
     }
     let content: string;
     let unpackedBinaryAssets: Record<string, Uint8Array> | undefined;

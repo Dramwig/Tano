@@ -28,39 +28,58 @@ import {
 } from 'lucide-vue-next';
 import ShortcutHint from '@tano/editor/shortcut-hint';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
-import { workbenchContextKey } from '../workbench-context';
+import { isDataTableFilePath, isMarkdown, isWorkspaceInternalPath } from '@tano/protocol';
+import { t } from '../../i18n/i18n';
+import { mobile } from '../../platform/platform';
+import {
+  workbenchDocumentsKey,
+  workbenchPrefsKey,
+  workbenchShellKey,
+  workbenchTreeMenusKey,
+} from '../workbench-context';
 import PageDisplayOptions from './PageDisplayOptions.vue';
 import PluginMenu from '../../plugins/components/PluginMenu.vue';
 
-const context = inject(workbenchContextKey);
-if (!context) throw new Error('Workbench context is required');
+const shell = inject(workbenchShellKey);
+const prefs = inject(workbenchPrefsKey);
+const documents = inject(workbenchDocumentsKey);
+const treeMenus = inject(workbenchTreeMenusKey);
+if (!shell || !prefs || !documents || !treeMenus) throw new Error('Workbench context is required');
+
 const {
   activeWindow,
   workspace,
   isAuxiliaryWindow,
-  t,
   store,
-  mobile,
   localNative,
   busy,
   switchingWorkspace,
+  attachments,
+} = toRefs(shell);
+const {
+  shortcutHint,
+  tabsEnabled,
+  workspaceLocked,
+  editorPreferences,
+  showPageTitle,
+  showDocumentProperties,
+  showAllLineNumbers,
+  toggleWorkspaceLock,
+} = toRefs(prefs);
+const { showOutline, paneSource, togglePageOption, outlineOnLeft, toggleOutlineSide } =
+  toRefs(documents);
+const {
   fileContextMenu,
   multipleContextEntries,
   contextEntries,
   fileContextKeydown,
   selectionDeleteDisabled,
   fileContextAction,
-  shortcutHint,
   contextFolderHome,
   folderHomeContextAction,
   fileMutationDisabled,
   directoryHasManagedFile,
-  isMarkdown,
-  isDataTableFilePath,
-  attachments,
-  tabsEnabled,
   canDuplicateEntry,
-  isWorkspaceInternalPath,
   folderConversionIssue,
   convertDocumentStructure,
   revealedHomeId,
@@ -72,24 +91,16 @@ const {
   directoryContextRenameDisabled,
   directoryContextDeleteDisabled,
   workspaceEntryContextMenu,
+  setWorkspaceEntryContextMenuElement,
   workspaceEntryContextKeydown,
   workspaceEntryContextAction,
   pageContextMenu,
+  setPageContextMenuElement,
   pageContextKeydown,
-  workspaceLocked,
-  editorPreferences,
-  showPageTitle,
-  showDocumentProperties,
-  showOutline,
-  showAllLineNumbers,
-  paneSource,
-  togglePageOption,
-  toggleWorkspaceLock,
   outlineContextMenu,
+  setOutlineContextMenuElement,
   outlineContextKeydown,
-  outlineOnLeft,
-  toggleOutlineSide,
-} = toRefs(context);
+} = toRefs(treeMenus);
 </script>
 
 <template>
@@ -491,7 +502,7 @@ const {
     <div
       v-surface-motion="'App:2'"
       v-if="workspaceEntryContextMenu"
-      :ref="(el) => { context.workspaceEntryContextMenuElement = (el as HTMLElement | null) ?? undefined; }"
+      :ref="setWorkspaceEntryContextMenuElement"
       class="dropdown compact-action-menu file-context-menu workspace-entry-context-menu"
       role="menu"
       tabindex="-1"
@@ -524,7 +535,7 @@ const {
     <div
       v-surface-motion="'App:6'"
       v-if="pageContextMenu && !switchingWorkspace"
-      :ref="(el) => { context.pageContextMenuElement = (el as HTMLElement | null) ?? undefined; }"
+      :ref="setPageContextMenuElement"
       class="dropdown compact-action-menu page-context-menu workspace-options-menu"
       role="menu"
       :aria-label="t('页面显示选项')"
@@ -552,7 +563,7 @@ const {
     <div
       v-surface-motion="'App:7'"
       v-if="outlineContextMenu && !switchingWorkspace"
-      :ref="(el) => { context.outlineContextMenuElement = (el as HTMLElement | null) ?? undefined; }"
+      :ref="setOutlineContextMenuElement"
       class="dropdown compact-action-menu page-context-menu outline-context-menu"
       role="menu"
       :aria-label="t('目录显示选项')"

@@ -3974,5 +3974,20 @@
   "副本已保存，原文件保持不变": "Copia guardada; el archivo original no ha cambiado",
   "已恢复本地草稿": "Borrador local restaurado",
   "本地草稿损坏，原记录已备份，当前显示磁盘文件。": "El borrador local estaba dañado. Se conservó una copia de seguridad y se muestra el archivo del disco.",
-  "本地草稿无法保存，请保存文件或另存副本后再关闭。": "No se pudo guardar el borrador local. Guarda el archivo o una copia antes de cerrar."
+  "本地草稿无法保存，请保存文件或另存副本后再关闭。": "No se pudo guardar el borrador local. Guarda el archivo o una copia antes de cerrar.",
+  "插件开发者区": "Área de desarrolladores de plugins",
+  "开发者工具导航": "Navegación de herramientas de desarrollo",
+  "导入与调试": "Importar y depurar",
+  "插件工坊": "Taller de plugins",
+  "导入本地插件包": "Importar paquete de plugin local",
+  "导入 .tano-plugin.zip 归档包或声明式 JSON 清单，也可载入内置示例或仅缓存到当前设备用于调试。": "Importa un archivo .tano-plugin.zip o un manifiesto JSON declarativo, carga un ejemplo integrado o guárdalo en caché en este dispositivo para depurar.",
+  "导入插件包…": "Importar paquete de plugin…",
+  "本地开发监听运行中": "Observador de desarrollo local activo",
+  "插件归档包不能超过 16 MiB": "El archivo del plugin no puede superar los 16 MiB",
+  "工作台微调": "Ajustes del espacio",
+  "开发者": "Desarrollador",
+  "去发现适合你的插件，扩展你的工作台能力。": "Descubre plugins para ampliar las capacidades de tu espacio de trabajo.",
+  "开启开发者模式以导入或开发插件": "Activa el modo desarrollador para importar o crear plugins",
+  "开启后，可在插件中心访问开发者区（导入、工坊、调试与投稿），也可右键顶部标签栏空白处打开调试窗口。": "Al activarlo, desbloquea la pestaña Desarrollador en el Centro de plugins (importación, taller, depuración y publicación) y DevTools desde el menú contextual de la barra de pestañas.",
+  "开启后，可在插件中心访问开发者区（导入插件、工坊、开发监听、运行日志与投稿）。": "Al activarlo, desbloquea la pestaña Desarrollador en el Centro de plugins (importar plugins, taller, observador de desarrollo, registros de ejecución y publicación)."
 }

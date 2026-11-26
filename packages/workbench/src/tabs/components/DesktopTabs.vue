@@ -28,7 +28,7 @@ import { useWorkspaceStore, type DocumentTab } from '../../stores/workspace';
 import { appearanceText } from '../../documents/document-appearance';
 import { useWindowContext } from '../../windows/context';
 import type { DetachedDropPoint } from '../../windows/position';
-import { workbenchContextKey } from '../../shell/workbench-context';
+import { workbenchPrefsKey } from '../../shell/workbench-context';
 import { useDesktopTabLayout } from '../../composables/use-desktop-tab-layout';
 import { useDesktopTabDrag } from '../../composables/use-desktop-tab-drag';
 import { useDesktopTabMenu } from '../../composables/use-desktop-tab-menu';
@@ -38,14 +38,20 @@ import ButtonVisibilityGroup from '../../shell/components/ButtonVisibilityGroup.
 import WorkspaceIcon from '../../workspace/components/WorkspaceIcon.vue';
 import ResourceIcon from '../../files/components/ResourceIcon.vue';
 
-const props = defineProps<{
-  loading?: boolean;
-  detachable?: boolean;
-  paneId?: string;
-  showNavigation?: boolean;
-  fileDrag?: { workspaceId: string; ids: readonly string[] };
-  assistantTab?: { id: string; title: string };
-}>();
+const props = withDefaults(
+  defineProps<{
+    loading?: boolean;
+    detachable?: boolean;
+    paneId?: string;
+    showNavigation?: boolean;
+    fileDrag?: { workspaceId: string; ids: readonly string[] };
+    assistantTab?: { id: string; title: string };
+    developerMode?: boolean;
+  }>(),
+  {
+    developerMode: undefined,
+  },
+);
 
 const emit = defineEmits<{
   'new-tab': [];
@@ -55,8 +61,10 @@ const emit = defineEmits<{
 }>();
 
 const store = useWorkspaceStore();
-const workbench = inject(workbenchContextKey, null);
-const canOpenDevtools = computed(() => !!nativeOs && !mobile && workbench?.developerMode === true);
+const workbenchPrefs = inject(workbenchPrefsKey, null);
+const canOpenDevtools = computed(
+  () => !!nativeOs && !mobile && (props.developerMode ?? workbenchPrefs?.developerMode === true),
+);
 const windowContext = useWindowContext();
 
 const navigationItems = [
