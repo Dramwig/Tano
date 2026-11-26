@@ -379,7 +379,7 @@ test('watches source edits through developer mode, keeps the last build on compi
   const directory = await mkdtemp(resolve('artifacts/plugin-development-'));
   let watcher;
   const manifest = { manifestVersion: 2, apiVersion: 1, id: 'development-test', name: '自动重载示例', version: '1.0.0',
-    description: '', objectTypes: [], relationTypes: [], permissions: [], commands: [], views: [{ id: 'main', label: '构建内容' }] };
+    description: '', objectTypes: [], relationTypes: [], permissions: [], commands: [], views: [{ id: 'main', label: '构建内容', location: 'tab' }] };
   const source = text => `export default async function(tano) { await tano.views.render('main', { type: 'text', text: '${text}' }); }`;
   try {
     await writeFile(resolve(directory, 'manifest.json'), JSON.stringify(manifest));
@@ -405,6 +405,7 @@ test('watches source edits through developer mode, keeps the last build on compi
     await writeFile(resolve(directory, 'main.ts'), 'export default function BROKEN {');
     await expect(maintenance.getByText(/源码构建失败或尚未就绪/)).toBeVisible();
     await closePluginDetails(page);
+    await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').openPluginView('development-test', 'main'));
     await expect(page.getByText('开发构建第一版', { exact: true })).toBeVisible();
     await writeFile(resolve(directory, 'main.ts'), source('开发构建第二版'));
     await expect(page.getByText('开发构建第二版', { exact: true })).toBeVisible({ timeout: 15000 });
@@ -417,6 +418,7 @@ test('watches source edits through developer mode, keeps the last build on compi
     await expect(maintenance.getByText(/插件身份或权限声明已变化/)).toBeVisible({ timeout: 10000 });
     await expect(maintenance.getByRole('button', { name: '停止自动重载' })).toHaveCount(0);
     await closePluginDetails(page);
+    await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').openPluginView('development-test', 'main'));
     await expect(page.getByText('开发构建第二版', { exact: true })).toBeVisible();
   } finally {
     await watcher?.close();
