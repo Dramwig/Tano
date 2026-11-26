@@ -39,9 +39,9 @@ function keydown(event: KeyboardEvent) {
 
 </script>
 <template>
-  <div v-surface-motion="'DiffDialog:0'" class="modal-backdrop" @mousedown.self="emit('close')">
+  <div v-surface-motion="'DiffDialog:0'" class="modal-backdrop" data-surface-role="backdrop" @mousedown.self="emit('close')">
     <section
-      class="modal diff-modal"
+      class="modal diff-modal" data-surface-role="dialog"
       role="dialog"
       aria-modal="true"
       :aria-label="t('文档修改差异')"

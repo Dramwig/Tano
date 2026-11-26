@@ -40,8 +40,8 @@ async function save(append = false) {
 </script>
 
 <template>
-  <div v-surface-motion="'SelectionTodoDialog:0'" class="selection-todo-backdrop" @click.self="close">
-    <form ref="panel" class="selection-todo-dialog" role="dialog" aria-modal="true" :aria-label="t('从选区创建任务或事件')" @submit.prevent="save()" @keydown.esc.stop.prevent="close" @keydown="trapFocus">
+  <div v-surface-motion="'SelectionTodoDialog:0'" class="selection-todo-backdrop" data-surface-role="backdrop" @click.self="close">
+    <form ref="panel" class="selection-todo-dialog" data-surface-role="dialog" role="dialog" aria-modal="true" :aria-label="t('从选区创建任务或事件')" @submit.prevent="save()" @keydown.esc.stop.prevent="close" @keydown="trapFocus">
       <header><h2>{{ t('创建任务或事件') }}</h2><button type="button" class="icon-button" :aria-label="t('关闭创建事项')" :data-tooltip="t('关闭')" :disabled="busy" @click="close"><X :size="18" /></button></header>
       <p>{{ t('归属工作区：{0}', [session.workspaceName]) }}</p>
       <label>{{ t('类型') }}<select v-model="kind" :disabled="busy || !!createdId"><option value="task">{{ t('任务') }}</option><option value="event">{{ t('事件') }}</option></select></label>
@@ -56,6 +56,7 @@ async function save(append = false) {
 </template>
 
 <style scoped>
+@layer components {
 .selection-todo-backdrop { position: fixed; inset: 0; z-index: 90; background: #0005; display: grid; place-items: center; padding: 16px; }
 .selection-todo-dialog { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 8px; width: min(460px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px; }
 header { display: flex; align-items: center; justify-content: space-between; }
@@ -68,4 +69,5 @@ footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 footer button { padding: 7px 12px; border: 1px solid var(--line); border-radius: 6px; }
 p { font-size: 13px; overflow-wrap: anywhere; }
 [role=alert] { color: var(--red, #b42336); }
+}
 </style>

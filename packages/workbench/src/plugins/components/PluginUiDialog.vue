@@ -98,7 +98,7 @@ function handleKeydown(event: KeyboardEvent) {
     @keydown="handleKeydown"
   >
     <section
-      class="plugin-ui-dialog"
+      class="plugin-ui-dialog" data-surface-role="dialog"
       role="dialog"
       aria-modal="true"
       :aria-label="dialog.options.title"
@@ -213,6 +213,7 @@ function handleKeydown(event: KeyboardEvent) {
 </template>
 
 <style scoped>
+@layer components {
 .plugin-ui-backdrop {
   position: fixed;
   inset: 0;
@@ -448,5 +449,6 @@ function handleKeydown(event: KeyboardEvent) {
 .plugin-toast-close:hover {
   background: var(--hover);
   color: var(--text);
+}
 }
 </style>

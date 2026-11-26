@@ -115,8 +115,8 @@ const time = (value?: string) => value ? new Date(value).toLocaleString(uiLocale
 
 <template>
   <Teleport :to="document.body">
-    <div v-surface-motion="'PlanConnectionsDialog:0'" class="plan-connections-backdrop" @mousedown.self="!working && emit('close')">
-      <section ref="panel" class="plan-connections" role="dialog" aria-modal="true" :aria-label="t('日历与 Todo 连接')" tabindex="-1" @keydown="keyboard">
+    <div v-surface-motion="'PlanConnectionsDialog:0'" class="plan-connections-backdrop" data-surface-role="backdrop" @mousedown.self="!working && emit('close')">
+      <section ref="panel" class="plan-connections" data-surface-role="dialog" role="dialog" aria-modal="true" :aria-label="t('日历与 Todo 连接')" tabindex="-1" @keydown="keyboard">
         <header><div><h2>{{ t('日历与 Todo') }}</h2><p>{{ t('连接常用服务，或从文件导入事项。') }}</p></div><button class="icon-button" :aria-label="t('关闭同步设置')" :disabled="working" @click="emit('close')"><X :size="18" /></button></header>
         <nav class="connection-tabs" :aria-label="t('同步类别')">
           <button :aria-pressed="kind === 'calendar'" :disabled="working" @click="kind = 'calendar'"><CalendarDays :size="16" />{{ t('日历') }}</button>
@@ -183,6 +183,7 @@ const time = (value?: string) => value ? new Date(value).toLocaleString(uiLocale
 </template>
 
 <style scoped>
+@layer components {
 .plan-connections-backdrop { position: fixed; inset: 0; z-index: 95; display: flex; align-items: center; justify-content: center; padding: 20px; background: #0f0f0f45; }
 .plan-connections { width: 680px; max-width: 100%; max-height: min(860px, 90dvh); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); color: var(--text); box-shadow: 0 24px 80px #0002; outline: none; }
 .plan-connections > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 24px 26px 18px; }
@@ -250,5 +251,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   .connection-symbol { display: none; }
   .connection-import-row { padding: 13px; gap: 10px; }
   .connection-row-heading, .connection-row footer { flex-wrap: wrap; }
+}
 }
 </style>

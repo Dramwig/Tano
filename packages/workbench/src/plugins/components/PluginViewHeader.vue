@@ -118,7 +118,7 @@ async function selectFile(event: Event, id: string) {
     </template>
     <button v-if="groups.length" ref="trigger" type="button" :aria-label="t('预览操作')" :title="t('预览操作')" aria-haspopup="dialog" :aria-controls="popoverId" :aria-expanded="expanded" @click="toggle" @keydown.down.prevent="!expanded && toggle()"><MoreHorizontal :size="19" /></button>
     <Teleport :to="document.body">
-      <div v-surface-motion="'PluginViewHeader:0'" v-if="expanded && header" :id="popoverId" ref="popover" class="plugin-header-popover" :style="position" role="dialog" :aria-label="t('预览操作')" @keydown.stop="keyboard">
+      <div v-surface-motion="'PluginViewHeader:0'" v-if="expanded && header" :id="popoverId" ref="popover" class="plugin-header-popover" data-surface-role="popover" :style="position" role="dialog" :aria-label="t('预览操作')" @keydown.stop="keyboard">
         <div class="plugin-header-heading"><span>{{ view.label }}</span><span>{{ header.status }}</span></div>
         <div v-for="group in groups" :key="group.label" class="plugin-header-group">
           <span class="plugin-header-group-label">{{ group.label }}</span>
@@ -138,6 +138,7 @@ async function selectFile(event: Event, id: string) {
   </div>
 </template>
 <style scoped>
+@layer components {
 .plugin-view-header { display:flex; align-items:center; gap:2px; flex:none; }
 button,.plugin-header-file { display:inline-flex; align-items:center; justify-content:center; gap:8px; position:relative; width:28px; height:28px; padding:0; border:0; border-radius:5px; color:var(--muted); background:transparent; font:inherit; cursor:pointer; }
 button:hover,.plugin-header-file:hover,button[aria-expanded=true] { background:var(--hover); color:var(--text); }
@@ -152,4 +153,5 @@ button:disabled,.plugin-header-file.disabled { opacity:.4; cursor:default; }
 .plugin-header-group { display:flex; align-items:center; gap:3px; padding:3px 0; }
 .plugin-header-group-label { flex:1; color:var(--muted); padding-left:6px; }
 @media(max-width:600px) { .plugin-view-header { gap:0; } .plugin-view-header > button { width:24px; } }
+}
 </style>

@@ -186,6 +186,7 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
 </template>
 
 <style scoped>
+@layer components {
 .workspace-layout { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .workspace-pane-tabbars { position: relative; flex: 0 0 var(--workbench-tabbar-height); background: var(--workbench-back); }
 .workspace-pane-tabbar { position: absolute; top: 0; height: 100%; min-width: 0; }
@@ -256,5 +257,6 @@ onBeforeUnmount(() => { endResize(); resizeObserver?.disconnect(); });
   .workspace-panes-multiple :deep(.topbar-right > .demo-badge),
   .workspace-panes-multiple :deep(.topbar-right > .local-badge) { margin-right: 0; font-size: 10px; }
   .workspace-panes-multiple :deep(.calendar-topbar-period) { display: none; }
+}
 }
 </style>

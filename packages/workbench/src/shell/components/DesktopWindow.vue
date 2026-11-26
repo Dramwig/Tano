@@ -87,6 +87,7 @@ async function toggleMaximize() {
 </template>
 
 <style>
+@layer components {
 .desktop-window {
   --desktop-titlebar-height: var(--workbench-tabbar-height);
   position: relative;
@@ -329,5 +330,6 @@ async function toggleMaximize() {
   .desktop-window-content > .app-shell .assistant-panel {
     top: var(--desktop-titlebar-height);
   }
+}
 }
 </style>

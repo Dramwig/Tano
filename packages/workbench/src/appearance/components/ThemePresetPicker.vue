@@ -105,14 +105,14 @@ onBeforeUnmount(() => {
     <div v-else class="theme-preset-quick-row" :aria-label="t('常用主题')">
       <ThemePresetCard :preset="current" selected :saveable="appearance.canSavePreset" @select="select" @save="save" @remove="removePreset" />
       <ThemePresetCard v-if="previous" :preset="previous" @select="select" @remove="removePreset" />
-      <button ref="trigger" type="button" class="theme-preset-more" :aria-label="t('更多主题')"
+      <button ref="trigger" type="button" class="theme-preset-more" data-surface-role="card" :aria-label="t('更多主题')"
         :aria-expanded="expanded" :aria-controls="expanded ? panelId : undefined" @click="toggle" @keydown.esc.stop.prevent="close(true)">
         <span class="theme-preset-more-heading"><strong>{{ t('更多') }}</strong><ChevronDown :size="14" :class="{ expanded }" aria-hidden="true" /></span>
         <span class="theme-preset-placeholder"><LayoutGrid :size="28" :stroke-width="1.3" aria-hidden="true" /></span>
       </button>
     </div>
     <div v-if="expanded && !inlinePresets" :id="panelId" ref="panel" v-surface-motion="'ThemePresetPicker:0'"
-      class="theme-preset-popover" role="region" :aria-label="t('更多主题')" tabindex="-1"
+      class="theme-preset-popover" data-surface-role="popover" role="region" :aria-label="t('更多主题')" tabindex="-1"
       @keydown.esc.stop.prevent="close(true)">
       <div class="theme-preset-grid">
         <ThemePresetCard v-for="preset in morePresets" :key="preset.id" :preset="preset" borderless compact
@@ -123,6 +123,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+@layer components {
 .theme-preset-picker { position: relative; z-index: 1; container-type: inline-size; margin-top: 16px; }
 .theme-preset-quick-row { --theme-preview-height: clamp(88px, 19cqi, 132px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .theme-preset-more { grid-column: 3; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px; border: 1px solid var(--control-border); border-radius: 11px; background: var(--paper); color: var(--text-secondary); text-align: start; }
@@ -136,5 +137,6 @@ onBeforeUnmount(() => {
 .theme-preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr)); gap: 8px; }
 @container (max-width: 480px) {
   .theme-preset-quick-row { gap: 8px; }
+}
 }
 </style>

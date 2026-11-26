@@ -708,7 +708,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
       :aria-expanded="openBlockKey === block.key && popupVisible" @mousedown.prevent @click="openBlockComments(block.key, block.ids)">
       <MessageSquare :size="15" /><span>{{ count(block.ids) }}</span>
     </button>
-    <div v-surface-motion="'DocumentComments:0'" v-if="annotationMounted" v-show="layout.rail || popupVisible" ref="popup" :class="layout.rail ? 'annotation-rail' : 'annotation-popup'"
+    <div v-surface-motion="'DocumentComments:0'" v-if="annotationMounted" v-show="layout.rail || popupVisible" ref="popup" :class="layout.rail ? 'annotation-rail' : 'annotation-popup'" :data-surface-role="layout.rail ? undefined : 'popover'"
       :role="layout.rail ? 'region' : 'dialog'" :aria-label="t('局部批注')"
       :style="{ top: `${layout.rail ? 0 : popupTop}px`, left: `${layout.rail ? layout.railLeft : layout.popupLeft}px`, width: `${layout.rail ? railWidth : layout.popupWidth}px` }">
       <div :class="{ 'annotation-popup-content panel-scrollbar': !layout.rail }">
@@ -771,6 +771,7 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
 </template>
 
 <style scoped>
+@layer components {
 .document-review { color: var(--text); font-family: var(--font-ui); }
 .document-discussion { box-sizing: border-box; max-width: var(--tano-content-measure, 780px); margin: 48px auto 0; padding: 24px var(--tano-block-padding-inline, 8px) 0; }
 .document-discussion :deep(.tano-skeleton-list) { padding-inline: 0; }
@@ -803,4 +804,5 @@ async function saveChange(kind: CommentKind, change: CommentChange) {
 .annotation-card-content { display: flow-root; }
 .comment-error { margin: 10px 0; color: #a63636; font-size: 12px; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .document-discussion { margin-top: 32px; } .annotation-popup-content { max-height: 320px; padding: 10px 0 12px; } .annotation-popup-content > div { padding-inline: 12px; } .annotation-popup > .comment-error { margin-inline: 12px; } }
+}
 </style>

@@ -1,0 +1,377 @@
+/* Raised card material (立体卡片, builtin:raised — loaded in @layer material).
+   Opaque surface-only material: sculpts every primary surface, card, tab, dialog and control as a
+   floating inner card cradled inside a whisper-soft recessed trough (outer casing rim + sunken groove
+   + directional top specular catch-light + downward contact shadow pooling into the groove), avoiding
+   stiff uniform wireframe borders.
+   Never alters --workbench-back*, --workbench-sidebar, palette colours, layout geometry, or component radii. */
+
+@media screen {
+  :root[data-material='builtin:raised'] {
+    /* Light mode: pure sculpted bevel + physical 1px edge thickness + clean 4px recessed double-bezel tray
+       on standalone cards — zero wide blurry drop shadows in either light or dark mode.
+       Derive --raised-edge from --line so the crisp rim never washes out against darker desks like 影灰. */
+    --raised-edge: color-mix(in srgb, var(--text) 3.5%, var(--line));
+    --raised-focus-edge: color-mix(in srgb, var(--text) 10%, var(--line));
+    --raised-highlight: #ffffff;
+    --raised-top-sheen: rgb(255 255 255 / 92%);
+    --raised-underside: color-mix(in srgb, var(--text) 5.5%, transparent);
+    --raised-ledge: color-mix(in srgb, var(--text) 5.5%, transparent);
+    /* Airy 4px recessed tray (~2.6% off --paper, matching light reference) + whisper outer casing hairline. */
+    --raised-groove: color-mix(in srgb, var(--text) 2.6%, var(--paper));
+    --raised-outer-rim: color-mix(in srgb, var(--line) 82%, var(--paper) 18%);
+    /* Hair-tight 1px contact seating only (no floating blur shadows). */
+    --raised-contact-shadow: color-mix(in srgb, var(--text) 3%, transparent);
+    --raised-bevel:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 1px 0 0 rgb(255 255 255 / 85%),
+      inset 0 -1px 0 var(--raised-underside),
+      inset 0 -3px 5px -3px color-mix(in srgb, var(--text) 3.5%, transparent);
+    /* Tactile 1px physical lower edge thickness + tight 1px seating for island/inset cards. */
+    --raised-card-outer-shadow:
+      0 1px 0 0 var(--raised-ledge),
+      0 1px 1.5px 0 var(--raised-contact-shadow);
+    --raised-card-shadow:
+      var(--raised-bevel),
+      var(--raised-card-outer-shadow);
+    /* Crisp 4px recessed double-bezel tray + tactile 1px lower edge lip for standalone cards, popovers, composers and document sheets. */
+    --raised-tray-shadow:
+      var(--raised-bevel),
+      0 1px 0 0 var(--raised-ledge),
+      0 1px 1.5px 0 var(--raised-contact-shadow),
+      0 0 0 4px var(--raised-groove),
+      0 0 0 5px var(--raised-outer-rim),
+      0 1px 0 5px color-mix(in srgb, var(--text) 2%, transparent);
+    --raised-dialog-shadow:
+      var(--raised-bevel),
+      0 1px 0 0 var(--raised-ledge),
+      0 1px 1.5px 0 var(--raised-contact-shadow),
+      0 0 0 4px var(--raised-groove),
+      0 0 0 5px var(--raised-outer-rim),
+      0 8px 24px -8px color-mix(in srgb, var(--text) 9%, transparent);
+    --raised-control-shadow:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 0 -1px 0 color-mix(in srgb, var(--text) 5%, transparent),
+      0 1px 0 color-mix(in srgb, var(--text) 4.5%, transparent),
+      0 1px 1.5px color-mix(in srgb, var(--text) 3%, transparent);
+    --raised-tab-shadow:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 0 -1px 0 color-mix(in srgb, var(--text) 5%, transparent),
+      0 1px 0 color-mix(in srgb, var(--text) 4.5%, transparent),
+      0 1px 1.5px var(--raised-contact-shadow);
+    /* Continuous-layout seam optics: crisp 2px seating crease only (zero wide drop-shadow band). */
+    --raised-seam-width: 2px;
+    --raised-seam-height: 2px;
+    --raised-seam-left-paint: linear-gradient(
+      270deg,
+      color-mix(in srgb, var(--text) 3%, transparent) 0px,
+      transparent 2px
+    );
+    --raised-seam-top-paint: linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--text) 2.5%, transparent) 0px,
+      transparent 2px
+    );
+    --raised-nav-seam-shadow:
+      inset -1px 0 0 0 color-mix(in srgb, var(--text) 2.5%, transparent);
+    --raised-active-tab-shadow:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 1px 0 0 rgb(255 255 255 / 85%),
+      inset -1px 0 0 rgb(255 255 255 / 85%);
+
+    /* Bind into semantic surface-role slots. */
+    --surface-dialog-border: var(--raised-edge);
+    --surface-dialog-shadow: var(--raised-dialog-shadow);
+    --surface-popover-border: var(--raised-edge);
+    --surface-popover-shadow: var(--raised-tray-shadow);
+    --surface-card-border: var(--raised-edge);
+    --surface-card-shadow: var(--raised-tray-shadow);
+    --surface-card-expanded-shadow: var(--raised-tray-shadow);
+    --surface-control-border: var(--raised-edge);
+    --surface-control-shadow: var(--raised-control-shadow);
+    --surface-focus-border: var(--raised-focus-edge);
+    --surface-sheet-border: 1px solid var(--raised-edge);
+    --surface-sheet-shadow: var(--raised-card-shadow);
+    --surface-sheet-bevel: var(--raised-bevel);
+    --surface-document-border: var(--raised-edge);
+    --surface-document-shadow: var(--raised-tray-shadow);
+    --surface-slip-tab-border: 1px solid var(--raised-edge);
+    --surface-slip-tab-shadow: var(--raised-tab-shadow);
+  }
+
+  :root[data-theme='dark'][data-material='builtin:raised'] {
+    /* Dark mode: quiet outer rim + crisp overhead specular inner bevel + clean 4px recessed trough
+       on standalone cards — zero wide blurry dark shadows. */
+    --raised-edge: color-mix(in srgb, #ffffff 5.5%, var(--paper));
+    --raised-focus-edge: color-mix(in srgb, #ffffff 15%, var(--paper));
+    --raised-highlight: rgb(255 255 255 / 11%);
+    --raised-top-sheen: rgb(255 255 255 / 3.5%);
+    --raised-underside: rgb(0 0 0 / 42%);
+    --raised-ledge: rgb(0 0 0 / 48%);
+    --raised-groove: color-mix(in srgb, var(--paper) 34%, #000000 66%);
+    --raised-outer-rim: color-mix(in srgb, #ffffff 6.5%, var(--sidebar));
+    --raised-contact-shadow: rgb(0 0 0 / 32%);
+    --raised-bevel:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 0 2px 4px -2px var(--raised-top-sheen),
+      inset 0 -1px 0 var(--raised-underside);
+    --raised-card-outer-shadow:
+      0 1px 0 0 var(--raised-ledge),
+      0 1px 1.5px 0 var(--raised-contact-shadow);
+    --raised-card-shadow:
+      var(--raised-bevel),
+      var(--raised-card-outer-shadow);
+    --raised-tray-shadow:
+      var(--raised-bevel),
+      0 1px 0 0 var(--raised-ledge),
+      0 1px 1.5px 0 var(--raised-contact-shadow),
+      0 0 0 4px var(--raised-groove),
+      0 0 0 5px var(--raised-outer-rim),
+      0 1px 0 5px rgb(0 0 0 / 28%);
+    --raised-dialog-shadow:
+      var(--raised-bevel),
+      0 1px 0 0 var(--raised-ledge),
+      0 1px 1.5px 0 var(--raised-contact-shadow),
+      0 0 0 4px var(--raised-groove),
+      0 0 0 5px var(--raised-outer-rim),
+      0 10px 28px -8px rgb(0 0 0 / 48%);
+    --raised-control-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 11%),
+      inset 0 -1px 0 rgb(0 0 0 / 38%),
+      0 1px 0 rgb(0 0 0 / 42%),
+      0 1px 1.5px rgb(0 0 0 / 28%);
+    --raised-tab-shadow:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 0 -1px 0 rgb(0 0 0 / 38%),
+      0 1px 0 rgb(0 0 0 / 42%),
+      0 1px 1.5px var(--raised-contact-shadow);
+    --raised-seam-width: 2px;
+    --raised-seam-height: 2px;
+    --raised-seam-left-paint: linear-gradient(
+      270deg,
+      rgb(0 0 0 / 36%) 0px,
+      transparent 2px
+    );
+    --raised-seam-top-paint: linear-gradient(
+      0deg,
+      rgb(0 0 0 / 32%) 0px,
+      transparent 2px
+    );
+    --raised-nav-seam-shadow:
+      inset -1px 0 0 0 rgb(0 0 0 / 34%);
+    --raised-active-tab-shadow:
+      inset 0 1px 0 var(--raised-highlight),
+      inset 0 2px 4px -2px var(--raised-top-sheen);
+  }
+
+  /* Islands & inset: paint the inner directional bevel rim via ::after so scrolled content never covers it,
+     and let the floating elevation shadow bleed softly on all 4 sides without clipping at the top or gap edges. */
+  :root[data-layout='islands'][data-material='builtin:raised']:not(.compact-layout) .app-shell {
+    --raised-bleed-x: min(5px, var(--island-gap));
+    --raised-bleed-bottom: min(6px, var(--island-gap));
+  }
+  :root[data-layout='islands'][data-material='builtin:raised']:not(.compact-layout) .workspace-panes:not(.workspace-panes-multiple) {
+    margin: 0 calc(1px - var(--raised-bleed-x)) calc(2px - var(--raised-bleed-bottom));
+    overflow: visible;
+  }
+  :root[data-layout='islands'][data-material='builtin:raised']:not(.compact-layout) .workspace-panes:not(.workspace-panes-multiple) > .workspace-pane {
+    padding: 0 var(--raised-bleed-x) var(--raised-bleed-bottom);
+    overflow: visible;
+  }
+  :root[data-layout='islands'][data-material='builtin:raised'] :is(.workspace-pane-tabbars, .workspace-tabbar) {
+    background: transparent;
+  }
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset'])[data-material='builtin:raised'] .sidebar-bottom {
+    margin: auto -7px 1px;
+    padding: 7px 7px 6px;
+    border-radius: 0 0 max(0px, calc(var(--radius-card) - 1px)) max(0px, calc(var(--radius-card) - 1px));
+  }
+  :root[data-layout='islands'][data-material='builtin:raised'] .workspace-card {
+    position: relative;
+    box-shadow: var(--raised-card-outer-shadow);
+  }
+  :root[data-layout='islands'][data-material='builtin:raised'] .workspace-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: max(0px, calc(var(--radius-card) - 1px));
+    box-shadow: var(--raised-bevel);
+    pointer-events: none;
+  }
+
+  /* Continuous (edge-to-edge) layout: cast a smooth, velvety directional drop shadow from the floating
+     main editor sheet onto the sidebar and tab-strip seams — no hard parallel outer lines — paired with
+     a whisper-soft inner rim and overhead specular catch-light. */
+  :root[data-layout='continuous'][data-material='builtin:raised']:not(.compact-layout) .app-shell:not(.sidebar-hidden) > .sidebar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--raised-seam-width);
+    z-index: 5;
+    pointer-events: none;
+    background: var(--raised-seam-left-paint);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0px, #000 10px, #000 calc(100% - 10px), transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0px, #000 10px, #000 calc(100% - 10px), transparent 100%);
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised']:not(.compact-layout) .app-shell:not(.sidebar-hidden):has(.workspace-native-tabs) > .sidebar::after {
+    top: var(--workbench-tabbar-height);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0px, #000 10px);
+    mask-image: linear-gradient(180deg, transparent 0px, #000 10px);
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised'] .app-shell:has(.workspace-native-tabs) .workspace-pane-tabbars::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    right: 0;
+    bottom: 0;
+    height: var(--raised-seam-height);
+    z-index: 0;
+    pointer-events: none;
+    background: var(--raised-seam-top-paint);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0px, #000 10px);
+    mask-image: linear-gradient(90deg, transparent 0px, #000 10px);
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised'] .app-shell.sidebar-hidden:has(.workspace-native-tabs) .workspace-pane-tabbars::after {
+    left: 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised'] .app-shell:has(.workspace-native-tabs) .workspace-pane-tabbar {
+    z-index: 1;
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised']:not(.compact-layout) .app-shell:not(.sidebar-hidden):not(:has(.workspace-native-tabs)) .workspace-panes {
+    border: 1px solid var(--raised-edge);
+    border-right: 0;
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised']:not(.compact-layout) .app-shell:not(.sidebar-hidden):not(:has(.workspace-native-tabs)) .workspace-panes::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: max(0px, calc(var(--radius-card) - 1px)) 0 0 max(0px, calc(var(--radius-card) - 1px));
+    box-shadow: var(--raised-bevel);
+    pointer-events: none;
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised'] .app-shell:has(.workspace-native-tabs) .workspace-pane-surface {
+    border-top: 1px solid var(--raised-edge);
+    border-left: 1px solid var(--raised-edge);
+    box-shadow: var(--raised-bevel);
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised'] .app-shell.sidebar-hidden:has(.workspace-native-tabs) .workspace-pane-surface {
+    border-left: 0;
+    box-shadow: var(--raised-bevel);
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised']:not(.compact-layout) .app-shell:not(.sidebar-hidden) .main-column.workspace-card {
+    border-left: 1px solid var(--raised-edge);
+  }
+  :root[data-layout='continuous'][data-material='builtin:raised'] .settings-backdrop:not(.settings-tabbed) .settings-nav {
+    border-right-color: var(--raised-edge);
+    box-shadow: var(--raised-nav-seam-shadow);
+  }
+  :root[data-layout='document'][data-material='builtin:raised'] .workspace-pane-surface {
+    border-top: 1px solid var(--raised-edge);
+    box-shadow: var(--raised-bevel);
+  }
+
+  /* Seamless active tab join: continue the whisper-soft inner rim, directional top highlight and
+     soft outer elevation shadow smoothly around the active tab and its concave feet with zero seam. */
+  :root[data-material='builtin:raised']:not([data-layout='document']) :is(.workspace-pane-tabbars, .workspace-tabbar) {
+    z-index: 2;
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-list {
+    height: calc(100% + 4px);
+    padding-bottom: 4px;
+    margin-bottom: -4px;
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging)::before {
+    inset: 0 0 8px 0;
+    border: 1px solid var(--raised-edge);
+    border-bottom: 0;
+    clip-path: inset(-10px -10px 0 -10px);
+    box-shadow: var(--raised-active-tab-shadow);
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging)::after {
+    content: '';
+    position: absolute;
+    z-index: 3;
+    left: 1px;
+    right: 1px;
+    bottom: -3px;
+    height: 3px;
+    background: var(--workbench-front);
+    pointer-events: none;
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners::before,
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners::after {
+    bottom: -3px;
+    width: 10px;
+    height: 11px;
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners::before {
+    left: -8px;
+    background: radial-gradient(
+      circle at top left,
+      transparent 7.65px,
+      var(--raised-edge) 8px,
+      var(--raised-edge) 8.95px,
+      var(--workbench-front) 9.25px
+    );
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners::after {
+    right: -8px;
+    background: radial-gradient(
+      circle at top right,
+      transparent 7.65px,
+      var(--raised-edge) 8px,
+      var(--raised-edge) 8.95px,
+      var(--workbench-front) 9.25px
+    );
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners > span {
+    z-index: 1;
+    bottom: -3px;
+    width: 10px;
+    height: 11px;
+    border: 0;
+    border-radius: 0;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, transparent 25%, #000 80%);
+    mask-image: linear-gradient(180deg, transparent 0%, transparent 25%, #000 80%);
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corner-outline-left {
+    left: -8px;
+    background: radial-gradient(
+      circle at top left,
+      transparent 8.7px,
+      var(--raised-highlight) 9px,
+      var(--raised-highlight) 9.85px,
+      transparent 10.15px
+    );
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corner-outline-right {
+    right: -8px;
+    background: radial-gradient(
+      circle at top right,
+      transparent 8.7px,
+      var(--raised-highlight) 9px,
+      var(--raised-highlight) 9.85px,
+      transparent 10.15px
+    );
+  }
+
+  /* Compact/mobile drawer sidebar gets a clean raised edge. */
+  :root.compact-layout[data-material='builtin:raised'] .sidebar-surface {
+    display: block;
+    inset: 0;
+    border-right: 1px solid var(--raised-edge);
+    box-shadow:
+      inset 0 1px 0 var(--raised-highlight),
+      8px 0 24px -8px rgb(0 0 0 / 24%);
+  }
+
+  /* Keep tabbed settings transparent so the workspace pane's top 1px highlight rim stays visible. */
+  :root[data-material='builtin:raised'] .settings-backdrop.settings-tabbed,
+  :root[data-material='builtin:raised'] .settings-tabbed :is(.settings-dialog, .settings-nav) {
+    background: transparent;
+  }
+}

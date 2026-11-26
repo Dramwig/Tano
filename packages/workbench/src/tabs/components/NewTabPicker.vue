@@ -132,11 +132,11 @@ async function onSearchKeydown(event: KeyboardEvent) {
 <template>
   <Teleport :to="document.body">
     <div v-surface-motion="'NewTabPicker:0'"
-      class="new-tab-backdrop"
+      class="new-tab-backdrop" data-surface-role="backdrop"
       @mousedown.self="emit('close')"
       @keydown.esc.stop.prevent="emit('close')"
     >
-      <section class="modal new-tab-picker" role="dialog" aria-modal="true" :aria-label="t('打开文件')">
+      <section class="modal new-tab-picker" data-surface-role="dialog" role="dialog" aria-modal="true" :aria-label="t('打开文件')">
         <div class="new-tab-search">
           <Search :size="21" :stroke-width="1.6" />
           <input
@@ -242,6 +242,7 @@ async function onSearchKeydown(event: KeyboardEvent) {
 </template>
 
 <style scoped>
+@layer components {
 .new-tab-backdrop {
   position: fixed;
   inset: 36px 0 0;
@@ -401,5 +402,6 @@ async function onSearchKeydown(event: KeyboardEvent) {
 }
 .new-tab-count {
   margin-left: auto;
+}
 }
 </style>

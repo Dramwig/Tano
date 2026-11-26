@@ -1,3 +1,4 @@
+@layer components {
 .desktop-tab-navigation:has(.icon-button) {
   position: relative;
   padding-inline: 6px;
@@ -394,4 +395,5 @@
 .desktop-tab-native-drag-image .desktop-tab-close {
   visibility: hidden;
   pointer-events: none;
+}
 }

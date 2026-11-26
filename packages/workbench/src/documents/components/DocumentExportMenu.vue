@@ -97,7 +97,7 @@ onBeforeUnmount(() => {
     <ArrowDownToLine :size="15" />{{ t('导出') }}<ChevronRight class="document-export-chevron" :size="14" />
   </button>
   <Teleport :to="document.body">
-    <div v-surface-motion="'DocumentExportMenu:0'" v-if="open" :id="panelId" ref="panel" class="dropdown compact-action-menu document-export-menu"
+    <div v-surface-motion="'DocumentExportMenu:0'" v-if="open" :id="panelId" ref="panel" class="dropdown compact-action-menu document-export-menu" data-surface-role="popover"
       :style="position" role="menu" :aria-label="t('导出格式')" tabindex="-1"
       @pointerenter="cancelClose" @pointerleave="scheduleClose" @keydown="panelKeydown">
       <button v-for="format in formats" :key="format.id" type="button" role="menuitem"

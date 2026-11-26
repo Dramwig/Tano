@@ -18,7 +18,7 @@ const actionLabel = computed(() => removable.value
 
 <template>
   <div class="theme-preset-entry" :class="{ 'theme-preset-entry-with-action': saveable || removable }">
-    <button type="button" class="theme-preset-card" :class="{ 'theme-preset-card-borderless': borderless, 'theme-preset-card-compact': compact }" :data-preset-id="preset.id" :disabled="preset.unavailable"
+    <button type="button" class="theme-preset-card" :class="{ 'theme-preset-card-borderless': borderless, 'theme-preset-card-compact': compact }" :data-surface-role="borderless ? undefined : 'card'" :data-preset-id="preset.id" :disabled="preset.unavailable"
       data-press-parent data-no-selection-pop :aria-pressed="!!selected" :aria-describedby="preset.missing?.length ? missingId : undefined"
       :aria-label="`${t('应用预设')}：${label}`" @click="emit('select', preset)">
       <span class="theme-preset-name"><strong>{{ label }}</strong><span v-if="selected" class="theme-preset-current">{{ t('当前') }}</span></span>
@@ -34,6 +34,7 @@ const actionLabel = computed(() => removable.value
 </template>
 
 <style scoped>
+@layer components {
 .theme-preset-entry { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .theme-preset-card { display: flex; flex: 1; flex-direction: column; gap: 6px; min-width: 0; padding: 8px; text-align: start; background: var(--paper); color: var(--text); border: 1px solid var(--control-border); border-radius: 11px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
 .theme-preset-card:not(:disabled):hover { border-color: color-mix(in srgb, var(--green) 55%, var(--control-border)); box-shadow: 0 3px 12px #00000008; }
@@ -55,4 +56,5 @@ const actionLabel = computed(() => removable.value
 .theme-preset-entry-with-action .theme-preset-name { margin-inline-end: 30px; }
 .theme-preset-card-compact :deep(.theme-preview-scene) { inset: 0 auto auto 0; width: calc(100% / .7); height: calc(100% / .7); transform: scale(.7); transform-origin: top left; }
 .theme-preset-missing { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); overflow-wrap: anywhere; }
+}
 </style>

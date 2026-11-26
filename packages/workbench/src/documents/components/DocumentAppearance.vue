@@ -262,7 +262,7 @@ onBeforeUnmount(() => {
     <p v-if="error && !coverOpen" class="document-appearance-error" role="alert">{{ error }}</p>
     </div>
     <Teleport :to="document.body">
-      <section v-surface-motion="'DocumentAppearance:0'" v-if="coverOpen" :id="coverPanelId" ref="coverPanel" class="workspace-icon-picker document-cover-picker" role="dialog" :aria-label="t('文档封面')"
+      <section v-surface-motion="'DocumentAppearance:0'" v-if="coverOpen" :id="coverPanelId" ref="coverPanel" class="workspace-icon-picker document-cover-picker" data-surface-role="popover" role="dialog" :aria-label="t('文档封面')"
         :style="{ left: `${coverPosition.left}px`, top: `${coverPosition.top}px`, width: `${coverPosition.width}px`, maxHeight: `${coverPosition.maxHeight}px` }"
         :aria-busy="busy" @keydown="coverKeydown" @paste="pasteCover">
         <header class="workspace-icon-picker-header">
@@ -291,7 +291,7 @@ onBeforeUnmount(() => {
             <div class="workspace-icon-picker-upload-symbol" aria-hidden="true"><Upload :size="24" /></div>
             <p class="workspace-icon-picker-upload-title">{{ t('上传封面图片') }}</p>
             <div class="workspace-icon-picker-upload-actions">
-              <button type="button" class="settings-button" :disabled="disabled" @click="coverInput?.click()">{{ busy ? t('正在上传…') : t('选择图片') }}</button>
+              <button type="button" class="settings-button" data-surface-role="control" :disabled="disabled" @click="coverInput?.click()">{{ busy ? t('正在上传…') : t('选择图片') }}</button>
               <p class="workspace-icon-picker-upload-paste">{{ t('或按') }} <kbd>Ctrl+V</kbd> {{ t('粘贴图片') }}</p>
             </div>
             <p class="document-cover-hint">{{ t('支持 PNG、JPEG、WebP、GIF，最大 10 MB') }}</p>
@@ -301,7 +301,7 @@ onBeforeUnmount(() => {
             <div class="document-cover-link-field"><Link :size="16" aria-hidden="true" /><input :id="`${coverPanelId}-url`" ref="coverLinkInput" v-model="coverLink"
               type="text" inputmode="url" :placeholder="t('粘贴 HTTPS 图片链接…')" autocomplete="off" :disabled="disabled" :aria-invalid="!!error"
               :aria-describedby="error ? `${coverPanelId}-error` : undefined" @input="error = ''" /></div>
-            <button type="submit" class="settings-button" :disabled="disabled || !coverLink.trim()">{{ t('应用封面') }}</button>
+            <button type="submit" class="settings-button" data-surface-role="control" :disabled="disabled || !coverLink.trim()">{{ t('应用封面') }}</button>
             <p class="document-cover-hint">{{ t('使用可公开访问的 HTTPS 图片链接') }}</p>
           </form>
           <p v-if="error" :id="`${coverPanelId}-error`" class="document-appearance-error" role="alert">{{ error }}</p>
@@ -312,6 +312,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
+@layer components {
 .document-appearance { position: relative; }
 .document-title-actions { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-height: 28px; margin: 0 var(--tano-block-padding-inline) 4px; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
 .document-title-actions-placeholder { visibility: hidden; }
@@ -367,4 +368,5 @@ onBeforeUnmount(() => {
 }
 @media (hover: none) { .document-title-actions, .document-title-action.document-cover-trigger { opacity: 1; pointer-events: auto; } }
 @media (prefers-reduced-motion: reduce) { .document-title-actions, .document-cover-trigger { transition: none; } }
+}
 </style>

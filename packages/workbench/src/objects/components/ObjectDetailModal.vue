@@ -335,12 +335,12 @@ onBeforeUnmount(() => {
 <template>
   <div
     v-surface-motion="'ObjectDetailModal:0'"
-    class="object-detail-backdrop"
+    class="object-detail-backdrop" data-surface-role="backdrop"
     @mousedown.self="emit('close')"
   >
     <section
       ref="panel"
-      class="object-detail-panel"
+      class="object-detail-panel" data-surface-role="dialog"
       tabindex="-1"
       role="dialog"
       aria-modal="true"
@@ -617,6 +617,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+@layer components {
 .sr-only {
   position: absolute;
   width: 1px;
@@ -997,5 +998,6 @@ onBeforeUnmount(() => {
   .object-detail-panel :deep(.object-detail-references) {
     grid-template-columns: minmax(0, 1fr);
   }
+}
 }
 </style>

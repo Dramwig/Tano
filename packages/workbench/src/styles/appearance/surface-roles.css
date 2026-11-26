@@ -1,0 +1,57 @@
+/* Unified surface-role consumers (loaded in @layer surface-roles).
+   Components declare data-surface-role="dialog | popover | card | section | control | backdrop"
+   instead of duplicating selector lists across theme, dark-mode and material stylesheets.
+   Generic .modal, .dropdown and .modal-backdrop fallbacks preserve compatibility for
+   external or legacy consumers that have not yet added data-surface-role. */
+
+:is([data-surface-role='dialog'], .modal):not(.settings-tabbed-dialog) {
+  background-color: var(--paper);
+  color: var(--text);
+  border-color: var(--surface-dialog-border);
+  box-shadow: var(--surface-dialog-shadow);
+}
+
+:is([data-surface-role='popover'], .dropdown) {
+  background: var(--surface-raised);
+  color: var(--text);
+  border-color: var(--surface-popover-border);
+  box-shadow: var(--surface-popover-shadow);
+}
+
+[data-surface-role='card']:not(.theme-preset-card-borderless) {
+  border-color: var(--surface-card-border);
+  box-shadow: var(--surface-card-shadow);
+}
+
+[data-surface-role='card'].review-card.is-expanded {
+  box-shadow: var(--surface-card-expanded-shadow);
+}
+
+[data-surface-role='card']:not(.theme-preset-card-borderless, :disabled):is(
+  .assistant-composer:focus-within,
+  .theme-preset-card:hover,
+  .theme-preset-more:hover,
+  .theme-preset-more[aria-expanded='true']
+) {
+  border-color: var(--surface-focus-border);
+}
+
+[data-surface-role='control'],
+.settings-row select {
+  border-color: var(--surface-control-border);
+  box-shadow: var(--surface-control-shadow);
+}
+
+:is(.settings-row select, .settings-row input, .modal input, [data-surface-role='dialog'] input) {
+  color: var(--text);
+  background-color: var(--surface);
+  border-color: var(--surface-control-border);
+}
+
+:is([data-surface-role='backdrop'], .modal-backdrop) {
+  background: var(--backdrop);
+}
+
+dialog::backdrop {
+  background: var(--backdrop);
+}

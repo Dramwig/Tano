@@ -72,13 +72,14 @@ onBeforeUnmount(() => {
     >
       <GripVertical :size="16" />
     </button>
-    <div v-surface-motion="'ToolbarDragHandle:0'" v-if="mode && open" class="dropdown compact-action-menu toolbar-dock-menu" role="menu" :aria-label="t('工具栏停靠位置')">
+    <div v-surface-motion="'ToolbarDragHandle:0'" v-if="mode && open" class="dropdown compact-action-menu toolbar-dock-menu" data-surface-role="popover" role="menu" :aria-label="t('工具栏停靠位置')">
       <ToolbarModeOptions :mode="mode" @select="emit('select', $event)" />
     </div>
   </div>
 </template>
 
 <style scoped>
+@layer components {
 .toolbar-drag-handle-wrap {
   position: relative;
   display: flex;
@@ -174,5 +175,6 @@ onBeforeUnmount(() => {
   /* Match the formatting menu: position against the whole toolbar so the
      upward and downward gaps share the same baseline. */
   position: static;
+}
 }
 </style>

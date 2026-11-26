@@ -115,7 +115,7 @@ onBeforeUnmount(() => {
     </button>
     <Teleport to="body">
       <div v-surface-motion="'WorkspaceMenuLayout:0'" v-if="opened" :id="menuId" ref="panel"
-        class="dropdown compact-action-menu workspace-more-menu panel-scrollbar"
+        class="dropdown compact-action-menu workspace-more-menu panel-scrollbar" data-surface-role="popover"
         role="menu" :aria-label="t('更多工作区操作')" tabindex="-1"
         :style="{ ...position, visibility: position ? 'visible' : 'hidden' }"
         @keydown="keydown" @click="selected"><slot /></div>

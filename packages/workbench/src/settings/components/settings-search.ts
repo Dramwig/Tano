@@ -57,12 +57,12 @@ export function buildSettingSearchEntries(options: {
     ...(hasAppearance
       ? [
           settingSearchEntry('appearance', 'appearance-scope', '为此工作区单独设置', '用户默认与工作区覆盖', 'scope user workspace 用户 默认 覆盖'),
-          settingSearchEntry('appearance', 'appearance-shape', '形态与密度', '选择组件圆角、控件间距和阴影；字体在下方单独设置。', 'shape density 圆角 密度 间距 阴影'),
+          settingSearchEntry('appearance', 'appearance-shape', '形态与密度', '选择组件圆角与控件间距；字体在下方单独设置。', 'shape density 圆角 密度 间距'),
           settingSearchEntry('appearance', 'appearance-presets', '主题预设', '只应用预设声明的配色、图标、布局、材质和形态，未指定的项保持当前。', 'preset theme 一键 整套 预设 风格'),
           settingSearchEntry('appearance', 'appearance-color', '配色主题', '选择工作区主题插件。', 'theme 插件 风格 配色'),
           settingSearchEntry('appearance', 'appearance-icons', '文件与目录图标', '选择工作区图标主题。', 'icon 文件夹 图标 插件'),
-          settingSearchEntry('appearance', 'appearance-layout', '布局风格', '选择页面结构，可与任意配色、图标混搭。留边布局的内容区四周留空，侧栏融入背景。', 'layout inset islands paper 贴边 留边 卡片岛 纸感 纸质 布局 结构'),
-          settingSearchEntry('appearance', 'appearance-material', '材质', '选择侧栏和页面的质感，可与任意布局、配色混搭。', 'material flat raised elevated bevel card glass frost frosted liquid translucent 材质 平面 立体 立体卡片 浮雕 边框 玻璃 磨砂 毛玻璃 液态 液态玻璃 透明 质感'),
+          settingSearchEntry('appearance', 'appearance-layout', '布局风格', '选择页面结构，可与任意配色、图标混搭。留边布局的内容区四周留空，侧栏融入背景。', 'layout inset islands paper 贴边 留边 卡片岛 纸页 纸页布局 纸感 布局 结构'),
+          settingSearchEntry('appearance', 'appearance-material', '材质', '选择侧栏和页面的质感与阴影，可与任意布局、配色混搭。', 'material flat raised elevated bevel card paper grain texture shadow glass frost frosted liquid translucent 材质 平面 立体 立体卡片 浮雕 边框 纸纹 纸质 阴影 玻璃 磨砂 毛玻璃 液态 液态玻璃 透明 质感'),
           ...(frostActive
             ? [
                 settingSearchEntry('appearance', 'appearance-wallpaper', '背景图片', '玻璃材质会透出这张图片，卡片透明度会按图片自动调整以保证文字清晰。图片只保存在这台设备。', 'wallpaper background image glass overlay opacity 壁纸 背景 图片 柔化 蒙版 不透明度'),

@@ -7,6 +7,7 @@
  * NB: --accent is a pale *selection* grey here, never a brand fill.
  */
 
+@layer components {
 .mail-workspace {
   --mail-ease: var(--ease-standard, cubic-bezier(0.2, 0, 0, 1));
   --mail-quick: var(--motion-quick, 140ms);
@@ -1565,4 +1566,5 @@
 }
 @media (max-width: 560px) {
   .mail-form-grid { grid-template-columns: 1fr; }
+}
 }

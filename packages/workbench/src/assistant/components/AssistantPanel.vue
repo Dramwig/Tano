@@ -715,7 +715,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 <template>
   <Teleport :to="teleportTarget" :disabled="assistant.displayMode === 'sidebar'">
   <Transition :name="assistant.displayMode === 'floating' ? 'assistant-floating' : 'assistant-sidebar'" :css="assistant.displayMode !== 'fullscreen'" appear @after-leave="afterPanelLeave">
-  <aside @dragover="dragReferences" @drop="dropReferences" ref="panel" v-show="assistant.opened && (assistant.displayMode !== 'fullscreen' || !!fullscreenTarget)" class="assistant-panel" :class="[`assistant-panel-${assistant.displayMode}`, { 'assistant-panel-compact': compact }]" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" :inert="!assistant.opened || undefined" :aria-hidden="!assistant.opened || undefined" :aria-label="t('Tano 助手')" @keydown.esc="closePopover(true)" @keydown="menuKey">
+  <aside @dragover="dragReferences" @drop="dropReferences" ref="panel" v-show="assistant.opened && (assistant.displayMode !== 'fullscreen' || !!fullscreenTarget)" class="assistant-panel" :class="[`assistant-panel-${assistant.displayMode}`, { 'assistant-panel-compact': compact }]" :data-surface-role="assistant.displayMode === 'floating' ? 'dialog' : undefined" :style="{ '--assistant-menu-max-height': `${menuMaxHeight}px`, ...floatingStyle }" :inert="!assistant.opened || undefined" :aria-hidden="!assistant.opened || undefined" :aria-label="t('Tano 助手')" @keydown.esc="closePopover(true)" @keydown="menuKey">
     <header class="assistant-heading" @pointerdown="startFloatingGesture" @pointermove="moveFloatingGesture" @pointerup="endFloatingGesture" @pointercancel="endFloatingGesture" @lostpointercapture="endFloatingGesture">
       <button v-if="compact && navigationVisible && assistant.displayMode === 'fullscreen'" class="icon-button" :aria-label="t('展开侧栏')" @click="emit('showNavigation')"><ArrowLeft :size="17" /></button>
       <button v-if="section !== 'conversation'" class="icon-button" :aria-label="t('返回助手对话')" :data-tooltip="t('返回对话')" @click="section = 'conversation'"><ArrowLeft :size="17" /></button>
@@ -729,7 +729,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
       </template>
       <button v-if="hasAgentInbox && section !== 'inbox'" class="icon-button assistant-inbox-entry" :data-tooltip="activeAgentTasks ? t('机器人收件箱 · {0} 个进行中', [activeAgentTasks]) : t('机器人收件箱')" :aria-label="t('机器人收件箱')" @click="closePopover(); section = 'inbox'"><Bot :size="18" :stroke-width="1.5" /><span v-if="activeAgentTasks" class="assistant-inbox-badge" aria-hidden="true">{{ activeAgentTasks > 9 ? '9+' : activeAgentTasks }}</span></button>
       <button class="icon-button assistant-display-mode" :data-tooltip="t('切换助手显示模式')" :aria-label="t('切换助手显示模式')" :aria-expanded="popover === 'mode'" aria-controls="assistant-display-options" data-assistant-popover @click="togglePopover('mode', $event)"><component :is="displayModeIcon" :size="18" :stroke-width="1.5" /></button>
-      <div v-surface-motion="'AssistantPanel:0'" v-if="popover === 'mode'" id="assistant-display-options" class="assistant-popover assistant-mode-menu" role="menu" :aria-label="t('助手显示模式')">
+      <div v-surface-motion="'AssistantPanel:0'" v-if="popover === 'mode'" id="assistant-display-options" class="assistant-popover assistant-mode-menu" data-surface-role="popover" role="menu" :aria-label="t('助手显示模式')">
         <template v-for="mode in displayModes" :key="mode.id">
           <div v-if="mode.id === 'fullscreen'" class="assistant-menu-divider" role="separator" />
           <button class="assistant-menu-item" role="menuitemradio" :aria-checked="assistant.displayMode === mode.id" :class="{ selected: assistant.displayMode === mode.id }" data-menu-item @click="selectDisplayMode(mode.id)"><component :is="mode.icon" class="assistant-mode-icon" :size="16" :stroke-width="1.5" /><span class="assistant-menu-label">{{ mode.label }}</span><Check v-if="assistant.displayMode === mode.id" :size="14" class="assistant-menu-check" /></button>
@@ -737,13 +737,13 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
       </div>
       <template v-if="section === 'conversation'">
         <button class="icon-button" :data-tooltip="t('更多选项')" :aria-label="t('助手更多选项')" :aria-expanded="popover === 'more'" aria-controls="assistant-more-options" data-assistant-popover @click="togglePopover('more', $event)"><MoreHorizontal :size="19" /></button>
-        <div v-surface-motion="'AssistantPanel:1'" v-if="popover === 'more'" id="assistant-more-options" class="assistant-popover assistant-more-menu">
+        <div v-surface-motion="'AssistantPanel:1'" v-if="popover === 'more'" id="assistant-more-options" class="assistant-popover assistant-more-menu" data-surface-role="popover">
           <button data-menu-item @click="openHistory"><History :size="16" />{{ t('管理会话') }}</button>
           <button v-if="!assistant.demo" data-menu-item @click="closePopover(); emit('openSettings')"><Settings2 :size="16" />{{ t('助手设置') }}</button>
         </div>
       </template>
       <button class="icon-button" :data-tooltip="t('收起助手')" :aria-label="t('收起助手')" :aria-keyshortcuts="shortcutAriaLabel(toggleShortcut) || undefined" :data-tooltip-shortcut="shortcutKeys(toggleShortcut)[0]" @click="assistant.opened = false"><ChevronsRight v-if="assistant.displayMode === 'sidebar'" :size="19" /><Minus v-else :size="17" /></button>
-      <div v-surface-motion="'AssistantPanel:2'" v-if="popover === 'history'" id="assistant-history-options" class="assistant-popover assistant-history-menu" role="dialog" :aria-label="t('最近助手会话')">
+      <div v-surface-motion="'AssistantPanel:2'" v-if="popover === 'history'" id="assistant-history-options" class="assistant-popover assistant-history-menu" data-surface-role="popover" role="dialog" :aria-label="t('最近助手会话')">
         <div class="assistant-popover-heading"><span>{{ t('会话记录') }}</span><button class="icon-button" :class="{ selected: searchingHistory }" :aria-label="t('搜索会话记录')" :data-tooltip="t('搜索会话')" @click="searchHistory"><Search :size="16" /></button></div>
         <label v-if="searchingHistory" class="assistant-menu-search"><Search :size="15" /><input v-model="historyQuery" :aria-label="t('搜索助手会话')" :placeholder="t('搜索会话')" /></label>
         <div class="assistant-menu-scroll panel-scrollbar">
@@ -870,7 +870,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
       <form v-if="exportMessage" class="assistant-export" @submit.prevent="exportAnswer"><label>{{ t('文档路径') }}<input v-model="exportPath" required maxlength="220" /></label><button class="secondary-button" type="button" @click="exportMessage = undefined">{{ t('取消') }}</button><button class="primary-button"><FilePlus2 :size="14" />{{ t('生成保存建议') }}</button></form>
       <slot name="quota" />
       <div class="assistant-composer-area" :class="{ 'assistant-composer-area-question': assistant.pendingUserInput }">
-        <div v-surface-motion="'AssistantPanel:5'" v-if="popover === 'model'" :key="modelView" id="assistant-model-options" class="assistant-popover assistant-model-menu" :style="menuPosition" :aria-label="t('模型选择')">
+        <div v-surface-motion="'AssistantPanel:5'" v-if="popover === 'model'" :key="modelView" id="assistant-model-options" class="assistant-popover assistant-model-menu" data-surface-role="popover" :style="menuPosition" :aria-label="t('模型选择')">
           <div class="assistant-popover-heading">
             <button v-if="modelView !== 'main'" class="icon-button" :data-tooltip="t('返回模型列表')" :aria-label="t('返回模型列表')" @click="setModelView('main')"><ArrowLeft :size="16" /></button>
             <span>{{ modelView === 'connections' ? t('模型连接') : modelView === 'manual' ? t('指定模型') : t('选择模型') }}</span>
@@ -926,7 +926,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
             <button v-if="!assistant.connections.length && !assistant.demo && assistant.canConfigure !== false" class="assistant-menu-item" data-menu-item @click="closePopover(); emit('openSettings')"><Plus :size="16" /><span class="assistant-menu-label">{{ t('添加模型连接') }}</span></button>
           </template>
         </div>
-        <div v-surface-motion="'AssistantPanel:6'" v-if="popover === 'add'" :key="addView" id="assistant-add-options" class="assistant-popover assistant-add-menu" :style="menuPosition" :aria-label="addView === 'sources' ? t('选择参考文档') : t('添加内容')">
+        <div v-surface-motion="'AssistantPanel:6'" v-if="popover === 'add'" :key="addView" id="assistant-add-options" class="assistant-popover assistant-add-menu" data-surface-role="popover" :style="menuPosition" :aria-label="addView === 'sources' ? t('选择参考文档') : t('添加内容')">
           <template v-if="addView === 'main'">
             <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked" @click="openSources"><Paperclip :size="18" /><span class="assistant-menu-label">{{ t('添加参考文档') }}</span><ChevronRight :size="15" /></button>
             <button class="assistant-menu-item" data-menu-item :disabled="controlsLocked || !workspace.active" @click="addCurrentNote"><FileText :size="18" /><span class="assistant-menu-label">{{ t('引用当前笔记') }}</span><Check v-if="workspace.active && assistant.files.includes(workspace.active.id)" :size="16" class="assistant-menu-check" /></button>
@@ -960,7 +960,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
             </div>
           </template>
         </div>
-        <div v-surface-motion="'AssistantPanel:7'" v-if="popover === 'reasoning' && assistant.connection?.kind === 'codex-cli'" id="assistant-reasoning-options" class="assistant-popover assistant-reasoning-menu" :style="menuPosition" role="dialog" :aria-label="t('当前对话的推理强度')">
+        <div v-surface-motion="'AssistantPanel:7'" v-if="popover === 'reasoning' && assistant.connection?.kind === 'codex-cli'" id="assistant-reasoning-options" class="assistant-popover assistant-reasoning-menu" data-surface-role="popover" :style="menuPosition" role="dialog" :aria-label="t('当前对话的推理强度')">
           <h3 class="assistant-reasoning-heading">{{ t('推理强度') }}</h3>
           <div role="radiogroup" :aria-label="t('推理强度')">
             <button v-for="choice in reasoningChoices" :key="choice.id" type="button" role="radio" :aria-label="choice.label"
@@ -976,7 +976,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           </div>
           <p class="assistant-reasoning-help">{{ t('用于当前对话。可用强度取决于所选模型。') }}</p>
         </div>
-        <div v-surface-motion="'AssistantPanel:8'" v-if="popover === 'capabilities'" id="assistant-capability-options" class="assistant-popover assistant-capability-menu" :style="menuPosition" role="dialog" :aria-label="t('当前会话插件能力')">
+        <div v-surface-motion="'AssistantPanel:8'" v-if="popover === 'capabilities'" id="assistant-capability-options" class="assistant-popover assistant-capability-menu" data-surface-role="popover" :style="menuPosition" role="dialog" :aria-label="t('当前会话插件能力')">
           <div class="assistant-popover-heading"><span>{{ t('当前会话可用能力') }}</span></div>
           <div v-if="safeMode" class="assistant-capability-banner warning" role="status">
             <span>{{ t('安全模式已开启：已暂停第三方代码插件与工作台扩展覆盖。') }}</span>
@@ -1045,7 +1045,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
         <div
           v-if="mentionMenuOpen"
           id="assistant-mention-options"
-          class="assistant-popover assistant-mention-menu"
+          class="assistant-popover assistant-mention-menu" data-surface-role="popover"
           role="listbox"
           :aria-label="t('插件上下文联想')"
         >
@@ -1080,7 +1080,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
           </div>
         </div>
       <AssistantQuestionCard v-if="assistant.pendingUserInput" :key="assistant.pendingUserInput.request.id" :request="assistant.pendingUserInput.request" />
-      <form v-else class="assistant-composer" @submit.prevent="closePopover(); assistant.send()">
+      <form v-else class="assistant-composer" data-surface-role="card" @submit.prevent="closePopover(); assistant.send()">
         <div v-if="assistant.files.length || assistant.selection || assistant.attachments.length || assistant.pluginContextKeys.length" class="assistant-contexts">
           <button
             v-for="key in assistant.pluginContextKeys"
@@ -1152,6 +1152,7 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 </template>
 
 <style scoped>
+@layer components {
 .assistant-panel { --assistant-sidebar-width: clamp(360px, 32vw, 480px); flex: 0 1 var(--assistant-sidebar-width); width: var(--assistant-sidebar-width); min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--paper); color: var(--text); }
 .assistant-panel { transform-origin: top left; }
 /* Slide a full-width conversation into view while its margin gives the editor
@@ -1436,4 +1437,5 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
 .assistant-panel-fullscreen .assistant-composer-area { width: calc(100% - 36px); max-width: 768px; margin: 4px auto 18px; }
 .assistant-panel-fullscreen .assistant-welcome { padding-bottom: 24px; }
 @media (max-width: 700px) { .assistant-panel-floating { right: 16px; bottom: 16px; } .assistant-panel-fullscreen .assistant-composer-area { width: calc(100% - 28px); margin-bottom: 14px; } }
+}
 </style>

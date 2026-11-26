@@ -10,6 +10,8 @@ export const appearanceKinds = ['color', 'icons', 'layout', 'material', 'shape']
 const pluginPresetKinds = ['color', 'icons', 'layout', 'shape'] as const;
 /** Raised card: flat opaque surfaces with sculpted bevels and dimensional edges. */
 export const raisedCardMaterial = 'builtin:raised';
+/** Paper grain: opaque matte surfaces with subtle organic paper tooth and grounded shadows. */
+export const paperMaterial = 'builtin:paper';
 /** The frosted-glass material turns the sidebar and page sheets of any layout into translucent glass. */
 export const glassMaterial = 'builtin:frost';
 /** Liquid glass: the same layers, but clear glass whose thick edges catch the light. */
@@ -18,6 +20,7 @@ export const liquidGlassMaterial = 'builtin:liquid';
 export const glassMaterials: readonly string[] = [glassMaterial, liquidGlassMaterial];
 const materialSurface: Record<string, NonNullable<AppearancePreset['material']>> = {
   [raisedCardMaterial]: 'raised',
+  [paperMaterial]: 'paper',
   [glassMaterial]: 'frost',
   [liquidGlassMaterial]: 'liquid',
 };
@@ -29,27 +32,25 @@ export const builtinAppearance: AppearanceBuiltins = {
   layouts: [
     { id: insetLayout, label: '留边布局', ...cardIslandsLayout },
     { id: 'builtin:islands', label: '卡片岛', ...cardIslandsLayout },
-    { id: 'builtin:paper', label: '纸感', structure: 'document', surface: 'paper', gap: 24, pageWidth: 800 },
+    { id: 'builtin:paper', label: '纸页布局', structure: 'document', surface: 'paper', gap: 24, pageWidth: 800 },
   ],
   colors: builtinColors,
   materials: [
     { id: raisedCardMaterial, label: '立体卡片' },
+    { id: paperMaterial, label: '纸纹' },
     { id: glassMaterial, label: '磨砂玻璃' },
     { id: liquidGlassMaterial, label: '液态玻璃' },
   ],
   shapes: [
-    { id: 'builtin:rounded', label: '圆润宽松', tokens: { 'radius-control': '10px', 'radius-card': '16px', 'radius-dialog': '20px', 'space-panel': '22px', 'space-row-gap': '6px',
-      'overlay-shadow': '0px 1px 2px #1b263a14, 0px 8px 24px #1b263a14', 'dialog-shadow': '0px 24px 64px #1b263a33' } },
-    { id: 'builtin:handwritten', label: '柔和圆角', tokens: { 'radius-control': '6px', 'radius-card': '6px', 'radius-dialog': '10px',
-      'overlay-shadow': '0px 2px 4px #3a2b1f22, 0px 10px 24px #3a2b1f33', 'dialog-shadow': '0px 20px 56px #3a2b1f55' } },
-    { id: 'builtin:print', label: '微圆角', tokens: { 'radius-control': '3px', 'radius-card': '2px', 'radius-dialog': '4px',
-      'overlay-shadow': '0px 1px 3px #00000026, 0px 10px 28px #0000001f', 'dialog-shadow': '0px 18px 56px #00000040' } },
-    { id: 'builtin:crisp', label: '直角紧凑', tokens: { 'radius-control': '0px', 'radius-card': '0px', 'radius-dialog': '0px', 'space-panel': '12px', 'space-control-y': '4px', 'overlay-shadow': 'none', 'dialog-shadow': 'none' } },
+    { id: 'builtin:rounded', label: '圆润宽松', tokens: { 'radius-control': '10px', 'radius-card': '16px', 'radius-dialog': '20px', 'space-panel': '22px', 'space-row-gap': '6px' } },
+    { id: 'builtin:handwritten', label: '柔和圆角', tokens: { 'radius-control': '6px', 'radius-card': '6px', 'radius-dialog': '10px' } },
+    { id: 'builtin:print', label: '微圆角', tokens: { 'radius-control': '3px', 'radius-card': '2px', 'radius-dialog': '4px' } },
+    { id: 'builtin:crisp', label: '直角紧凑', tokens: { 'radius-control': '0px', 'radius-card': '0px', 'radius-dialog': '0px', 'space-panel': '12px', 'space-control-y': '4px' } },
   ],
   presets: [
     { id: builtinDefault, label: '同页默认', selected: { color: builtinDefault, icons: builtinDefault, layout: builtinDefault, material: builtinDefault, shape: builtinDefault } },
     { id: 'builtin:islands', label: '卡片岛', selected: { color: 'builtin:mist', icons: builtinDefault, layout: 'builtin:islands', material: builtinDefault, shape: 'builtin:rounded' } },
-    { id: 'builtin:paper', label: '纸感', selected: { color: 'builtin:ink', icons: builtinDefault, layout: 'builtin:paper', material: builtinDefault, shape: 'builtin:print' } },
+    { id: 'builtin:paper', label: '纸感', selected: { color: 'builtin:ink', icons: builtinDefault, layout: 'builtin:paper', material: paperMaterial, shape: 'builtin:print' } },
     { id: 'builtin:frost', label: '磨砂玻璃', selected: { color: 'builtin:haze', icons: builtinDefault, layout: 'builtin:islands', material: glassMaterial, shape: 'builtin:rounded' } },
     { id: 'builtin:liquid', label: '液态玻璃', selected: { color: 'builtin:haze', icons: builtinDefault, layout: 'builtin:islands', material: liquidGlassMaterial, shape: 'builtin:rounded' } },
   ],
@@ -79,7 +80,7 @@ export interface AppearancePreset extends AppearanceChoice {
   previews?: AppearancePreview[];
   structure?: LayoutThemeDefinition['structure'];
   /** Set when the preset uses a non-flat material, so the preview can draw it. */
-  material?: 'raised' | 'frost' | 'liquid';
+  material?: 'raised' | 'paper' | 'frost' | 'liquid';
 }
 export interface AppearanceSnapshot {
   workspaceId: string;

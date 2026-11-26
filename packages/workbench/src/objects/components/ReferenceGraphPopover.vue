@@ -661,7 +661,7 @@ onBeforeUnmount(() => {
     <section v-surface-motion="'ReferenceGraphPopover:0'"
       v-if="opened"
       ref="panel"
-      class="reference-graph-popover"
+      class="reference-graph-popover" data-surface-role="popover"
       :class="{ 'is-moving': movingPanel }"
       :style="{ left: `${panelPosition.x}px`, top: `${panelPosition.y}px` }"
       role="dialog"
@@ -889,6 +889,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+@layer components {
 .reference-graph-popover-root {
   position: relative;
   display: inline-flex;
@@ -1211,5 +1212,6 @@ onBeforeUnmount(() => {
   .reference-graph-popover {
     height: min(64dvh, 480px);
   }
+}
 }
 </style>

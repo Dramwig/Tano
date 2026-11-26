@@ -251,6 +251,7 @@ async function importCachedPackage() {
 </template>
 
 <style scoped>
+@layer components {
 .pc-button {
   display: inline-flex;
   align-items: center;
@@ -406,5 +407,6 @@ async function importCachedPackage() {
   background: var(--paper);
   color: var(--text);
   font: inherit;
+}
 }
 </style>

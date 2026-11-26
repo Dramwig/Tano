@@ -31,6 +31,7 @@ const t: SlashTranslate = (message, values = []) =>
       v-surface-motion="'MarkdownEditor:1'"
       :ref="(el) => setPanelElement((el as HTMLElement | null) ?? undefined)"
       class="tano-editor-panel tano-link-editor-panel"
+      data-surface-role="popover"
       role="group"
       :aria-label="panel.kind === 'wiki' ? t('编辑 Wiki 链接') : t('编辑链接')"
       :style="{ left: `${panel.x}px`, top: `${panel.y}px` }"

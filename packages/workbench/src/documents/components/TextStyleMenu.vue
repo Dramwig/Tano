@@ -158,7 +158,7 @@ onBeforeUnmount(() => {
     </button>
     <div v-surface-motion="'TextStyleMenu:0'"
       v-if="open && (!disabled || $slots.preferences)"
-      class="dropdown compact-action-menu text-style-dropdown panel-scrollbar"
+      class="dropdown compact-action-menu text-style-dropdown panel-scrollbar" data-surface-role="popover"
       :class="{ 'toolbar-action-dropdown': hideFormats }"
     >
       <template v-if="!hideFormats">

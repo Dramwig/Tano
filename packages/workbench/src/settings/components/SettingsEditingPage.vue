@@ -108,7 +108,7 @@ const displayOptions = [
 
     <section class="settings-section" aria-labelledby="settings-editor">
       <h3 id="settings-editor">{{ t('编辑器') }}</h3>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="editing-default-mode" v-bind="settingHint('editing-default-mode')">
           <div>
             <strong>{{ t('默认编辑模式') }}</strong>
@@ -145,7 +145,7 @@ const displayOptions = [
 
     <section class="settings-section" :aria-label="t('编辑行为')">
       <h3>{{ t('编辑行为') }}</h3>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="editing-copy-format" v-bind="settingHint('editing-copy-format')">
           <div>
             <strong>{{ t('默认复制格式') }}</strong>
@@ -220,7 +220,7 @@ const displayOptions = [
 
     <section class="settings-section" :aria-label="t('AI 功能')">
       <h3>{{ t('AI 功能') }}</h3>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="editing-ai-shortcut" v-bind="settingHint('editing-ai-shortcut')">
           <div>
             <strong>{{ t('空白块按空格启动 AI') }}</strong>
@@ -243,7 +243,7 @@ const displayOptions = [
 
     <section class="settings-section" :aria-label="t('选区符号包裹')">
       <h3>{{ t('选区符号包裹') }}</h3>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="editing-wrapping" v-bind="settingHint('editing-wrapping')">
           <div>
             <strong>{{ t('输入符号包裹选区') }}</strong>
@@ -296,7 +296,7 @@ const displayOptions = [
     <section class="settings-section" :aria-label="t('自动补全')">
       <h3>{{ t('自动补全') }}</h3>
       <p class="settings-local-note">{{ t('可视化编辑内置列表续行与语法识别。设置仅保存在当前设备。') }}</p>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div v-for="option in markdownAutocompleteOptions" :key="option.key" class="settings-row settings-row-compact" :data-settings-key="`editing-autocomplete-${option.key}`">
           <div class="settings-inline-copy">
             <strong>{{ t(option.label) }}</strong>
@@ -342,7 +342,7 @@ const displayOptions = [
       <h3>{{ t('中文输入优化') }}</h3>
       <p class="settings-local-note">{{ t('在 Markdown 语法位置把中文符号识别为语法，默认开启；全局映射会转换所有位置的符号，默认关闭。可视化与源码模式通用。') }}</p>
       <p class="settings-local-note">{{ t('语法位置识别') }}</p>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div v-for="option in chineseSyntaxOptions" :key="option.key" class="settings-row settings-row-compact" :data-settings-key="`editing-chinese-input-${option.key}`">
           <div class="settings-inline-copy">
             <strong>{{ t(option.label) }}</strong>
@@ -373,7 +373,7 @@ const displayOptions = [
         </div>
       </div>
       <p class="settings-local-note">{{ t('全局映射') }}</p>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div v-for="option in chineseInputOptions" :key="option.key" class="settings-row settings-row-compact" :data-settings-key="`editing-chinese-input-${option.key}`">
           <div class="settings-inline-copy">
             <strong>{{ t(option.label) }}</strong>

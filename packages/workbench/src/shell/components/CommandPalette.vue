@@ -57,7 +57,7 @@ onBeforeUnmount(() => { closeSurfaceDialog(dialog.value); if (before?.isConnecte
 
 </script>
 <template>
-  <dialog v-surface-motion="'CommandPalette:0'" ref="dialog" class="command-palette" :aria-label="t('命令中心')" @cancel.prevent="emit('close')" @keydown="keydown" @click="event => { if (event.target === dialog) emit('close'); }">
+  <dialog v-surface-motion="'CommandPalette:0'" ref="dialog" class="command-palette" data-surface-role="dialog" :aria-label="t('命令中心')" @cancel.prevent="emit('close')" @keydown="keydown" @click="event => { if (event.target === dialog) emit('close'); }">
     <div class="command-palette-body">
       <div class="command-search">
         <input ref="input" v-model="query" role="combobox" :aria-label="t('搜索命令')" aria-autocomplete="list" aria-controls="workbench-command-list" :aria-activedescendant="selected >= 0 && commands[selected] ? `workbench-command-${selected}` : undefined" aria-expanded="true" :placeholder="t('搜索命令…')" autocomplete="off" spellcheck="false" />
@@ -77,6 +77,7 @@ onBeforeUnmount(() => { closeSurfaceDialog(dialog.value); if (before?.isConnecte
   </dialog>
 </template>
 <style scoped>
+@layer components {
 .command-palette {
   --command-max-height: min(560px, calc(100dvh - 72px));
   width: min(600px, calc(100vw - 32px));
@@ -105,5 +106,6 @@ onBeforeUnmount(() => { closeSurfaceDialog(dialog.value); if (before?.isConnecte
 .command-empty { margin: 0; padding: 14px 12px; color: var(--muted); font-size: 13px; }
 @media (max-width: 480px) {
   .command-palette { --command-max-height: calc(100dvh - 32px); width: calc(100vw - 24px); margin-top: 16px; }
+}
 }
 </style>

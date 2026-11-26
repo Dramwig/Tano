@@ -99,7 +99,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 [data-preview-structure='document'] .theme-preview-heading { width: 44%; align-self: center; height: 3px; margin-bottom: 2px; }
 [data-preview-structure='document'] .theme-preview-callout { display: none; }
 [data-preview-structure='document'] .theme-preview-paragraph-short { display: flex; }
-/* Raised card: clean flat surfaces with crisp 1px edge bevels and quiet double-bezel tray (see layout-themes.css). */
+/* Raised card: clean flat surfaces with crisp 1px edge bevels and quiet double-bezel tray (see axis-material-raised.css). */
 .theme-preview[data-preview-surface='raised'] .theme-preview-scene {
   --preview-raised-edge: color-mix(in srgb, var(--preview-text) 5%, var(--preview-line));
   --preview-raised-highlight: #ffffff;
@@ -113,7 +113,6 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
     0 0 0 2px var(--preview-raised-groove),
     0 0 0 2.5px var(--preview-raised-outer),
     0 3px 6px -2px color-mix(in srgb, var(--preview-text) 5%, transparent);
-  background: color-mix(in srgb, var(--preview-sidebar) 97.5%, var(--preview-text) 2.5%);
 }
 .theme-preview[data-preview-surface='raised'] .theme-preview-scene[data-preview-mode='dark'] {
   --preview-raised-edge: color-mix(in srgb, #ffffff 11%, var(--preview-paper));
@@ -128,7 +127,6 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
     0 0 0 2px var(--preview-raised-groove),
     0 0 0 2.5px var(--preview-raised-outer),
     0 4px 8px -2px rgb(0 0 0 / 50%);
-  background: color-mix(in srgb, var(--preview-sidebar) 70%, #000000 30%);
 }
 .theme-preview[data-preview-surface='raised'] .theme-preview-window {
   border-color: var(--preview-raised-edge);
@@ -143,7 +141,33 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 .theme-preview[data-preview-surface='raised'][data-preview-structure='continuous'] .theme-preview-main {
   box-shadow: inset 1px 0 0 var(--preview-raised-edge), inset 0 1px 0 var(--preview-raised-highlight);
 }
-/* Frosted glass: the same two cards, milky and translucent over soft orbs of colour (see layout-themes.css). */
+/* Paper grain: matte paper tooth on front surfaces while preserving the scene backdrop colour. */
+.theme-preview[data-preview-surface='paper'] .theme-preview-scene {
+  --preview-paper-grain: radial-gradient(color-mix(in srgb, var(--preview-text) 6%, transparent) .65px, transparent 1px);
+  --preview-paper-edge: color-mix(in srgb, var(--preview-line) 70%, var(--preview-text) 14%);
+  --preview-paper-shadow: 0 1px 2px color-mix(in srgb, var(--preview-text) 7%, transparent), 0 4px 10px -4px color-mix(in srgb, var(--preview-text) 14%, transparent);
+}
+.theme-preview[data-preview-surface='paper'] .theme-preview-scene[data-preview-mode='dark'] {
+  --preview-paper-grain: radial-gradient(color-mix(in srgb, var(--preview-text) 7%, transparent) .65px, transparent 1px);
+  --preview-paper-edge: color-mix(in srgb, #ffffff 10%, var(--preview-line));
+  --preview-paper-shadow: 0 1px 2px rgb(0 0 0 / 34%), 0 5px 12px -4px rgb(0 0 0 / 48%);
+}
+.theme-preview[data-preview-surface='paper'] .theme-preview-window {
+  border-color: var(--preview-paper-edge);
+  box-shadow: var(--preview-paper-shadow);
+}
+.theme-preview[data-preview-surface='paper'] :is(.theme-preview-main, .theme-preview-document),
+.theme-preview[data-preview-surface='paper'][data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar {
+  background-image: var(--preview-paper-grain);
+  background-size: 4px 4px;
+}
+.theme-preview[data-preview-surface='paper'][data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
+.theme-preview[data-preview-surface='paper'][data-preview-structure='islands'] .theme-preview-main,
+.theme-preview[data-preview-surface='paper'][data-preview-structure='document'] .theme-preview-document {
+  border-color: var(--preview-paper-edge);
+  box-shadow: var(--preview-paper-shadow);
+}
+/* Frosted glass: the same two cards, milky and translucent over soft orbs of colour (see axis-material-glass.css). */
 .theme-preview:is([data-preview-surface='frost'], [data-preview-surface='liquid']) .theme-preview-scene {
   --preview-syntax-blue: #2d5fb8;
   --preview-syntax-purple: #6a45b8;
@@ -184,7 +208,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
   -webkit-backdrop-filter: blur(8px) saturate(170%) brightness(1.04); backdrop-filter: blur(8px) saturate(170%) brightness(1.04);
 }
 .theme-preview:is([data-preview-surface='frost'], [data-preview-surface='liquid']) .theme-preview-main { --preview-glass: 74%; }
-/* Liquid glass: clearer cards whose edges catch the light (see layout-themes.css). */
+/* Liquid glass: clearer cards whose edges catch the light (see axis-material-glass.css). */
 .theme-preview[data-preview-surface='liquid'] .theme-preview-scene { --preview-glass: 10%; --preview-rim: #ffffff80; --preview-edge: #ffffff80; --preview-outline: #1c24301f; }
 .theme-preview[data-preview-surface='liquid'] .theme-preview-scene[data-preview-mode='dark'] { --preview-glass: 16%; --preview-rim: #ffffff42; --preview-edge: #ffffff1a; --preview-outline: #00000073; }
 .theme-preview[data-preview-surface='liquid']:not([data-preview-structure='islands']) .theme-preview-sidebar { background: transparent; }

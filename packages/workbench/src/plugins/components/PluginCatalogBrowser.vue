@@ -139,6 +139,7 @@ onScopeDispose(() => controller.abort());
 </template>
 
 <style scoped>
+@layer components {
 .community-catalog { padding: 20px 0; }
 .community-heading, .community-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .community-heading h2 { margin: 0; font-size: 17px; }
@@ -162,4 +163,5 @@ select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; ba
 .pc-feedback { padding: 8px 10px; border-radius: 6px; }
 .pc-feedback.error { background: var(--danger-bg); color: var(--danger); }
 .pc-feedback.success { color: var(--green-fill); }
+}
 </style>

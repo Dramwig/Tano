@@ -40,6 +40,7 @@ function activate() { if (props.framed && !props.expanded) emit('activate'); }
 
 <template>
   <div ref="card" :class="{ 'review-card': framed, 'is-expanded': framed && expanded }"
+    :data-surface-role="framed ? 'card' : undefined"
     :tabindex="framed && !expanded ? 0 : undefined" :aria-label="label"
     :aria-expanded="framed ? expanded : undefined" @click="activate"
     @keydown.enter.self.prevent="activate" @keydown.space.self.prevent="activate">

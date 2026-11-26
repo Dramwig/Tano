@@ -153,7 +153,7 @@ onBeforeUnmount(() => {
     </div>
   </section>
   <Teleport :to="document.body">
-    <div v-surface-motion="'DocumentStarter:0'" v-if="open" :id="menuId" ref="menu" class="dropdown compact-action-menu panel-scrollbar document-starter-menu"
+    <div v-surface-motion="'DocumentStarter:0'" v-if="open" :id="menuId" ref="menu" class="dropdown compact-action-menu panel-scrollbar document-starter-menu" data-surface-role="popover"
       role="menu" tabindex="-1" :aria-label="t('更多开始使用选项')" :style="position" @keydown.stop="menuKey">
       <button v-for="action in overflow" :key="action.id" type="button" role="menuitem"
         :disabled="action.id === 'draft' && assistantBusy" @click="activate(action.id)">

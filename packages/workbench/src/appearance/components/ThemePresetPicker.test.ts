@@ -54,7 +54,7 @@ it('keeps three cards in the row and moves further presets such as frosted glass
     .toEqual(['builtin:paper', 'builtin:frost', 'builtin:liquid']);
   expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:frost"] [data-preview-surface="frost"]')).not.toBeNull();
   expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:liquid"] [data-preview-surface="liquid"]')).not.toBeNull();
-  expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:paper"] [data-preview-surface]')).toBeNull();
+  expect(root.querySelector('.theme-preset-popover [data-preset-id="builtin:paper"] [data-preview-surface="paper"]')).not.toBeNull();
   root.querySelector<HTMLButtonElement>('.theme-preset-popover [data-preset-id="builtin:frost"]')!.click();
   await nextTick();
   expect(rowIds()).toEqual(['builtin:frost', 'builtin:tano']);

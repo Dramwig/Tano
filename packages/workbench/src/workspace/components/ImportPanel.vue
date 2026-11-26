@@ -252,7 +252,7 @@ const issueText = (issue: ImportIssue) => `${issue.name}：${issue.message}`;
 
 <template>
   <Teleport :to="overlays">
-    <dialog v-surface-motion="'ImportPanel:0'" ref="dialog" class="import-dialog" :class="{ 'import-dialog-detail': prepared }" :aria-labelledby="titleId" @cancel.prevent="close" @keydown="keydown"
+    <dialog v-surface-motion="'ImportPanel:0'" ref="dialog" class="import-dialog" data-surface-role="dialog" :class="{ 'import-dialog-detail': prepared }" :aria-labelledby="titleId" @cancel.prevent="close" @keydown="keydown"
       @pointerdown="backdropPointerDown" @click.self="backdropClick">
       <div class="import-main">
         <header class="import-heading" :class="{ 'import-heading-detail': prepared }">
@@ -331,6 +331,7 @@ const issueText = (issue: ImportIssue) => `${issue.name}：${issue.message}`;
 </template>
 
 <style scoped>
+@layer components {
 .import-dialog { width: min(780px, calc(100vw - 40px)); height: min(680px, calc(100dvh - 56px)); max-width: none; max-height: none; padding: 0; border: 1px solid var(--line); border-radius: 14px; color: var(--text); background: var(--paper); box-shadow: 0 28px 80px #0004; overflow: hidden; }
 .import-dialog-detail { height: min(430px, calc(100dvh - 56px)); max-height: none; }
 .import-dialog-detail .import-main { min-height: 0; }
@@ -435,5 +436,6 @@ const issueText = (issue: ImportIssue) => `${issue.name}：${issue.message}`;
   .import-main { min-height: 0; }.import-heading { padding: 22px 18px 18px; }.import-heading h2 { font-size: 21px; }.import-scroll { padding: 0 18px 20px; }
   .import-dropzone { min-height: 165px; }.import-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }.import-source { min-height: 80px; padding: 10px 8px; gap: 7px; }.import-source > svg:last-child { display: none; }
   .import-detail { padding-top: 2px; }.import-detail-card { padding: 14px; }.import-destination { align-items: flex-start; flex-wrap: wrap; }.import-destination > span { flex: 1 1 calc(100% - 46px); }.import-destination select { width: 100%; max-width: none; margin-left: 31px; }.import-footer { padding: 12px 18px; flex-wrap: wrap; gap: 10px; }.import-detail-footer .import-secondary, .import-detail-footer .import-submit { flex: 1; }.import-submit { width: auto; }
+}
 }
 </style>

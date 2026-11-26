@@ -624,7 +624,7 @@ test('switching glass material preserves the layout’s cards and docked tabs', 
   }
 });
 
-test('raised card material preserves each layout’s geometry and joined tabs while adding beveled borders', async ({ page }) => {
+test('opaque materials and layouts stay orthogonal across light/dark modes, geometry, colours and shapes', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await prepare(page);
   await page.evaluate(() => window.workbench.openSettingsTab('appearance'));
@@ -632,38 +632,127 @@ test('raised card material preserves each layout’s geometry and joined tabs wh
   const settings = page.locator('.settings-tabbed');
   const layout = settings.getByRole('combobox', { name: '布局风格', exact: true });
   const material = settings.getByRole('combobox', { name: '材质', exact: true });
+  const shape = settings.getByRole('combobox', { name: '形态与密度', exact: true });
+  const mode = settings.getByRole('combobox', { name: '显示模式', exact: true });
   const root = page.locator('html');
+  const shell = page.locator('.app-shell');
+  const sidebar = shell.locator('> .sidebar');
   const activeTab = page.locator('.workspace-tabbar .desktop-tab-active').first();
   const activeTabCorners = activeTab.locator('.desktop-tab-corners');
 
-  for (const [id, structure] of [
-    ['builtin:islands', 'islands'],
-    ['builtin:inset', 'islands'],
-    ['builtin:tano', 'continuous'],
-    ['builtin:paper', 'document'],
-  ]) {
-    await layout.selectOption(id);
+  for (const colorMode of ['light', 'dark']) {
+    await mode.selectOption(colorMode);
+    await expect(root).toHaveAttribute('data-theme', colorMode);
+    await shape.selectOption('builtin:tano');
+    await layout.selectOption('builtin:tano');
     await material.selectOption('builtin:tano');
-    const flatTab = await activeTab.boundingBox();
-    const flatCornersDisplay = await activeTabCorners.evaluate(el => getComputedStyle(el).display);
-    const flatCard = structure === 'islands'
-      ? await page.locator('.workspace-page-content.workspace-card:visible').boundingBox()
-      : null;
+    const baselineDeskBg = await shell.evaluate(el => getComputedStyle(el).backgroundColor);
 
+    for (const [id, structure] of [
+      ['builtin:islands', 'islands'],
+      ['builtin:inset', 'islands'],
+      ['builtin:tano', 'continuous'],
+      ['builtin:paper', 'document'],
+    ]) {
+      await layout.selectOption(id);
+      await material.selectOption('builtin:tano');
+      // Layout must never darken or alter the palette's desk background.
+      await expect(shell).toHaveCSS('background-color', baselineDeskBg);
+      const flatSidebarBg = await sidebar.evaluate(el => getComputedStyle(el).backgroundColor);
+      const flatTab = await activeTab.boundingBox();
+      const flatCornersDisplay = await activeTabCorners.evaluate(el => getComputedStyle(el).display);
+      const flatCard = structure === 'islands'
+        ? await page.locator('.workspace-page-content.workspace-card:visible').boundingBox()
+        : null;
+      const flatCardRadius = structure === 'islands'
+        ? await page.locator('.workspace-page-content.workspace-card:visible').evaluate(el => getComputedStyle(el).borderTopLeftRadius)
+        : null;
+
+      for (const opaqueMaterial of ['builtin:raised', 'builtin:paper']) {
+        await material.selectOption(opaqueMaterial);
+        await expect(root).toHaveAttribute('data-material', opaqueMaterial);
+        await expect(root).toHaveAttribute('data-layout', structure);
+        await expect(settings.getByRole('group', { name: '背景图片' })).toHaveCount(0);
+        // Opaque surface-only materials must never touch backdrop/sidebar colours, tab bounds or card geometry.
+        await expect(shell).toHaveCSS('background-color', baselineDeskBg);
+        await expect(sidebar).toHaveCSS('background-color', flatSidebarBg);
+        expect(await activeTab.boundingBox()).toEqual(flatTab);
+        expect(await activeTabCorners.evaluate(el => getComputedStyle(el).display)).toBe(flatCornersDisplay);
+        if (structure === 'islands') {
+          const card = page.locator('.workspace-page-content.workspace-card:visible');
+          expect(await card.boundingBox()).toEqual(flatCard);
+          await expect(card).toHaveCSS('border-top-left-radius', flatCardRadius);
+          await expect(card).toHaveCSS('border-top-width', '1px');
+          if (opaqueMaterial === 'builtin:raised') {
+            const bevel = await card.evaluate(el => getComputedStyle(el, '::after').boxShadow);
+            expect(bevel).toContain('inset');
+          } else {
+            const texture = await card.evaluate(el => getComputedStyle(el).backgroundImage);
+            expect(texture).not.toBe('none');
+          }
+        } else if (opaqueMaterial === 'builtin:paper') {
+          const surface = page.locator('.workspace-pane-surface:visible').first();
+          const texture = await surface.evaluate(el => getComputedStyle(el).backgroundImage);
+          expect(texture).not.toBe('none');
+        }
+      }
+    }
+
+    // Shape controls geometry only (radii) without altering palette backdrop colours or material shadows.
+    await layout.selectOption('builtin:islands');
     await material.selectOption('builtin:raised');
-    await expect(root).toHaveAttribute('data-material', 'builtin:raised');
-    await expect(root).toHaveAttribute('data-layout', structure);
-    await expect(settings.getByRole('group', { name: '背景图片' })).toHaveCount(0);
-    expect(await activeTab.boundingBox()).toEqual(flatTab);
-    expect(await activeTabCorners.evaluate(el => getComputedStyle(el).display)).toBe(flatCornersDisplay);
-    if (structure === 'islands') {
-      const card = page.locator('.workspace-page-content.workspace-card:visible');
-      expect(await card.boundingBox()).toEqual(flatCard);
-      await expect(card).toHaveCSS('border-top-width', '1px');
-      const bevel = await card.evaluate(el => getComputedStyle(el, '::after').boxShadow);
-      expect(bevel).toContain('inset');
+    const card = page.locator('.workspace-page-content.workspace-card:visible');
+    const raisedShadow = await card.evaluate(el => getComputedStyle(el).boxShadow);
+    expect(raisedShadow).not.toBe('none');
+    for (const [shapeId, expectedRadius] of [['builtin:rounded', '16px'], ['builtin:crisp', '0px'], ['builtin:tano', '10px']]) {
+      await shape.selectOption(shapeId);
+      await expect(card).toHaveCSS('border-top-left-radius', expectedRadius);
+      await expect(shell).toHaveCSS('background-color', baselineDeskBg);
+      await expect(card).toHaveCSS('box-shadow', raisedShadow);
     }
   }
+});
+
+test('document layout delegates radii to shape and paper tooth strictly to paper material', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await prepare(page);
+  const apply = (kind, id) => page.evaluate(([k, v]) => {
+    const { appearance, appearanceController } = window.workbench;
+    appearanceController.select({ workspaceId: appearance.workspaceId, kind: k, id: v });
+  }, [kind, id]);
+
+  const shell = page.locator('.app-shell');
+  const docSheet = page.locator('.document-main').first();
+  const activeTab = page.locator('.workspace-tabbar .desktop-tab-active').first();
+  await expect(docSheet).toBeVisible();
+
+  await apply('layout', 'builtin:tano');
+  await apply('material', 'builtin:tano');
+  await apply('shape', 'builtin:tano');
+  const baseDeskBg = await shell.evaluate(el => getComputedStyle(el).backgroundColor);
+
+  await apply('layout', 'builtin:paper');
+  await expect(page.locator('html')).toHaveAttribute('data-layout', 'document');
+  await expect(shell).toHaveCSS('background-color', baseDeskBg);
+  // Flat material on document layout must not draw paper grain from legacy data-surface="paper".
+  await expect(docSheet).toHaveCSS('background-image', 'none');
+
+  // Corner radii on document sheet and detached slip tab must obey Shape, never hardcoded 4px/6px.
+  for (const [shapeId, cardRadius, tabRadius] of [
+    ['builtin:rounded', '16px', '10px'],
+    ['builtin:crisp', '0px', '0px'],
+    ['builtin:print', '2px', '3px'],
+  ]) {
+    await apply('shape', shapeId);
+    await expect(docSheet).toHaveCSS('border-top-left-radius', cardRadius);
+    await expect(activeTab).toHaveCSS('border-top-left-radius', tabRadius);
+  }
+
+  // Enabling the independent paper grain material adds subtle tooth without darkening the desk.
+  await apply('material', 'builtin:paper');
+  await expect(shell).toHaveCSS('background-color', baseDeskBg);
+  expect(await docSheet.evaluate(el => getComputedStyle(el).backgroundImage)).not.toBe('none');
+  await expect(docSheet).toHaveCSS('border-top-left-radius', '2px');
 });
 
 test('inset layout keeps the island content bounds and puts the sidebar on the desk', async ({ page }) => {

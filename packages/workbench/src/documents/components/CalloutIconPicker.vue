@@ -20,6 +20,7 @@ const emit = defineEmits<{ select: [icon: string] }>();
 </template>
 
 <style>
+@layer components {
 .settings-button.workspace-icon-preview.callout-icon-trigger {
   display: flex; align-items: center; justify-content: center;
   width: 26px; height: 100%; min-height: 0; padding: 0; border: 0; border-radius: 5px; background: transparent;
@@ -27,4 +28,5 @@ const emit = defineEmits<{ select: [icon: string] }>();
 .callout-icon-trigger:hover { background: var(--hover); }
 .callout-icon-placeholder { color: var(--muted); opacity: .35; }
 .callout-icon-trigger:hover .callout-icon-placeholder, .callout-icon-trigger:focus-visible .callout-icon-placeholder { opacity: 1; }
+}
 </style>

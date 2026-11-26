@@ -11,22 +11,21 @@ afterEach(() => {
   document.documentElement.style.removeProperty('color-scheme');
 });
 
-it('ignores legacy shape fonts while preserving component styles and editor font choices', () => {
+it('ignores legacy shape fonts and shadows while preserving geometry tokens and editor font choices', () => {
   const font = visualFontFamily('system', '');
   applyAppearance(undefined, undefined, { id: 'legacy:print', label: '旧排印', tokens: {
     'font-ui': 'serif', 'font-prose': 'cursive', 'font-mono': 'monospace',
-    'radius-card': '2px', 'space-panel': '18px', 'overlay-shadow': 'none',
+    'radius-card': '2px', 'space-panel': '18px', 'overlay-shadow': 'none', 'dialog-shadow': 'none',
   } });
   for (const mode of ['light', 'dark'] as const) {
     applyTheme(mode);
     const computed = getComputedStyle(document.documentElement);
-    for (const key of ['font-ui', 'font-prose', 'font-mono']) {
+    for (const key of ['font-ui', 'font-prose', 'font-mono', 'overlay-shadow', 'dialog-shadow']) {
       expect(computed.getPropertyValue(`--${key}`).trim()).toBe('');
       expect(resolvedTheme().shape.tokens).not.toHaveProperty(key);
     }
     expect(computed.getPropertyValue('--radius-card').trim()).toBe('2px');
     expect(computed.getPropertyValue('--space-panel').trim()).toBe('18px');
-    expect(computed.getPropertyValue('--overlay-shadow').trim()).toBe('none');
     expect(visualFontFamily('system', '')).toBe(font);
     expect(visualFontFamily('custom', '')).toBe(font);
     expect(visualFontFamily('handwritten', '')).toContain('KaiTi');

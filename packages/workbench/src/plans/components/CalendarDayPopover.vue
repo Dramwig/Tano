@@ -134,7 +134,7 @@ watch(() => props.date, focusPanel);
     <section v-surface-motion="'CalendarDayPopover:0'"
       :id="id"
       ref="panel"
-      class="calendar-day-popover"
+      class="calendar-day-popover" data-surface-role="popover"
       role="dialog"
       :aria-label="t('{0} 的活动', [localDayKey(date)])"
       tabindex="-1"
@@ -198,6 +198,7 @@ watch(() => props.date, focusPanel);
 </template>
 
 <style scoped>
+@layer components {
 .calendar-day-popover {
   position: fixed;
   z-index: 40;
@@ -304,5 +305,6 @@ watch(() => props.date, focusPanel);
 button:focus-visible { outline: 2px solid var(--focus-ring, var(--green)); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) {
   .calendar-day-popover-row { animation: none; }
+}
 }
 </style>

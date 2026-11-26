@@ -1,0 +1,80 @@
+/* Paper grain material (纸纹, builtin:paper — loaded in @layer material).
+   Opaque surface-only material: adds subtle organic paper tooth and calm, grounded paper-stock
+   edges and shadows to front writing surfaces and cards across every layout.
+   Never alters --workbench-back*, --workbench-sidebar, palette colours, layout geometry, or component radii. */
+
+@media screen {
+  :root[data-material='builtin:paper'] {
+    --paper-edge: color-mix(in srgb, var(--line) 68%, var(--text) 14%);
+    --paper-focus-edge: color-mix(in srgb, var(--green) 58%, var(--paper-edge));
+    --paper-tooth:
+      radial-gradient(color-mix(in srgb, var(--text) 3.2%, transparent) 0.65px, transparent 1px),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .31 0 0 0 0 .25 .035 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E");
+
+    --surface-sheet-texture: var(--paper-tooth);
+    --surface-sheet-texture-size: 5px 5px, 160px 160px;
+    --surface-sheet-border: 1px solid var(--paper-edge);
+    --surface-sheet-shadow:
+      0 1px 2px color-mix(in srgb, var(--text) 5%, transparent),
+      0 6px 18px -10px color-mix(in srgb, var(--text) 12%, transparent);
+    --surface-document-border: var(--paper-edge);
+    --surface-document-shadow:
+      0 1px 2px color-mix(in srgb, var(--text) 7%, transparent),
+      0 12px 30px -14px color-mix(in srgb, var(--text) 18%, transparent);
+    --surface-dialog-border: var(--paper-edge);
+    --surface-dialog-shadow:
+      0 2px 6px color-mix(in srgb, var(--text) 8%, transparent),
+      0 20px 52px -18px color-mix(in srgb, var(--text) 20%, transparent);
+    --surface-popover-border: var(--paper-edge);
+    --surface-popover-shadow:
+      0 1px 3px color-mix(in srgb, var(--text) 7%, transparent),
+      0 8px 22px -10px color-mix(in srgb, var(--text) 16%, transparent);
+    --surface-card-border: var(--paper-edge);
+    --surface-card-shadow:
+      0 1px 2px color-mix(in srgb, var(--text) 4.5%, transparent);
+    --surface-card-expanded-shadow: var(--surface-popover-shadow);
+    --surface-control-border: var(--paper-edge);
+    --surface-control-shadow: 0 1px 0 color-mix(in srgb, var(--text) 4%, transparent);
+    --surface-focus-border: var(--paper-focus-edge);
+    --surface-slip-tab-border: 1px solid var(--paper-edge);
+    --surface-slip-tab-shadow: 0 1px 2px color-mix(in srgb, var(--text) 7%, transparent);
+  }
+
+  :root[data-theme='dark'][data-material='builtin:paper'] {
+    --paper-edge: color-mix(in srgb, #ffffff 10%, var(--line));
+    --paper-tooth:
+      radial-gradient(color-mix(in srgb, var(--text) 3.8%, transparent) 0.65px, transparent 1px),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 .97 0 0 0 0 .92 .03 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)'/%3E%3C/svg%3E");
+    --surface-sheet-shadow:
+      0 1px 2px rgb(0 0 0 / 32%),
+      0 8px 20px -10px rgb(0 0 0 / 48%);
+    --surface-document-shadow:
+      0 1px 3px rgb(0 0 0 / 36%),
+      0 16px 38px -16px rgb(0 0 0 / 62%);
+    --surface-dialog-shadow:
+      0 2px 8px rgb(0 0 0 / 40%),
+      0 22px 56px -18px rgb(0 0 0 / 68%);
+    --surface-popover-shadow:
+      0 2px 6px rgb(0 0 0 / 36%),
+      0 10px 26px -10px rgb(0 0 0 / 56%);
+    --surface-card-shadow:
+      0 1px 2px rgb(0 0 0 / 28%);
+    --surface-control-shadow: 0 1px 0 rgb(0 0 0 / 26%);
+    --surface-slip-tab-shadow: 0 1px 2px rgb(0 0 0 / 38%);
+  }
+
+  /* Apply subtle matte paper tooth to standalone dialogs too while keeping their palette background colour. */
+  :root[data-material='builtin:paper'] :is([data-surface-role='dialog'], .modal):not(.settings-tabbed-dialog) {
+    background-image: var(--surface-sheet-texture);
+    background-size: var(--surface-sheet-texture-size);
+  }
+
+  /* Keep continuous layout's front pane seam crisp without altering layout geometry. */
+  :root[data-layout='continuous'][data-material='builtin:paper'] .app-shell:has(.workspace-native-tabs) .workspace-pane-surface {
+    border-top: 1px solid var(--paper-edge);
+    border-left: 1px solid var(--paper-edge);
+  }
+  :root[data-layout='continuous'][data-material='builtin:paper'] .app-shell.sidebar-hidden:has(.workspace-native-tabs) .workspace-pane-surface {
+    border-left: 0;
+  }
+}

@@ -32,8 +32,8 @@ const appearanceRows: Record<AppearanceKind, { label: string; description: strin
   color: { label: '配色主题', description: '从内置项和当前工作区已启用的插件中选择，保存在当前设备。', defaultLabel: '中性灰' },
   icons: { label: '文件与目录图标', description: '从内置项和当前工作区已启用的插件中选择，保存在当前设备。', defaultLabel: '同页线框' },
   layout: { label: '布局风格', description: '选择页面结构，可与任意配色、图标混搭。留边布局的内容区四周留空，侧栏融入背景。', defaultLabel: '贴边布局' },
-  material: { label: '材质', description: '选择侧栏和页面的质感，可与任意布局、配色混搭。', defaultLabel: '平面' },
-  shape: { label: '形态与密度', description: '选择组件圆角、控件间距和阴影；字体在下方单独设置。', defaultLabel: '标准圆角' },
+  material: { label: '材质', description: '选择侧栏和页面的质感与阴影，可与任意布局、配色混搭。', defaultLabel: '平面' },
+  shape: { label: '形态与密度', description: '选择组件圆角与控件间距；字体在下方单独设置。', defaultLabel: '标准圆角' },
 };
 
 function appearanceChoices(kind: AppearanceKind) {
@@ -170,7 +170,7 @@ const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPref
     <p class="settings-lead">{{ t('外观默认用于当前用户的所有工作区，也可为此工作区单独设置。') }}</p>
     <section class="settings-section" :aria-label="t('外观')">
       <h3>{{ t('外观') }}</h3>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="appearance-language">
           <div>
             <strong>{{ t('界面语言') }}</strong>
@@ -249,7 +249,7 @@ const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPref
 
     <section class="settings-section" :aria-label="t('界面字体')">
       <h3>{{ t('界面字体') }}</h3>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="appearance-interface-font">
           <div>
             <strong>{{ t('界面字体') }}</strong>
@@ -285,7 +285,7 @@ const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPref
 
     <section class="settings-section" data-settings-key="appearance-custom-font" :aria-label="t('编辑字体与字号')">
       <h3>{{ t('编辑字体与字号') }}</h3>
-      <div class="settings-card settings-font-card">
+      <div class="settings-card settings-font-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="appearance-split-fonts">
           <div>
             <strong>{{ t('分别设置中英文字体') }}</strong>
@@ -393,7 +393,7 @@ const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPref
 
     <section class="settings-section" :aria-label="t('内容显示')">
       <h3>{{ t('内容显示') }}</h3>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="appearance-auto-spacing" v-bind="settingHint('appearance-auto-spacing')">
           <div>
             <strong>{{ t('正文自动间距') }}</strong>
@@ -452,7 +452,7 @@ const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPref
 
     <section class="settings-section" :aria-label="t('动效')">
       <h3>{{ t('动效') }}</h3>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div v-for="option in motionOptions" :key="option.key" class="settings-row" :data-settings-key="option.settingsKey">
           <div>
             <strong>{{ option.label }}</strong>
@@ -476,7 +476,7 @@ const { preferences: helpPreferences, setEnabled: setHelpEnabled } = useHelpPref
 
     <section class="settings-section" :aria-label="t('使用提示')">
       <h3>{{ t('使用提示') }}</h3>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="appearance-help">
           <div>
             <strong>{{ t('偶尔显示使用提示') }}</strong>

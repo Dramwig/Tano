@@ -1,0 +1,384 @@
+/* Translucent backdrop-bearing materials: Frosted glass (builtin:frost) & Liquid glass (builtin:liquid).
+   Loaded in @layer material.
+   Backdrop-bearing tier: explicitly permitted to paint --workbench-back-paint (light field / wallpaper),
+   translucent --workbench-front sheets, and legibility contrast compensation (--muted / --text-secondary).
+   Still forbidden from altering layout geometry, spacing, or component corner radii. */
+
+@media screen {
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) {
+    --glass-shade: var(--text);
+    --glass-fill-strength: 50%;
+    --glass-page-strength: 52%;
+    --glass-filter: blur(32px) saturate(170%) brightness(1.06);
+    --glass-fill: color-mix(in srgb, var(--paper) var(--glass-fill-strength), transparent);
+    /* Tint of the back panel (desk, sidebar, tab strips), so it reads as the panel behind the page. */
+    --glass-back: color-mix(in srgb, color-mix(in srgb, var(--sidebar) 92%, var(--text)) 66%, transparent);
+    --glass-page-fill: color-mix(in srgb, var(--paper) var(--glass-page-strength), transparent);
+    --glass-sheen: linear-gradient(160deg, color-mix(in srgb, #ffffff 60%, transparent) 0%, color-mix(in srgb, #ffffff 14%, transparent) 30%, transparent 58%);
+    --glass-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 .09 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --glass-edge: color-mix(in srgb, #ffffff 72%, transparent);
+    --glass-drop: 0 1px 2px color-mix(in srgb, var(--glass-shade) 6%, transparent),
+      0 22px 48px -26px color-mix(in srgb, var(--syntax-blue) 30%, color-mix(in srgb, var(--glass-shade) 20%, transparent));
+    --surface-hairline: color-mix(in srgb, var(--glass-shade) 7%, transparent);
+    --surface-sheet-shadow: 0 0 0 1px var(--glass-edge), var(--glass-drop);
+    --surface-document-border: var(--glass-edge);
+    --surface-document-shadow: var(--glass-drop);
+    --glass-desk:
+      radial-gradient(26% 40% at 12% 32%, color-mix(in srgb, var(--syntax-blue) 42%, transparent), transparent 70%),
+      radial-gradient(30% 44% at 40% 72%, color-mix(in srgb, var(--syntax-blue) 46%, transparent), transparent 72%),
+      radial-gradient(30% 42% at 70% 30%, color-mix(in srgb, var(--syntax-purple) 34%, transparent), transparent 72%),
+      radial-gradient(30% 40% at 98% 8%, color-mix(in srgb, var(--syntax-teal) 34%, transparent), transparent 70%),
+      radial-gradient(34% 40% at 88% 86%, color-mix(in srgb, var(--syntax-teal) 32%, transparent), transparent 72%),
+      radial-gradient(26% 30% at 22% 104%, color-mix(in srgb, var(--syntax-purple) 24%, transparent), transparent 70%),
+      linear-gradient(170deg, color-mix(in srgb, var(--sidebar) 70%, #ffffff), color-mix(in srgb, var(--sidebar) 40%, #ffffff));
+  }
+  /* The continuous page is one large writing surface, so it is a touch denser than an island card. */
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid'])[data-layout='continuous'] {
+    --glass-page-strength: 54%;
+  }
+  :root[data-theme='dark']:is([data-material='builtin:frost'], [data-material='builtin:liquid']) {
+    --glass-shade: #000000;
+    /* In dark mode the back must stay darker than the page so the page still reads as the raised layer. */
+    --glass-back: color-mix(in srgb, var(--sidebar) 90%, transparent);
+    --glass-fill-strength: 58%;
+    --glass-page-strength: 64%;
+    --glass-filter: blur(32px) saturate(160%);
+    --glass-sheen: linear-gradient(160deg, color-mix(in srgb, #ffffff 12%, transparent) 0%, color-mix(in srgb, #ffffff 3%, transparent) 30%, transparent 58%);
+    --glass-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 .05 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --glass-edge: color-mix(in srgb, #ffffff 12%, transparent);
+    --glass-drop: 0 1px 2px #00000059, 0 24px 48px -24px #000000a6;
+    --surface-hairline: color-mix(in srgb, #ffffff 8%, transparent);
+    --glass-desk:
+      radial-gradient(26% 40% at 12% 32%, color-mix(in srgb, var(--syntax-blue) 30%, transparent), transparent 70%),
+      radial-gradient(30% 44% at 40% 72%, color-mix(in srgb, var(--syntax-blue) 32%, transparent), transparent 72%),
+      radial-gradient(30% 42% at 70% 30%, color-mix(in srgb, var(--syntax-purple) 26%, transparent), transparent 72%),
+      radial-gradient(30% 40% at 98% 8%, color-mix(in srgb, var(--syntax-teal) 22%, transparent), transparent 70%),
+      radial-gradient(34% 40% at 88% 86%, color-mix(in srgb, var(--syntax-teal) 22%, transparent), transparent 72%),
+      linear-gradient(170deg, var(--sidebar), color-mix(in srgb, var(--sidebar) 86%, var(--text) 14%));
+  }
+  :root[data-theme='dark']:is([data-material='builtin:frost'], [data-material='builtin:liquid'])[data-layout='continuous'] {
+    --glass-page-strength: 66%;
+  }
+
+  /* Clear transmission through the sheet, directional reflections on its bevel. */
+  :root[data-material='builtin:liquid'] {
+    --glass-grain: none;
+    /* Only the sheets are glass. The back panel — sidebar column, tab strip, the desk between cards — is the
+       bare background, untinted, so the editor sheet reads as a pane of glass lying on it. */
+    --glass-back: transparent;
+    --glass-fill-strength: 10%;
+    --glass-page-strength: 16%;
+    --glass-filter: none;
+    --glass-edge: color-mix(in srgb, #ffffff 26%, transparent);
+    --glass-outline: color-mix(in srgb, var(--glass-shade) 11%, transparent);
+    --glass-specular:
+      inset 1px 1px 0 color-mix(in srgb, #ffffff 50%, transparent),
+      inset -1px -1px 0 color-mix(in srgb, #ffffff 18%, transparent);
+    --surface-sheet-shadow: 0 0 0 .5px var(--glass-outline), var(--glass-specular), var(--glass-drop);
+    --surface-document-border: transparent;
+    --surface-document-shadow: 0 0 0 .5px var(--glass-outline), var(--glass-specular), var(--glass-drop);
+  }
+  :root[data-material='builtin:liquid'][data-layout='continuous'] { --glass-page-strength: 18%; }
+  /* Vibrancy: on clear glass, secondary text leans towards body text so it stays legible over a bright,
+     barely veiled image (the contrast solver in glass-wallpaper.ts assumes this mix: liquidWallpaper.ink). */
+  :root[data-material='builtin:liquid'] {
+    --liquid-muted-base: var(--muted);
+    --liquid-secondary-base: var(--text-secondary);
+    --liquid-ink: 55%;
+  }
+  :root[data-material='builtin:liquid'] :is(.app-shell, .settings-backdrop) {
+    --muted: color-mix(in srgb, var(--text) var(--liquid-ink), var(--liquid-muted-base));
+    --text-secondary: color-mix(in srgb, var(--text) var(--liquid-ink), var(--liquid-secondary-base));
+  }
+  :root[data-theme='dark'][data-material='builtin:liquid'] {
+    --glass-back: transparent;
+    --glass-fill-strength: 18%;
+    --glass-page-strength: 22%;
+    --glass-filter: none;
+    --glass-edge: color-mix(in srgb, #ffffff 10%, transparent);
+    --glass-outline: color-mix(in srgb, #000000 45%, transparent);
+    --glass-specular:
+      inset 1px 1px 0 color-mix(in srgb, #ffffff 26%, transparent),
+      inset -1px -1px 0 color-mix(in srgb, #ffffff 10%, transparent);
+  }
+  :root[data-theme='dark'][data-material='builtin:liquid'][data-layout='continuous'] { --glass-page-strength: 24%; }
+
+  /* Background image mode (driven by glass-wallpaper.ts). */
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid'])[data-glass-wallpaper][data-layout] {
+    --glass-fill-strength: var(--glass-wallpaper-fill, 60%);
+    --glass-page-strength: var(--glass-wallpaper-page, 84%);
+    --glass-drop: 0 1px 2px color-mix(in srgb, var(--glass-shade) 8%, transparent),
+      0 22px 48px -26px color-mix(in srgb, var(--glass-wallpaper-glow, var(--glass-shade)) 45%, color-mix(in srgb, var(--glass-shade) 25%, transparent));
+    --glass-desk:
+      linear-gradient(color-mix(in srgb, var(--sidebar) var(--glass-wallpaper-veil, 30%), transparent), color-mix(in srgb, var(--sidebar) var(--glass-wallpaper-veil, 30%), transparent)) fixed,
+      var(--glass-wallpaper) center / cover no-repeat fixed,
+      var(--sidebar);
+  }
+
+  /* Two workbench layers in glass. */
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) {
+    --workbench-back: transparent;
+    --workbench-sidebar: transparent;
+    --workbench-back-paint: var(--glass-grain), linear-gradient(var(--glass-back), var(--glass-back)), var(--glass-desk);
+    --workbench-front: var(--glass-page-fill);
+  }
+
+  /* Liquid glass sidebar surface tint; with an image it is measured (glass-wallpaper.ts, fill). */
+  :root[data-material='builtin:liquid'] {
+    --liquid-panel-strength: 10%;
+    --liquid-panel: color-mix(in srgb, var(--paper) var(--liquid-panel-strength), transparent);
+  }
+  :root[data-theme='dark'][data-material='builtin:liquid'] { --liquid-panel-strength: 16%; }
+  :root[data-material='builtin:liquid'][data-glass-wallpaper][data-layout] { --liquid-panel-strength: var(--glass-wallpaper-fill, 40%); }
+
+  /* Only the islands layout gives the sidebar its own sheet. */
+  :root[data-material='builtin:liquid'][data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-surface {
+    background: var(--liquid-panel);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  /* Compact drawer sidebar floats over the page. */
+  :root.compact-layout[data-material='builtin:frost']:not([data-layout-theme='builtin:inset']) .sidebar-surface,
+  :root.compact-layout[data-material='builtin:liquid'][data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-surface {
+    display: block;
+    inset: 0;
+  }
+  :root.compact-layout[data-material='builtin:frost'] .sidebar-surface {
+    background: var(--glass-grain), var(--glass-fill);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+  }
+  :root.compact-layout[data-material='builtin:liquid']:not([data-layout='islands']) .app-shell > .sidebar {
+    background: var(--workbench-back-paint);
+  }
+
+  /* Translucent tab close fade instead of opaque mask. */
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) :is(.desktop-tab, .desktop-tab-active, .desktop-tab-active:hover) {
+    --desktop-tab-close-mask: transparent;
+  }
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .desktop-tab:hover:not(.desktop-tab-active) {
+    --desktop-tab-close-mask: transparent;
+  }
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .desktop-tab:hover:not(.desktop-tab-active, .desktop-tab-dragging) {
+    background: color-mix(in srgb, var(--paper) 32%, transparent);
+  }
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .desktop-tab-close::before { display: none; }
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) :is(.desktop-tab:hover, .desktop-tab:has(.desktop-tab-close:focus-visible)) .desktop-tab-switch {
+    -webkit-mask-image: linear-gradient(to left, transparent 30px, #000 56px);
+    mask-image: linear-gradient(to left, transparent 30px, #000 56px);
+  }
+
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .workspace-no-tabs { background: transparent; }
+
+  /* Sticky editor toolbar uses a real frosted backdrop behind its buttons. */
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .editor-toolbar { background: transparent; }
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .editor-toolbar::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--paper) 72%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+  }
+
+  /* Match the single highlight around the tab-and-page outline on rectangular islands. */
+  :root[data-layout='islands'][data-material='builtin:liquid'] :is(.sidebar-surface, .workspace-card) {
+    box-shadow: inset 0 0 0 1px var(--glass-edge);
+  }
+  :root[data-layout='continuous'][data-material='builtin:liquid'] .workspace-pane-surface {
+    box-shadow: inset 1px 0 0 color-mix(in srgb, #ffffff 38%, transparent);
+  }
+  :root[data-theme='dark'][data-layout='continuous'][data-material='builtin:liquid'] .workspace-pane-surface {
+    box-shadow: inset 1px 0 0 color-mix(in srgb, #ffffff 14%, transparent);
+  }
+  :root[data-material='builtin:liquid']:not([data-layout='islands']) .settings-backdrop:not(.settings-tabbed) .settings-main {
+    box-shadow: var(--glass-specular);
+  }
+
+  :root[data-material='builtin:liquid'] {
+    --liquid-bezel: 18px;
+    --liquid-frame: inset 0 0 2px 1px #18263e2b, inset 0 0 10px 4px #22304319;
+    --liquid-capsule-tint: rgb(255 255 255 / 10%);
+  }
+  :root[data-material='builtin:liquid'][data-theme='dark'] {
+    --liquid-frame: inset 0 0 2px 1px #ffffff59, inset 0 0 10px 4px #ffffff26;
+    --liquid-capsule-tint: rgb(0 0 0 / 10%);
+  }
+
+  /* Refracting glass backdrop layer under every other child of .app-shell. */
+  .liquid-backdrop { display: none; }
+  :root[data-material='builtin:liquid'][data-liquid-refraction] .liquid-backdrop,
+  :root[data-material='builtin:liquid'] .liquid-backdrop:has(.liquid-joined-veil) {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  :root[data-material='builtin:liquid'][data-liquid-refraction] .liquid-lens {
+    position: absolute;
+    overflow: hidden;
+    box-shadow: var(--liquid-frame);
+  }
+  :root[data-material='builtin:liquid'][data-liquid-refraction] .liquid-lens:not([data-static-desk]) {
+    backdrop-filter: var(--liquid-filter);
+  }
+  :root[data-material='builtin:liquid'] .liquid-lens[data-joined],
+  :root[data-layout='islands'][data-material='builtin:liquid'] .liquid-lens {
+    box-shadow: none;
+  }
+  :root[data-material='builtin:liquid'] .liquid-joined-veil {
+    position: absolute;
+    background: var(--workbench-front);
+    -webkit-mask-composite: source-in;
+    mask-composite: intersect;
+  }
+  :root[data-material='builtin:liquid'] .liquid-joined-outline {
+    position: absolute;
+    overflow: visible;
+    fill: none;
+    stroke: var(--glass-edge);
+    stroke-width: 1;
+  }
+  :root[data-material='builtin:liquid'][data-layout] :is(.workspace-card, .workspace-pane-surface)[data-liquid-joined-card] {
+    background: transparent;
+    box-shadow: none;
+  }
+  :root[data-material='builtin:liquid'] .desktop-tab[data-liquid-joined-tab] {
+    background: transparent;
+    --desktop-tab-color-duration: 0s;
+  }
+  :root[data-material='builtin:liquid'] .desktop-tab[data-liquid-joined-tab] .desktop-tab-corners { display: none; }
+
+  /* Refracting lens paints the frame below the workbench content. */
+  :root[data-material='builtin:liquid'][data-liquid-refraction] [data-liquid-glass] {
+    --glass-specular: 0 0 0 0 transparent;
+  }
+  :root[data-material='builtin:liquid'][data-liquid-refraction] :is(.sidebar-surface, .workspace-card, .document-main, .workspace-pane-surface)[data-liquid-glass] {
+    background: transparent;
+  }
+  :root[data-material='builtin:liquid'][data-liquid-refraction] [data-liquid-glass]:not([data-liquid-joined-card], [data-liquid-local])::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+    width: var(--liquid-w);
+    height: var(--liquid-h);
+    border-radius: inherit;
+    background: var(--workbench-front);
+    -webkit-mask-image: var(--liquid-mask);
+    mask-image: var(--liquid-mask);
+    -webkit-mask-composite: source-in;
+    mask-composite: intersect;
+  }
+  :root[data-material='builtin:liquid'][data-liquid-refraction] .sidebar-surface[data-liquid-glass]::after {
+    z-index: 0;
+    inset: 0;
+    background: var(--liquid-panel) !important;
+  }
+  :root[data-material='builtin:liquid'] .workspace-pane-surface[data-liquid-glass]::after { inset: 0; }
+  :root[data-material='builtin:liquid'] .document-main[data-liquid-local] { isolation: isolate; }
+  :root[data-material='builtin:liquid'] .document-main[data-liquid-local]::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    border-radius: inherit;
+    backdrop-filter: var(--liquid-filter);
+    background: var(--workbench-front);
+    box-shadow: var(--liquid-frame);
+  }
+  :root[data-material='builtin:liquid'] :is(.sidebar-surface, .settings-main)[data-liquid-local] {
+    backdrop-filter: var(--liquid-filter);
+  }
+  :root.compact-layout[data-material='builtin:liquid'][data-liquid-refraction] .sidebar-surface[data-liquid-local] {
+    background: var(--liquid-panel);
+  }
+  :root[data-material='builtin:liquid'] .editor-toolbar::before {
+    background: var(--workbench-front);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+
+  /* Floating selection toolbar samples live page beneath while respecting Shape's border-radius. */
+  :root[data-material='builtin:liquid'] .selection-toolbar .selection-format-toolbar {
+    z-index: 0;
+    background: transparent;
+    box-shadow: 0 1px 2px #0003, 0 5px 16px -6px #08182c63;
+  }
+  :root[data-material='builtin:liquid'] .selection-format-toolbar::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: var(--liquid-capsule-tint);
+    box-shadow: var(--liquid-frame);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: var(--liquid-filter, blur(12px));
+  }
+
+  /* Tabbed settings share the front surface already drawn by its workspace pane. */
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .settings-backdrop.settings-tabbed,
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .settings-tabbed :is(.settings-dialog, .settings-nav) {
+    background: transparent;
+  }
+
+  /* Settings dialog: back panel and front sheet matching the workbench. */
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .settings-backdrop:not(.settings-tabbed) :is(.settings-nav-scroll button.selected, .settings-search, .settings-workspace-icon) {
+    background: var(--workbench-front);
+  }
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']):not([data-layout='islands']) .settings-backdrop:not(.settings-tabbed) .settings-dialog {
+    background: var(--workbench-back-paint);
+  }
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']):not([data-layout='islands']) .settings-backdrop:not(.settings-tabbed) .settings-nav {
+    border-right-color: var(--surface-hairline);
+    background: transparent;
+  }
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']):not([data-layout='islands']) .settings-backdrop:not(.settings-tabbed) .settings-main {
+    background: var(--workbench-front);
+  }
+
+  /* Viewport-sized wallpaper clip on animated modal settings dialog. */
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid'])[data-glass-wallpaper] .settings-backdrop:not(.settings-tabbed, .settings-windowed) > .settings-dialog {
+    isolation: isolate;
+    background: none;
+  }
+  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid'])[data-glass-wallpaper] .settings-backdrop:not(.settings-tabbed, .settings-windowed) > .settings-dialog::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100vw;
+    height: 100dvh;
+    translate: -50% -50%;
+    z-index: -1;
+    pointer-events: none;
+    background: var(--workbench-back-paint);
+    background-attachment: scroll;
+  }
+
+  /* Respect "reduce transparency", and stay readable where backdrop blur is unavailable. */
+  @media (prefers-reduced-transparency: reduce) {
+    :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) {
+      --glass-fill-strength: 97% !important;
+      --glass-page-strength: 100% !important;
+      --glass-filter: none !important;
+    }
+    :root[data-material='builtin:liquid'][data-layout] {
+      --liquid-panel-strength: 97%;
+      --liquid-capsule-tint: var(--paper);
+    }
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) {
+      --glass-fill-strength: 92% !important;
+    }
+  }
+}

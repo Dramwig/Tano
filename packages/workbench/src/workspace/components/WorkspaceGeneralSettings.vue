@@ -91,13 +91,13 @@ const sidebarOptions = [
 
 <template>
   <p v-if="error || localError" class="settings-notice" role="alert">{{ error || localError }}
-    <button v-if="error" type="button" class="settings-button" @click="reload">{{ t('重新读取设置') }}</button>
+    <button v-if="error" type="button" class="settings-button" data-surface-role="control" @click="reload">{{ t('重新读取设置') }}</button>
   </p>
   <p v-if="!workspace || workspace.readOnly" class="settings-local-note">{{ !workspace ? t('打开工作区后即可设置。') : t('当前工作区为只读，可以查看设置和导出内容。') }}</p>
   <p v-else-if="!canManage" class="settings-local-note">{{ t('只有工作区所有者和管理者可以修改工作区设置。') }}</p>
   <section class="settings-section" :aria-label="t('工作区设置')">
     <h3>{{ t('工作区设置') }}</h3>
-    <div class="settings-card">
+    <div class="settings-card" data-surface-role="section">
       <form class="settings-row settings-row-with-controls" data-settings-key="workspace-name" @submit.prevent="saveName">
         <div>
           <strong><label for="workspace-setting-name">{{ t('工作区名称') }}</label></strong>
@@ -106,7 +106,7 @@ const sidebarOptions = [
         </div>
         <div class="settings-controls workspace-name-control">
           <input id="workspace-setting-name" v-model="name" class="settings-input" :aria-label="t('工作区名称')" :disabled="disabled" @input="nameDirty = true" />
-          <button class="settings-button" type="submit" :disabled="disabled || !nameDirty">{{ saving ? t('保存中…') : t('保存') }}</button>
+          <button class="settings-button" data-surface-role="control" type="submit" :disabled="disabled || !nameDirty">{{ saving ? t('保存中…') : t('保存') }}</button>
         </div>
       </form>
       <div class="settings-row settings-row-with-controls" data-settings-key="workspace-icon">
@@ -158,7 +158,7 @@ const sidebarOptions = [
   </section>
   <section class="settings-section" :aria-label="t('侧栏')">
     <h3>{{ t('侧栏') }}</h3>
-    <div class="settings-card">
+    <div class="settings-card" data-surface-role="section">
       <template v-for="option in sidebarOptions" :key="option.key">
         <div v-if="option.key !== 'showCollaborationViews' || mode === 'web'" class="settings-row" :data-settings-key="`workspace-${option.key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}`">
           <div><strong>{{ option.label }}</strong><p>{{ option.description }}</p></div>
@@ -169,16 +169,16 @@ const sidebarOptions = [
   </section>
   <section class="settings-section" :aria-label="t('导出')">
     <h3>{{ t('导出') }}</h3>
-    <div class="settings-card">
-      <div class="settings-row" data-settings-key="workspace-export"><div><strong>{{ t('工作区内容') }}</strong><p>{{ t('将已保存的 Markdown、附件和工作区设置导出为 ZIP，保留文件夹结构。') }}</p></div><button type="button" class="settings-button" :disabled="!workspace?.id || exporting" @click="emit('export', workspace!.id!)"><Download :size="14" />{{ exporting ? t('导出中…') : t('导出') }}</button></div>
+    <div class="settings-card" data-surface-role="section">
+      <div class="settings-row" data-settings-key="workspace-export"><div><strong>{{ t('工作区内容') }}</strong><p>{{ t('将已保存的 Markdown、附件和工作区设置导出为 ZIP，保留文件夹结构。') }}</p></div><button type="button" class="settings-button" data-surface-role="control" :disabled="!workspace?.id || exporting" @click="emit('export', workspace!.id!)"><Download :size="14" />{{ exporting ? t('导出中…') : t('导出') }}</button></div>
       <slot name="members-export" />
     </div>
     <p v-if="exportError" class="settings-notice" role="alert">{{ exportError }}</p>
   </section>
   <section v-if="workspace?.id" class="settings-section" :aria-label="t('工作区 ID')">
     <h3>{{ t('工作区 ID') }}</h3>
-    <div class="settings-card">
-      <div class="settings-row settings-row-with-controls" data-settings-key="workspace-id"><div><strong>{{ t('工作区 ID') }}</strong></div><div class="settings-controls workspace-id-control"><code>{{ workspace.id }}</code><button type="button" class="settings-button" :aria-label="copied ? t('已复制工作区 ID') : t('复制工作区 ID')" @click="copyId"><Check v-if="copied" :size="14" /><Copy v-else :size="14" /></button></div></div>
+    <div class="settings-card" data-surface-role="section">
+      <div class="settings-row settings-row-with-controls" data-settings-key="workspace-id"><div><strong>{{ t('工作区 ID') }}</strong></div><div class="settings-controls workspace-id-control"><code>{{ workspace.id }}</code><button type="button" class="settings-button" data-surface-role="control" :aria-label="copied ? t('已复制工作区 ID') : t('复制工作区 ID')" @click="copyId"><Check v-if="copied" :size="14" /><Copy v-else :size="14" /></button></div></div>
     </div>
   </section>
 </template>

@@ -394,6 +394,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+@layer components {
 .selection-toolbar {
   position: fixed;
   z-index: 35;
@@ -434,5 +435,6 @@ onBeforeUnmount(() => {
 .selection-toolbar[data-dock='right']:not(.docked-toolbar) :deep(.toolbar-input-panel) {
   left: auto;
   right: 0;
+}
 }
 </style>

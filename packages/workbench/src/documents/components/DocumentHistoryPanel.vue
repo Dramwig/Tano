@@ -69,9 +69,9 @@ onBeforeUnmount(() => originalFocus?.focus());
 </script>
 
 <template>
-  <div v-surface-motion="'DocumentHistoryPanel:0'" class="modal-backdrop document-history-backdrop" @mousedown.self="emit('close')">
+  <div v-surface-motion="'DocumentHistoryPanel:0'" class="modal-backdrop document-history-backdrop" data-surface-role="backdrop" @mousedown.self="emit('close')">
     <section
-      class="document-history-dialog"
+      class="document-history-dialog" data-surface-role="dialog"
       role="dialog"
       aria-modal="true"
       aria-labelledby="document-history-title"
@@ -191,6 +191,7 @@ onBeforeUnmount(() => originalFocus?.focus());
 </template>
 
 <style scoped>
+@layer components {
 .document-history-backdrop {
   z-index: 80;
   align-items: center;
@@ -450,5 +451,6 @@ onBeforeUnmount(() => originalFocus?.focus());
     top: 13px;
     right: 12px;
   }
+}
 }
 </style>

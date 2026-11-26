@@ -235,13 +235,13 @@ onBeforeUnmount(() => {
 
 <template>
   <button
-    ref="trigger" type="button" class="settings-button workspace-icon-preview" :class="triggerClass"
+    ref="trigger" type="button" class="settings-button workspace-icon-preview" data-surface-role="control" :class="triggerClass"
     :aria-label="t('选择{0}', [label])" :data-tooltip="t('选择{0}', [label])" aria-haspopup="dialog" :aria-expanded="open"
     :aria-controls="pickerId" :disabled="disabled" @click="toggle"
   ><slot name="preview"><WorkspaceIcon :icon="icon" :mode="mode" :size="28" /></slot></button>
   <Teleport :to="document.body">
     <section v-surface-motion="'WorkspaceIconPicker:0'"
-      v-if="open" :id="pickerId" ref="panel" class="workspace-icon-picker" role="dialog"
+      v-if="open" :id="pickerId" ref="panel" class="workspace-icon-picker" data-surface-role="popover" role="dialog"
       :aria-label="label" :style="{
         left: `${position.left}px`, top: `${position.top}px`, width: `${position.width}px`, maxHeight: `${position.maxHeight}px`,
       }" @keydown="keydown" @paste="pasteImage"
@@ -299,6 +299,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
+@layer components {
 .settings-button.workspace-icon-preview { width: 48px; height: 48px; padding: 0; font-size: 28px; overflow: hidden; }
 .workspace-icon-picker { position: fixed; z-index: 120; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--text); box-shadow: 0 12px 40px #18212b26, 0 2px 8px #18212b0d; }
 .workspace-icon-picker-header { display: flex; align-items: center; gap: 4px; flex: none; min-height: 42px; padding: 0 10px; border-bottom: 1px solid var(--line); }
@@ -332,4 +333,5 @@ onBeforeUnmount(() => {
 .workspace-icon-picker-upload-paste { margin: 0; color: var(--muted); font-size: 12px; line-height: 20px; }
 .workspace-icon-picker-upload-paste kbd { font-family: inherit; font-size: inherit; }
 .workspace-icon-picker button:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+}
 </style>

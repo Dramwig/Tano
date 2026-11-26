@@ -240,7 +240,7 @@ onBeforeUnmount(() => {
     <slot name="status" />
   </nav>
   <Teleport :to="document.body">
-    <div v-surface-motion="'WorkspaceBreadcrumb:0'" v-if="opened" :id="menuId" ref="menu" class="breadcrumb-menu" :style="position"
+    <div v-surface-motion="'WorkspaceBreadcrumb:0'" v-if="opened" :id="menuId" ref="menu" class="breadcrumb-menu" data-surface-role="popover" :style="position"
       role="menu" :aria-label="t('浏览目录：{0}', [folderLabel])" tabindex="-1" @keydown="menuKeydown">
       <div class="breadcrumb-menu-list panel-scrollbar">
         <button v-for="entry in children" :key="entry.id" type="button" class="breadcrumb-menu-entry"
@@ -262,6 +262,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+@layer components {
 /* Breadcrumb labels use a smaller UI face than the file tree. Its visible
    glyphs sit lower in the line box, so it needs its own optical correction. */
 .breadcrumb, .breadcrumb-menu { --navigation-icon-offset-y: 1.5px; }
@@ -350,5 +351,6 @@ button.breadcrumb-trigger:hover, .breadcrumb-trigger[aria-expanded='true'] { bac
   .breadcrumb > .breadcrumb-separator { display: none; }
   .breadcrumb > .breadcrumb-menu-trigger:has(+ .breadcrumb-current),
   .breadcrumb > .breadcrumb-current + .breadcrumb-menu-trigger { display: inline-flex; }
+}
 }
 </style>

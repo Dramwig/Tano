@@ -409,7 +409,7 @@ async function onTabKeydown(event: KeyboardEvent) {
       v-if="contextMenu"
       v-surface-motion="'DesktopTabs:0'"
       ref="contextMenuElement"
-      class="dropdown compact-action-menu desktop-tab-context-menu"
+      class="dropdown compact-action-menu desktop-tab-context-menu" data-surface-role="popover"
       role="menu"
       :aria-label="contextMenu.tabId ? t('标签页操作') : t('标签栏操作')"
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"

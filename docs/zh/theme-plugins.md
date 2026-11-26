@@ -1,6 +1,6 @@
 # 主题插件与样式契约 v2
 
-配色、文件图标、布局风格、材质与形态密度是五项独立选择，入口为「设置 → 外观」。材质（平面 / 立体卡片 / 磨砂玻璃 / 液态玻璃）由宿主绘制，不属于插件契约。「显示模式」根据当前配色主题支持的模式提供选项。
+配色、文件图标、布局风格、材质与形态密度是五项独立选择，入口为「设置 → 外观」。材质（平面 / 立体卡片 / 纸纹 / 磨砂玻璃 / 液态玻璃）由宿主绘制，不属于插件契约。「显示模式」根据当前配色主题支持的模式提供选项。
 安装只增加可选项，不替用户选中主题。每个主题的完整 ID 是 `插件ID:主题ID`。
 「设置 → 外观 → 主题预设」提供一键组合，未声明的槽位保持当前，应用后仍可分别调整。
 
@@ -54,21 +54,21 @@ npm run plugin -- verify examples/plugins/theme-paper/theme-paper-1.0.0.tano-plu
 
 ## 形态与密度
 
-配色的 light/dark 仅接受颜色 token。圆角、控件间距与阴影在独立的 shapes 中声明：
+配色的 light/dark 仅接受颜色 token。圆角与控件间距在独立的 shapes 中声明：
 
 ```json
 "shapes": [{
   "id": "print", "label": "纸页排印",
-  "tokens": { "radius-card": "2px", "space-panel": "20px", "overlay-shadow": "none" }
+  "tokens": { "radius-card": "2px", "space-panel": "20px" }
 }]
 ```
 
 内置形态包括标准圆角、圆润宽松、柔和圆角、微圆角、直角紧凑。
 柔和圆角、微圆角保留原有 `builtin:handwritten`、`builtin:print` ID，以兼容已保存选择和预设引用。
-布局负责区域分块、纸张材质与结构间距；组件圆角、控件间距及浮层阴影引用形态 token。
-纸感布局的纸纹与居中标题属于布局材质。字体统一在「编辑字体与字号」中选择，系统字体始终使用系统字体栈；手写字体也在此单独选择。
-旧版 v2 主题包的 `font-ui`、`font-prose`、`font-mono` 仍通过协议校验，但宿主不再应用这些形态字体 token，切换形态或主题预设不会改变字体。
-因此可以同时选择纸页颜色、系统字体和卡片岛布局，也可以让卡片岛使用直角紧凑形态。
+布局负责纯页面结构（区域分块、结构间距与标签连接方式），不暗化底板色也不硬编码圆角；材质负责表面纹理、描边、内倒角与阴影；形态只负责纯几何（组件圆角与控件间距）。
+字体统一在「编辑字体与字号」中选择，系统字体始终使用系统字体栈；手写字体也在此单独选择。
+旧版 v2 主题包的 `font-ui`、`font-prose`、`font-mono` 以及 `overlay-shadow`、`dialog-shadow` 仍通过协议校验以保持向后兼容，但宿主不再应用这些形态字体与阴影 token，切换形态或主题预设不会改变字体或覆盖材质阴影。
+因此可以同时选择纸页颜色、系统字体、纸纹材质和卡片岛布局，也可以让纸页布局使用直角紧凑形态。
 
 ## 主题预设
 
@@ -85,10 +85,10 @@ color、icons、layout、shape 均可选，至少声明一项；省略表示不�
 引用本插件的贡献时使用本地 ID，不加插件前缀。不允许跨插件引用。
 协议校验 builtin: 后的 ID 格式，不内置名单；宿主在注册目录中解析引用，不支持的内置项会禁用整套预设，不会部分应用。
 设置卡片会列出缺少项的类别和完整 ID，并提示安装或更新宿主，例如「缺少形态与密度 builtin:new-shape；请安装或更新宿主」。
-当前内置布局包括 builtin:inset（留边布局）、builtin:islands（卡片岛）、builtin:paper（纸感）。留边布局沿用卡片岛的内容区结构，侧栏与标签栏共用工作台背景。材质为 builtin:raised（立体卡片）、builtin:frost（磨砂玻璃）、builtin:liquid（液态玻璃），形态为 builtin:rounded、builtin:handwritten、builtin:print、builtin:crisp。
+当前内置布局包括 builtin:inset（留边布局）、builtin:islands（卡片岛）、builtin:paper（纸页布局）。留边布局沿用卡片岛的内容区结构，侧栏与标签栏共用工作台背景；所有布局的底板直接使用当前配色的 `--sidebar`，不再由布局二次压暗或点名配色豁免。材质为 builtin:raised（立体卡片）、builtin:paper（纸纹）、builtin:frost（磨砂玻璃）、builtin:liquid（液态玻璃），形态为 builtin:rounded、builtin:handwritten、builtin:print、builtin:crisp。
 内置 ID 从清单、设置消息到存储保持一致。
-除同页默认外，三个内置预设各自搭配宿主自带的配色：卡片岛使用 `builtin:mist`（雾岛，冷灰蓝桌面与白色卡片），
-纸感使用 `builtin:ink`（纸墨，暖沙色桌面、米白纸页与墨蓝强调）。另有不绑定预设的 `builtin:sage`（护眼绿，柔和豆沙绿纸面、非纯黑文字与深叶绿强调，减少大面积亮白和蓝色）。磨砂玻璃使用 `builtin:haze`（霜雾，雾灰蓝渐变到薄荷白、奶白卡片、石板蓝强调）与圆润宽松。它们定义在 `builtin-colors.ts`，同样出现在「配色主题」列表中，可与任何布局混搭；
+除同页默认外，内置预设各自搭配宿主自带的配色与材质：卡片岛使用 `builtin:mist`（雾岛，冷灰蓝桌面与白色卡片），
+纸感预设组合 `builtin:ink`（纸墨，暖沙色桌面、米白纸页与墨蓝强调）、`builtin:paper`（纸页布局）、`builtin:paper`（纸纹材质）与 `builtin:print`（微圆角）。另有不绑定预设的 `builtin:shade`（影灰，在中性灰基础上拉大底板与页面明度差，便于凸显卡片立体边线与投影）与 `builtin:sage`（护眼绿，柔和豆沙绿纸面、非纯黑文字与深叶绿强调，减少大面积亮白和蓝色）。磨砂玻璃使用 `builtin:haze`（霜雾，雾灰蓝渐变到薄荷白、奶白卡片、石板蓝强调）与圆润宽松。它们定义在 `builtin-colors.ts`，同样出现在「配色主题」列表中，可与任何布局混搭；
 `AppearanceBuiltins.colors` 可选，注入目录时不提供即无内置配色。
 内置布局、形态与预设共同定义在宿主的 `builtinAppearance` 目录中；预设显式声明推荐槽位，不根据 `structure` 推断形态。
 构造 `AppearanceController` 时可注入完整目录，主题预设和布局下拉选项均使用该目录。新增布局不会自动生成或绑定预设。
@@ -125,7 +125,7 @@ color、icons、layout、shape 均可选，至少声明一项；省略表示不�
 | 旧版字体（兼容校验，宿主忽略） | font-ui、font-prose、font-mono | 本机字体列表与 generic family；无 URL、CSS 函数或远程字体 |
 | 圆角 | radius-control、radius-card、radius-dialog | 0–24px |
 | 间距 | space-control-x、space-control-y、space-panel、space-row-gap | 2–24px |
-| 阴影 | overlay-shadow、dialog-shadow | none 或最多 3 层 px 偏移/模糊/扩展与十六进制颜色；各长度绝对值 ≤100 |
+| 旧版阴影（兼容校验，宿主忽略） | overlay-shadow、dialog-shadow | none 或最多 3 层 px 偏移/模糊/扩展与十六进制颜色；各长度绝对值 ≤100；宿主由材质控制阴影 |
 
 间距用于控件、目录行、设置行与面板，不暴露任意定位或隐藏界面的 CSS。
 移动端目录行和输入控件保留至少 44px 高的触控区域。圆角不改变开关、圆形图标等语义形状。
@@ -211,7 +211,7 @@ iframe 仍为 opaque origin，不能访问宿主 DOM；主题不授予网络、�
 | 字段 | 取值与行为 |
 | --- | --- |
 | structure | continuous：连续界面；islands：导航与工作区分别是浮于桌面的两张圆角卡片，文档在卡片内保持连续；document：暖色桌面上的单张纸页，带安静的文件名页眉、居中标题与短线，正文行距略宽 |
-| surface | flat：平面；paper：极淡纸纹与柔和投影，不再绘制纸叠 |
+| surface | flat / paper：仅保留 v2 协议兼容与隔离页快照同步；宿主不再按 `data-surface` 绘制材质纹理或覆写弹窗，表面质感统一由独立「材质」轴绘制 |
 | gap | 可选整数 8–32，单位 px，默认 16；控制卡片间隙或纸张外边距 |
 | pageWidth | 可选整数 640–1200，单位 px，默认 880；控制文档卡片/纸张最大宽度 |
 
@@ -221,9 +221,20 @@ iframe 仍为 opaque origin，不能访问宿主 DOM；主题不授予网络、�
 默认布局保持同页原样；停用布局插件时使用连续平面布局。
 完整布局插件示例见 [页面风格集](../../examples/plugins/theme-layouts/README.md)。
 
+### 材质权限分级与正交边界
+
+宿主渲染层按 CSS `@layer base, components, palette, surface-roles, layout, shape, material` 严格分层，组件通过显式 `data-surface-role`（`dialog` / `popover` / `card` / `section` / `control` / `backdrop`）消费语义表面变量。材质分为两级权限：
+
+- **不透明表面材质**（平面、`builtin:raised` 立体卡片、`builtin:paper` 纸纹）：只允许写入表面纹理、描边、内倒角与阴影等 `--surface-*` 槽位，**严禁**修改 `--workbench-back*`、`--workbench-sidebar`、配色文字 token、布局几何、间距或组件圆角。
+- **透光画布材质**（`builtin:frost` 磨砂玻璃、`builtin:liquid` 液态玻璃）：显式拥有接管后层画布（光场/壁纸）、前层半透明与可读性对比度补偿的特权，但同样**严禁**修改布局几何、间距与组件圆角。
+
 ### 立体卡片
 
-立体卡片（`builtin:raised`）保留平面材质的不透明表面与当前配色，主要在卡片边缘和边框上增加立体层次：清晰的外轮廓描边、沿顶部与圆角自然过渡的内侧高光倒角、底部微暗厚度与多层柔和抬升投影。它与所有布局、配色、深浅模式及形态独立混搭，不改变布局本身的几何与标签连接方式，也不使用玻璃壁纸或背景折射。
+立体卡片（`builtin:raised`）属于不透明表面材质，保留平面材质的不透明表面与当前配色/底板，主要在卡片边缘和边框上增加立体层次：清晰的外轮廓描边、沿顶部与圆角自然过渡的内侧高光倒角、底部微暗厚度与多层柔和抬升投影。它与所有布局、配色、深浅模式及形态独立混搭，不改变底板颜色、布局几何、圆角或标签连接方式，也不使用玻璃壁纸或背景折射。
+
+### 纸纹
+
+纸纹（`builtin:paper`）属于不透明表面材质，在任意布局（贴边、留边、卡片岛、纸页布局）的页面、卡片与弹窗表面叠加极淡的哑光纸张肌理，并搭配克制的纸页描边与落底投影。它严格保留当前配色的底板与侧栏颜色，不改变布局几何、圆角与间距，也不使用玻璃壁纸。内置「纸感」预设（`builtin:paper`）组合纸墨配色、纸页布局、纸纹材质与微圆角形态。
 
 ### 磨砂玻璃
 

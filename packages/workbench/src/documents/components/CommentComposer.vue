@@ -93,7 +93,7 @@ defineExpose({ focus });
       <slot name="actions"><button type="submit" class="comment-send" :aria-label="t('发表{0}', [label])" :data-tooltip="t('发表{0}', [label])"
         :disabled="busy || !modelValue.trim()"><ArrowUp :size="16" /></button></slot>
     </div>
-    <div v-surface-motion="'CommentComposer:0'" v-if="choosing" class="comment-people" role="dialog" :aria-label="t('提及人物')" @keydown.esc.stop="choosing = false">
+    <div v-surface-motion="'CommentComposer:0'" v-if="choosing" class="comment-people" data-surface-role="popover" role="dialog" :aria-label="t('提及人物')" @keydown.esc.stop="choosing = false">
       <input v-model="query" :aria-label="t('搜索人物')" :placeholder="t('搜索人物')" @keydown.enter.prevent />
       <button v-for="person in people" :key="person.id" type="button" @click="mention(person.id, person.name)"><component :is="isAgentPerson(person) ? Bot : UserRound" :size="14" />{{ person.name }}</button>
       <span v-if="!people.length">{{ t('没有匹配的人物') }}</span>
@@ -102,6 +102,7 @@ defineExpose({ focus });
 </template>
 
 <style scoped>
+@layer components {
 .comment-composer { position: relative; display: flex; align-items: flex-start; gap: 10px; }
 .comment-mention { display: grid; place-items: center; width: 26px; height: 26px; flex: none; margin-bottom: 5px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
 .comment-people { position: absolute; bottom: 100%; right: 0; z-index: 10; display: grid; gap: 4px; width: min(260px, 100%); max-height: 220px; overflow: auto; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); box-shadow: 0 4px 16px rgb(0 0 0 / 10%); }
@@ -124,4 +125,5 @@ textarea::placeholder { color: color-mix(in srgb, var(--muted) 55%, var(--paper)
 .is-compact textarea { min-height: 26px; padding-block: 3px; }
 .is-compact .comment-avatar { margin-top: 1px; }
 .is-compact .comment-send, .is-compact .comment-mention { margin-bottom: 0; }
+}
 </style>

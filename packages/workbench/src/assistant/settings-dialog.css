@@ -1,3 +1,4 @@
+@layer components {
 /* Shared visual language for connection and quota editors. */
 dialog.assistant-config-dialog.assistant-connection-dialog {
   width: min(640px, calc(100vw - 32px));
@@ -139,4 +140,5 @@ dialog.assistant-config-dialog .connection-avatar-popover .connection-icon-style
   display: flex;
   gap: 8px;
   padding: 0 12px 10px;
+}
 }

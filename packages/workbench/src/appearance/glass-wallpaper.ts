@@ -119,7 +119,7 @@ export function wallpaperVeil(softness: number, mode: 'light' | 'dark', material
 }
 
 /**
- * Clearer than the painted-field defaults in layout-themes.css (50/74, 58/84): with an image the contrast
+ * Clearer than the painted-field defaults in axis-material-glass.css (50/74, 58/84): with an image the contrast
  * is measured, so the sheets start more transparent and are only raised where the image requires it.
  */
 export const wallpaperMinimums = {
@@ -132,7 +132,7 @@ export type WallpaperStructure = keyof typeof wallpaperMinimums;
 
 /** Minimum tint on a clear sheet; sampled wallpaper can require more for text contrast. */
 export const liquidWallpaper = {
-  /** Secondary text on liquid glass leans this far towards body text (layout-themes.css: --liquid-ink, must match). */
+  /** Secondary text on liquid glass leans this far towards body text (axis-material-glass.css: --liquid-ink, must match). */
   ink: 0.55,
   minimums: { light: { panel: 0.06, page: 0.1 }, dark: { panel: 0.09, page: 0.14 } },
 } as const;

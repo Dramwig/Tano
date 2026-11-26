@@ -397,12 +397,14 @@ function keydown(event: KeyboardEvent) {
     :active="!windowed && !tabbed"
     class="modal-backdrop settings-backdrop"
     :class="{ 'settings-windowed': windowed, 'settings-tabbed': tabbed }"
+    :data-surface-role="!windowed && !tabbed ? 'backdrop' : undefined"
     @close="emit('close')"
   >
     <section
       ref="settingsDialog"
       class="settings-dialog workbench-modal-surface"
       :class="{ 'settings-tabbed-dialog': tabbed }"
+      :data-surface-role="!windowed && !tabbed ? 'dialog' : undefined"
       tabindex="-1"
       :role="tabbed ? 'region' : 'dialog'"
       :aria-modal="!windowed && !tabbed ? true : undefined"

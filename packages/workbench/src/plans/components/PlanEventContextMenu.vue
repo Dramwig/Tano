@@ -88,7 +88,7 @@ onBeforeUnmount(() => {
     <div v-surface-motion="'PlanEventContextMenu:0'"
       :id="id"
       ref="menu"
-      class="dropdown compact-action-menu plan-event-context-menu"
+      class="dropdown compact-action-menu plan-event-context-menu" data-surface-role="popover"
       role="menu"
       :aria-label="t('{0} 操作', [record.object.name])"
       :style="{ left: `${position.x}px`, top: `${position.y}px` }"

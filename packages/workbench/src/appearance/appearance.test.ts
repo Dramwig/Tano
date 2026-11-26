@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ObjectPluginManifest } from '@tano/protocol';
-import { AppearanceController, builtinAppearance, glassMaterials, raisedCardMaterial } from './appearance';
+import { AppearanceController, builtinAppearance, glassMaterials, paperMaterial, raisedCardMaterial } from './appearance';
 import { FileIconRegistry } from '../file-icons/registry';
 import { applyAppearance, applyTheme, readThemePreference, resolvedTheme } from './theme';
 import { WorkspacePluginHost } from '../plugins/workspace-plugins';
@@ -92,9 +92,14 @@ it('uses only explicitly configured presets from the injected catalog without in
 it('treats frosted glass as a material that combines freely with every layout and palette', () => {
   const root = document.documentElement;
   const controller = new AppearanceController(new FileIconRegistry(), 'device', undefined, applyAppearance); controller.sync('one', []);
-  expect(controller.state.value.layouts.map(layout => layout.id)).toEqual(['builtin:inset', 'builtin:islands', 'builtin:paper']);
+  expect(controller.state.value.layouts.map(layout => ({ id: layout.id, label: layout.label }))).toEqual([
+    { id: 'builtin:inset', label: '留边布局' },
+    { id: 'builtin:islands', label: '卡片岛' },
+    { id: 'builtin:paper', label: '纸页布局' },
+  ]);
   expect(controller.state.value.materials).toEqual([
     { id: 'builtin:raised', label: '立体卡片' },
+    { id: 'builtin:paper', label: '纸纹' },
     { id: 'builtin:frost', label: '磨砂玻璃' },
     { id: 'builtin:liquid', label: '液态玻璃' },
   ]);
@@ -144,12 +149,22 @@ it('offers liquid glass as a second glass material with its own preset and previ
   controller.dispose();
   expect(root.dataset.material).toBeUndefined();
 });
-it('offers raised card as a non-glass material that previews and persists across layouts', () => {
+it('offers raised card and paper grain as non-glass materials that preview and persist across layouts', () => {
   const root = document.documentElement;
   expect(glassMaterials).not.toContain(raisedCardMaterial);
+  expect(glassMaterials).not.toContain(paperMaterial);
   const controller = new AppearanceController(new FileIconRegistry(), 'device', localStorage, applyAppearance);
   controller.sync('one', []);
+  expect(controller.state.value.presets.find(p => p.id === 'builtin:paper')).toMatchObject({
+    unavailable: false,
+    structure: 'document',
+    material: 'paper',
+    selected: { color: 'builtin:ink', layout: 'builtin:paper', material: paperMaterial, shape: 'builtin:print' },
+  });
   controller.select({ workspaceId: 'one', kind: 'layout', id: 'builtin:islands' });
+  controller.select({ workspaceId: 'one', kind: 'material', id: paperMaterial });
+  expect([root.dataset.layout, root.dataset.material]).toEqual(['islands', 'builtin:paper']);
+  expect(controller.state.value.currentPreset).toMatchObject({ id: 'current', structure: 'islands', material: 'paper' });
   controller.select({ workspaceId: 'one', kind: 'material', id: raisedCardMaterial });
   expect([root.dataset.layout, root.dataset.material]).toEqual(['islands', 'builtin:raised']);
   expect(controller.state.value.currentPreset).toMatchObject({ id: 'current', structure: 'islands', material: 'raised' });
@@ -166,6 +181,22 @@ it('offers raised card as a non-glass material that previews and persists across
   expect(root.dataset.material).toBe('builtin:raised');
   reload.dispose();
   expect(root.dataset.material).toBeUndefined();
+});
+it('provides shadow gray (builtin:shade) as a dual-mode neutral palette with recessed desk contrast', () => {
+  const shade = builtinAppearance.colors?.find(color => color.id === 'builtin:shade');
+  expect(shade).toMatchObject({ id: 'builtin:shade', label: '影灰' });
+  expect(shade?.light.sidebar).toBe('#e8e7e4');
+  expect(shade?.light.paper).toBe('#ffffff');
+  expect(shade?.dark.sidebar).toBe('#131312');
+  expect(shade?.dark.paper).toBe('#20201f');
+  const controller = new AppearanceController(new FileIconRegistry(), 'device', localStorage, applyAppearance);
+  controller.sync('one', []);
+  controller.select({ workspaceId: 'one', kind: 'color', id: 'builtin:shade' });
+  controller.select({ workspaceId: 'one', kind: 'material', id: raisedCardMaterial });
+  expect(document.documentElement.dataset.colorTheme).toBe('builtin:shade');
+  expect(document.documentElement.dataset.material).toBe('builtin:raised');
+  expect(controller.state.value.colors.find(color => color.id === 'builtin:shade')?.label).toBe('影灰');
+  controller.dispose();
 });
 it('reads older saved choices without a material as flat', () => {
   localStorage.setItem('tano.appearance.v2.carol.user', JSON.stringify({ selected: { color: 'builtin:mist', icons: 'builtin:tano', layout: 'builtin:islands', shape: 'builtin:rounded' }, mode: 'light' }));

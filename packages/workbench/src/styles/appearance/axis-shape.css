@@ -1,0 +1,59 @@
+/* Shape & density axis (loaded in @layer shape).
+   Pure geometry: owns ONLY corner radii (--radius-*) and control/panel spacing (--space-*).
+   Never sets colours, backgrounds, border colours, or shadows. */
+
+:root[data-shape-theme] :is(
+  [data-surface-role='control'],
+  .tree-row, .folder-view-entry, .dropdown button, .menu-item,
+  .settings-row select, .settings-row input, .settings-nav button, .settings-search, .settings-close,
+  .settings-font-controls button, .pc-button, .primary-button,
+  .modal input, .modal button, [data-surface-role='dialog'] input, [data-surface-role='dialog'] button,
+  .command-palette input, .tano-editor-panel button
+) {
+  border-radius: var(--radius-control);
+}
+
+:root[data-shape-theme] :is(
+  .settings-row select, .settings-row input, .modal input, [data-surface-role='dialog'] input
+) {
+  padding-block: var(--space-control-y);
+  padding-left: var(--space-control-x);
+}
+
+:root[data-shape-theme] :is(.tree-row, .folder-view-entry) {
+  gap: var(--space-row-gap);
+  padding-block: var(--space-control-y);
+}
+
+:root[data-shape-theme] :is(
+  [data-surface-role='card'],
+  [data-surface-role='popover'],
+  [data-surface-role='section'],
+  .dropdown,
+  .tano-prose pre,
+  .tano-prose blockquote
+) {
+  border-radius: var(--radius-card);
+}
+
+:root[data-shape-theme] :is([data-surface-role='dialog'], .modal):not(.settings-tabbed-dialog) {
+  border-radius: var(--radius-dialog);
+}
+
+:root[data-shape-theme] :is(.settings-row, .modal, .tano-editor-panel) {
+  padding-block: var(--space-panel);
+}
+
+/* A narrow mouse-driven window still uses compact desktop controls. */
+@media (pointer: coarse) {
+  :root[data-shape-theme] :is(.tree-row, .folder-view-entry, .settings-row select, .settings-row input) {
+    min-height: 44px;
+  }
+}
+
+/* Full-screen sheets must survive every shape's dialog radius. */
+@media (max-width: 700px), (pointer: coarse) {
+  :root[data-shape-theme] .settings-dialog {
+    border-radius: 0;
+  }
+}

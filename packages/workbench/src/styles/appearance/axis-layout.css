@@ -1,0 +1,301 @@
+/* Layout axis (loaded in @layer layout).
+   Owns region structure, pane spacing, card/sheet boundaries and tab connection geometry.
+   Never darkens or rewrites palette colours, never hardcodes component corner radii,
+   and never paints surface textures or material shadows directly. */
+.layout-document-chrome { display: none; }
+
+@media screen {
+  /* Islands & inset: the file tree and the page are regions over the desk.
+     The desk always uses the active palette's --sidebar directly without darkening. */
+  :root[data-layout='islands'] {
+    --workbench-back: var(--sidebar);
+    --workbench-sidebar: transparent;
+  }
+  :root[data-layout='islands'] .app-shell {
+    --island-top: var(--workbench-topbar-height);
+    --island-gap: calc(var(--layout-gap) * .375);
+    padding: 0 var(--island-gap) var(--island-gap);
+    gap: var(--island-gap);
+  }
+  /* Match the first bar of the main column: the 36px pane top bar on desktop pointers (see WorkspacePanes), or the tab strip. */
+  @media (pointer: fine) and (min-width: 701px) {
+    :root[data-layout='islands'] .app-shell { --island-top: 36px; }
+  }
+  :root[data-layout='islands'] .app-shell:has(.workspace-native-tabs) {
+    --island-top: var(--workbench-tabbar-height);
+  }
+
+  /* The sidebar controls sit on the desk. Card islands add a front sheet behind them. */
+  :root[data-layout='islands'] .app-shell > .sidebar { padding: 0 8px; }
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-surface {
+    display: block;
+    inset: var(--island-top) 0 0;
+    background-color: var(--workbench-front);
+    background-image: var(--surface-sheet-texture);
+    background-size: var(--surface-sheet-texture-size);
+    border: var(--surface-sheet-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--surface-sheet-shadow);
+  }
+  :root[data-layout='islands'] .sidebar > * { min-width: 0; }
+  :root[data-layout='islands'] .sidebar > .sidebar-resize-handle { right: calc(var(--island-gap) * -.5 - 5px); }
+  :root[data-layout='islands'] .sidebar-header { height: var(--island-top); padding-inline: 4px; }
+  :root[data-layout='islands'] .sidebar-header + * { margin-top: 6px; }
+  :root[data-layout='islands'] .sidebar-bottom {
+    margin: auto -8px 0;
+    padding: 7px 8px;
+    border-top: 1px solid var(--surface-hairline);
+    border-radius: 0 0 var(--radius-card) var(--radius-card);
+  }
+  :root[data-layout='islands'] .tree-row.selected { border-radius: var(--radius-control); }
+
+  /* Main column: bars on the desk, the page below them is the card. Panes keep a hairline of room so the edge is not clipped. */
+  :root[data-layout='islands'] .workspace-pane { padding: 0 1px 2px; }
+  :root[data-layout='islands'] .main-column:not(.workspace-card) { margin: 0 -1px -2px; }
+  :root[data-layout='islands'] .workspace-panes-multiple .workspace-pane { padding: calc(var(--island-gap) / 2); }
+  :root[data-layout='islands'] .workspace-panes-multiple .workspace-pane-top { padding-top: 0; }
+  /* The column is pulled out by the room each pane keeps (a hairline, or half a gap once split), so every
+     gap between sidebar, cards and window edge is exactly one --island-gap wide. */
+  :root[data-layout='islands'] .main-column:has(.workspace-panes-multiple) {
+    margin: 0 calc(var(--island-gap) / -2) calc(var(--island-gap) / -2);
+  }
+  /* The desk gap already separates split cards: no divider hairline and no tab-strip corner patch. */
+  :root[data-layout='islands'] .pane-divider::before { display: none; }
+  /* Islands draw their own front panels (the cards), so the generic page surface is not used. */
+  :root[data-layout='islands'] .workspace-pane-surface { display: none; }
+  :root[data-layout='islands'] .workspace-pane-tabbar + .workspace-pane-tabbar::before { display: none; }
+  /* Split tab strips span the pane including its half-gap of desk; inset them so each strip starts
+     exactly above its card. Then keep a tab strip that opens at the card's edge clear of the rounded
+     corner, so the active tab's lower curve lands on the flat top of the card and joins it. */
+  :root[data-layout='islands'] .workspace-layout:has(.workspace-panes-multiple) > .workspace-pane-tabbars > .workspace-pane-tabbar {
+    padding-inline: calc(var(--island-gap) / 2);
+  }
+  :root[data-layout='islands'] .workspace-native-tabs :is(
+    .desktop-tab-strip-inset,
+    .workspace-tabbar > .desktop-tab-navigation:first-child:not(:has(.icon-button)) + .desktop-tab-strip
+  ) {
+    margin-inline-start: max(12px, calc(var(--radius-card) + 8px));
+    max-width: calc(100% - max(12px, calc(var(--radius-card) + 8px)));
+  }
+  /* Page cards clip content to the active shape's --radius-card and consume material sheet tokens. */
+  :root[data-layout='islands'] .workspace-card {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background-color: var(--workbench-front);
+    background-image: var(--surface-sheet-texture);
+    background-size: var(--surface-sheet-texture-size);
+    border: var(--surface-sheet-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--surface-sheet-shadow);
+  }
+  /* The column card starts below the desk row, level with the sidebar card. */
+  :root[data-layout='islands'] .main-column.workspace-card { margin-top: var(--island-top); }
+  :root[data-layout='islands'] :is(.folder-view-entry, .review-card) {
+    border: 1px solid var(--surface-card-border);
+    border-radius: var(--radius-card);
+    background: var(--workbench-front);
+    box-shadow: var(--surface-card-shadow);
+  }
+
+  /* Settings repeat the workbench: navigation sits on the desk and the page is one card beside it.
+     The rows inside stay flat, so there is never a card inside a card. A settings tab already lives
+     inside the page card and keeps the plain layout. */
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-dialog {
+    --settings-island-gap: calc(var(--layout-gap, 24px) * .375);
+    padding: var(--settings-island-gap);
+    padding-left: 0;
+    background: var(--workbench-back-paint);
+  }
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-nav {
+    padding-top: calc(30px - var(--settings-island-gap));
+    border: 0;
+    background: transparent;
+  }
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-search {
+    border-color: var(--surface-control-border);
+    background: var(--workbench-front);
+    box-shadow: var(--surface-control-shadow);
+  }
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-nav-scroll button:hover {
+    background: color-mix(in srgb, var(--text) 5%, transparent);
+  }
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-nav-scroll button.selected {
+    background: var(--workbench-front);
+    border: var(--surface-slip-tab-border);
+    box-shadow: var(--surface-slip-tab-shadow);
+  }
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-nav-foot {
+    border-top-color: var(--surface-hairline);
+  }
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-workspace-icon {
+    border-color: var(--surface-control-border);
+    background: var(--workbench-front);
+    box-shadow: var(--surface-control-shadow);
+  }
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-main {
+    background-color: var(--workbench-front);
+    background-image: var(--surface-sheet-texture);
+    background-size: var(--surface-sheet-texture-size);
+    border: var(--surface-sheet-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--surface-sheet-shadow);
+  }
+  /* The window actions float over the page card, so they keep its inset. */
+  :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-close {
+    translate: calc(var(--settings-island-gap) * -1) var(--settings-island-gap);
+  }
+  /* Stacked layout: the navigation strip runs above the card, so the card is inset on every side. */
+  @media (max-width: 700px) {
+    :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-dialog {
+      flex-direction: column;
+      padding-left: var(--settings-island-gap);
+    }
+    :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-nav {
+      padding-top: calc(18px - var(--settings-island-gap));
+    }
+    :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-search { margin-right: 40px; }
+    :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-close { translate: none; background: transparent; }
+    :root[data-layout='islands'] .settings-backdrop:not(.settings-tabbed) .settings-close:hover {
+      background: color-mix(in srgb, var(--text) 6%, transparent);
+    }
+  }
+
+  /* Continuous (edge-to-edge) layout: the page lies over the sidebar, so its left corners follow --radius-card
+     where it meets the sidebar. Native tab strips draw their own top-left join instead. */
+  :root[data-layout='continuous']:not(.compact-layout) .app-shell:not(.sidebar-hidden):not(:has(.workspace-native-tabs)) .workspace-panes {
+    border-radius: var(--radius-card) 0 0 var(--radius-card);
+  }
+  :root[data-layout='continuous'] .workspace-pane-surface {
+    background-image: var(--surface-sheet-texture);
+    background-size: var(--surface-sheet-texture-size);
+  }
+
+  .layout-document-caption { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .layout-document-filename { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Document (纸页布局): one centred sheet on the desk with a quiet running header, narrower reading
+     measure and centred title. Corner radii come from Shape (--radius-card / --radius-control);
+     textures, borders and shadows come purely from Material (--surface-*). */
+  :root[data-layout='document'] .main-column { background: transparent; }
+  :root[data-layout='document'] .workspace-pane .topbar { border-bottom: 1px solid var(--surface-hairline); }
+  :root[data-layout='document'] .document-layout { padding: calc(var(--layout-gap) + 8px) clamp(12px, 3vw, 48px) 64px; }
+  :root[data-layout='document'] .document-main {
+    max-width: var(--layout-page-width);
+    margin-inline: auto;
+    background-color: var(--workbench-front);
+    background-image: var(--surface-sheet-texture);
+    background-size: var(--surface-sheet-texture-size);
+    border: 1px solid var(--surface-document-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--surface-document-shadow);
+  }
+  :root[data-layout='document'] .layout-document-chrome { display: block; padding: 20px 56px 0; }
+  :root[data-layout='document'] .layout-document-caption {
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--surface-hairline);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  :root[data-layout='document'] .editor-scroll {
+    --document-inset-start: 56px;
+    --document-inset-end: 56px;
+    padding-top: 44px;
+    padding-bottom: 72px;
+  }
+  :root[data-layout='document'] .document-title { padding-bottom: 24px; margin-bottom: 32px; }
+  :root[data-layout='document'] .document-title::after {
+    content: '';
+    display: block;
+    width: 56px;
+    height: 1.5px;
+    margin: 22px auto 0;
+    background: var(--text);
+    opacity: .45;
+  }
+  :root[data-layout='document'] :is(.document-title-input, .document-title-mirror) {
+    text-align: center;
+    font-size: 34px;
+    letter-spacing: .01em;
+  }
+  :root[data-layout='document'] .tano-prose > :is(p, ul, ol, blockquote) { line-height: 1.8; }
+  :root[data-layout='document'] .tano-prose :is(h1, h2, h3) { letter-spacing: .01em; }
+  :root[data-layout='document'] .tano-prose > h2 {
+    padding-bottom: 6px;
+    background: linear-gradient(var(--line), var(--line)) var(--tano-block-padding-inline) 100% / calc(100% - 2 * var(--tano-block-padding-inline)) 1px no-repeat;
+  }
+  :root[data-layout='document'] .document-main > .editor-toolbar {
+    border-bottom: 1px solid var(--line);
+    background: var(--workbench-front);
+  }
+  :root[data-layout='document'] .document-main:has(.editor-scroll.width-unlimited) { max-width: none; }
+
+  /* Document panes show the desk around the sheet; other views (graph, plugins) use the pane's page surface. */
+  :root[data-layout='document'] .workspace-pane:has(.document-layout, .workspace-no-tabs) > .workspace-pane-surface { display: none; }
+  :root[data-layout='document'] .workspace-pane-surface {
+    background-image: var(--surface-sheet-texture);
+    background-size: var(--surface-sheet-texture-size);
+  }
+  :root[data-layout='document'] .workspace-native-tabs { --workspace-pane-surface-radius: 0px; }
+  :root[data-layout='document'] .workspace-no-tabs { background: transparent; }
+  :root[data-layout='document'] .workspace-no-tabs .editor-empty-mark {
+    background: color-mix(in srgb, var(--text) 8%, var(--sidebar));
+  }
+  :root[data-layout='document'] .workspace-no-tabs .editor-empty-actions button:hover:not(:disabled) {
+    background: var(--paper);
+  }
+  /* Detached slip tabs on the desk; corner radii follow Shape (--radius-control). */
+  :root[data-layout='document'] .desktop-tab {
+    --desktop-tab-close-mask: var(--workbench-back);
+    height: calc(100% - 10px);
+    margin-top: 5px;
+    border-radius: var(--radius-control);
+  }
+  :root[data-layout='document'] .desktop-tab::before { inset: 4px 0; }
+  :root[data-layout='document'] .desktop-tab-switch { padding-bottom: 0; }
+  :root[data-layout='document'] .desktop-tab:hover {
+    --desktop-tab-close-mask: color-mix(in srgb, var(--text) 5%, var(--workbench-back));
+  }
+  :root[data-layout='document'] :is(.desktop-tab-active, .desktop-tab-active:hover) {
+    --desktop-tab-close-mask: var(--workbench-front);
+    background: var(--workbench-front);
+    border: var(--surface-slip-tab-border);
+    box-shadow: var(--surface-slip-tab-shadow);
+  }
+  :root[data-layout='document'] .desktop-tab.desktop-tab-dragging {
+    --desktop-tab-close-mask: var(--workbench-back);
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  :root[data-layout='document'] .desktop-tab-corners { display: none; }
+  :root[data-layout='document'] .desktop-tab-close {
+    top: 50%;
+    right: 1px;
+    border-radius: max(0px, calc(var(--radius-control) - 1px));
+  }
+
+  /* Multi-pane and compact-layout geometry overrides. */
+  :root[data-layout='document'] .workspace-panes-multiple .document-layout { padding: 10px; }
+  :root[data-layout='document'] .workspace-panes-multiple .editor-scroll { --document-inset-start: 28px; --document-inset-end: 28px; }
+  :root[data-layout='document'] .workspace-panes-multiple .layout-document-chrome { padding-inline: 28px; }
+  :root.compact-layout[data-layout='islands'] .app-shell {
+    padding: env(safe-area-inset-top, 0px) calc(8px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(8px + env(safe-area-inset-left, 0px));
+    gap: 0;
+  }
+  :root.compact-layout[data-layout-theme='builtin:inset'] .app-shell > .sidebar {
+    background: var(--workbench-back-paint);
+  }
+  :root.compact-layout[data-layout='document'] .document-layout { padding: 14px 8px 28px; }
+  :root.compact-layout[data-layout='document'] .layout-document-chrome { padding: 16px 22px 0; }
+  :root.compact-layout[data-layout='document'] .editor-scroll { --document-inset-start: 22px; --document-inset-end: 22px; }
+  :root.compact-layout[data-layout='document'] :is(.document-title-input, .document-title-mirror) { font-size: 28px; }
+  :root.compact-layout .settings-backdrop:not(.settings-tabbed, .settings-windowed) > .settings-dialog {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}

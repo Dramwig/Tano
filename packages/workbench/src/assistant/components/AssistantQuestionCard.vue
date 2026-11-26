@@ -51,7 +51,7 @@ watch(() => pending.value?.step, () => {
 </script>
 
 <template>
-  <form v-if="pending && question" class="assistant-question-card" :aria-label="t('回答助手问题')" @submit.prevent="advance()">
+  <form v-if="pending && question" class="assistant-question-card" data-surface-role="card" :aria-label="t('回答助手问题')" @submit.prevent="advance()">
     <div class="assistant-question-heading"><label :for="`answer-${request.id}`">{{ question.question }}</label></div>
     <div ref="body" class="assistant-question-body panel-scrollbar">
     <div v-if="question.options?.length" class="assistant-question-options" role="radiogroup" :aria-label="question.question">
@@ -76,6 +76,7 @@ watch(() => pending.value?.step, () => {
 </template>
 
 <style scoped>
+@layer components {
 .assistant-question-card { --question-accent: var(--green-fill); display: flex; flex-direction: column; min-height: 0; margin: 0; padding: 14px 8px 8px; border: 1px solid color-mix(in srgb, var(--line) 75%, var(--paper)); border-radius: 18px; background: var(--paper); box-shadow: 0 2px 3px #00000005; }
 .assistant-question-heading { flex-shrink: 0; padding: 0 7px; margin-bottom: 14px; font-size: 14px; line-height: 20px; }
 .assistant-question-heading label { font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -98,4 +99,5 @@ watch(() => pending.value?.step, () => {
 .assistant-user-answers > div + div { margin-top: 16px; }
 .assistant-user-answers p { margin: 0 0 4px; color: var(--muted); }
 .assistant-question-cancelled { color: var(--muted); font-size: 12px; }
+}
 </style>

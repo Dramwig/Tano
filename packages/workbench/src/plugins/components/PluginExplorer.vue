@@ -87,7 +87,7 @@ function openImport() {
         <summary class="icon-button" :aria-label="t('更多操作')">
           <MoreHorizontal :size="16" />
         </summary>
-        <div class="dropdown compact-action-menu actions-menu" @click="closeMenu">
+        <div class="dropdown compact-action-menu actions-menu" data-surface-role="popover" @click="closeMenu">
           <button v-if="isDeveloperMode" @click="openImport"><Upload :size="14" />{{ t('导入插件…') }}</button
           ><button @click="store.openPluginsTab()">
             <Puzzle :size="14" />{{ t('插件中心…') }}
@@ -124,7 +124,7 @@ function openImport() {
         </button>
         <details @toggle="toggleMenu">
           <summary class="icon-button" :aria-label="t('管理插件')"><Settings :size="16" /></summary>
-          <div class="dropdown compact-action-menu actions-menu" @click="closeMenu">
+          <div class="dropdown compact-action-menu actions-menu" data-surface-role="popover" @click="closeMenu">
             <button
               :disabled="busy || item.rule?.mode === 'required' || item.rule?.mode === 'disabled'"
               @click="change({ id: item.manifest.id, enabled: !item.enabled })"

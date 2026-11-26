@@ -38,7 +38,7 @@ const { props, scopeLabel } = ctx;
     </WorkspaceGeneralSettings>
     <section class="settings-section" aria-labelledby="settings-current-workspace">
       <h3 id="settings-current-workspace">{{ t('当前空间') }}</h3>
-      <div class="settings-card settings-workspace-card">
+      <div class="settings-card settings-workspace-card" data-surface-role="section">
         <div class="settings-info">
           <strong>{{ props.workspace?.name ?? t('尚未打开工作区') }}</strong>
           <span>{{

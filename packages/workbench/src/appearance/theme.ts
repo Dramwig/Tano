@@ -1,7 +1,7 @@
-import { appearanceVersion, themeTokenNames, themeColorTokens, themeRadiusTokens, themeSpaceTokens, themeShadowTokens, type ColorThemeDefinition, type ThemeTokens, type ShapeTokens, type LayoutThemeDefinition, type ShapeThemeDefinition } from '@tano/protocol';
-// Legacy v2 shapes may declare fonts. Accept the package, but keep typography
-// under the user's font settings rather than applying it with component shape.
-const componentShapeTokens = [...themeRadiusTokens, ...themeSpaceTokens, ...themeShadowTokens];
+import { appearanceVersion, themeTokenNames, themeColorTokens, themeRadiusTokens, themeSpaceTokens, type ColorThemeDefinition, type ThemeTokens, type ShapeTokens, type LayoutThemeDefinition, type ShapeThemeDefinition } from '@tano/protocol';
+// Legacy v2 shapes may declare fonts or shadows. Accept the package for schema compatibility,
+// but keep typography under font settings and shadows under material rather than component shape.
+const componentShapeTokens = [...themeRadiusTokens, ...themeSpaceTokens];
 export const THEME_STYLE_ID = 'tano-theme-tokens';
 export type ThemePreference = 'light' | 'dark' | 'system';
 export interface ResolvedTheme {
@@ -42,7 +42,7 @@ function writeThemeStyle(resolved: ResolvedTheme['mode'], tokens: Record<string,
 }
 
 /** Only validated contract tokens reach the host. Empty maps restore built-in CSS. */
-/** `material` is a host-drawn card material (e.g. builtin:raised, builtin:frost, builtin:liquid); undefined is the flat default. */
+/** `material` is a host-drawn card material (e.g. builtin:raised, builtin:paper, builtin:frost, builtin:liquid); undefined is the flat default. */
 export function applyAppearance(value?: ColorAppearance, layoutValue?: LayoutThemeDefinition, shapeValue?: ShapeThemeDefinition, mode = currentPreference, material?: string): void {
   appearance = value ?? { light: {}, dark: {} };
   layout = layoutValue ? { ...layoutValue } : undefined;

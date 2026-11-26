@@ -140,7 +140,7 @@ onBeforeUnmount(() => {
       <button v-if="controlsTarget" ref="trigger" type="button" class="reader-actions-trigger icon-button" :aria-label="t('预览操作')" :data-tooltip="t('预览操作')" aria-haspopup="dialog" :aria-controls="actionsId" :aria-expanded="actionsOpen" @click="toggleActions" @keydown.down.prevent="!actionsOpen && toggleActions()"><MoreHorizontal :size="19" /></button>
     </Teleport>
     <Teleport :to="document.body" :disabled="!controlsTarget">
-    <header v-if="!controlsTarget || actionsOpen" :id="actionsId" ref="actions" class="reader-toolbar" :class="{ 'reader-actions-popover': controlsTarget }" :style="controlsTarget ? actionsPosition : undefined" :role="controlsTarget ? 'dialog' : undefined" :aria-label="controlsTarget ? t('预览操作') : undefined" @keydown.stop="actionsKeydown">
+    <header v-if="!controlsTarget || actionsOpen" :id="actionsId" ref="actions" class="reader-toolbar" :class="{ 'reader-actions-popover': controlsTarget }" :data-surface-role="controlsTarget ? 'popover' : undefined" :style="controlsTarget ? actionsPosition : undefined" :role="controlsTarget ? 'dialog' : undefined" :aria-label="controlsTarget ? t('预览操作') : undefined" @keydown.stop="actionsKeydown">
       <div class="reader-tools reader-leading">
         <button v-if="navigation" :aria-label="t('切换页面导航')" :title="t('切换页面导航')" :aria-expanded="sidebar" @click="sidebar = !sidebar"><PanelLeft :size="16" /></button>
         <span class="reader-format">{{ format }}</span>
@@ -187,6 +187,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+@layer components {
 .document-reader { display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; color: var(--text); background: var(--paper); font: 12px/1.4 var(--font-ui, sans-serif); container-type: inline-size; }
 .reader-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .reader-tools { display: flex; align-items: center; gap: 3px; min-width: 0; }
@@ -230,4 +231,5 @@ select { max-width: 110px; height: 26px; padding: 0 5px; background: var(--paper
 .reader-actions-popover .reader-trailing:empty { display: none; }
 .reader-actions-popover .reader-trailing button { width: 100%; justify-content: flex-start; gap: 8px; padding: 0 6px; }
 .reader-actions-popover .reader-information { padding: 6px; border: 0; }
+}
 </style>

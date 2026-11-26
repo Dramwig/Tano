@@ -27,6 +27,24 @@ const palette = (b: Base): ColorTokens => ({
  */
 export const builtinColors: ColorThemeDefinition[] = [
   {
+    // Shadow gray: recessed neutral studio desk with pure-white / elevated charcoal cards so drop shadows and bevels read crisply.
+    id: 'builtin:shade', label: '影灰',
+    light: palette({
+      desk: '#e8e7e4', paper: '#ffffff', surface: '#f4f3f0', raised: '#ffffff', hover: '#e2e1dd',
+      text: '#2e2d29', secondary: '#575550', muted: '#73716c', line: '#dcdbd7', strong: '#bebcb6',
+      selected: '#dfded9', selectedText: '#242320', brand: '#2a2925', brandHover: '#111110', fill: '#2a2925', fillHover: '#44423e',
+      highlight: '#fef08a', backdrop: '#1c1b184d', purple: '#8653a8', blue: '#1766ba', teal: '#087c69', green: '#658135', orange: '#995a18', red: '#cf3156',
+      danger: '#ab3e35', dangerBg: '#fcf1e8', warning: '#805c20', warningBg: '#faf0df', addBg: '#eaf5e7', removeBg: '#fcefea', thumb: '#c2c0ba', thumbHover: '#9d9b94',
+    }),
+    dark: palette({
+      desk: '#131312', paper: '#20201f', surface: '#282826', raised: '#2e2e2c', hover: '#333330',
+      text: '#deddd9', secondary: '#b6b5b0', muted: '#969590', line: '#30302e', strong: '#4c4b47',
+      selected: '#30302e', selectedText: '#ecebe8', brand: '#e6e5e1', brandHover: '#ffffff', fill: '#4f4e4a', fillHover: '#605f5a',
+      highlight: '#4a422c', backdrop: '#00000088', purple: '#b4a2cb', blue: '#9ab4d0', teal: '#91b9b0', green: '#a6bb91', orange: '#c5a783', red: '#d49aa5',
+      danger: '#d9a099', dangerBg: '#3a2c2c', warning: '#cdb482', warningBg: '#353125', addBg: '#293a30', removeBg: '#3c2e30', thumb: '#4f4e4b', thumbHover: '#6b6a66',
+    }),
+  },
+  {
     // Card islands: cool blue-grey desk, crisp white cards, calm indigo.
     id: 'builtin:mist', label: '雾岛',
     light: palette({

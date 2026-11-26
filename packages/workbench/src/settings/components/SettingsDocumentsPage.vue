@@ -45,7 +45,7 @@ const mathSyntaxDescription = computed(
             : t('只有工作区所有者和管理者可以更改文档能力。')
         }}
       </p>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div
           v-for="feature in featureDefinitions"
           :key="feature.key"
@@ -82,7 +82,7 @@ const mathSyntaxDescription = computed(
 
     <section class="settings-section" :aria-label="t('Markdown 语法')">
       <h3>{{ t('Markdown 语法') }}</h3>
-      <div class="settings-card">
+      <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="documents-math-recognition" v-bind="settingHint('documents-math-recognition')">
           <div>
             <strong>{{ t('识别的公式语法') }}</strong>

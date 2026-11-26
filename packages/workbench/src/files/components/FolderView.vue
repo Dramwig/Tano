@@ -64,6 +64,7 @@ const fileSize = (file: FileEntry) => file.kind === 'directory' ? '—' : file.s
 </template>
 
 <style scoped>
+@layer components {
 .folder-view { flex: 1; min-height: 0; overflow: auto; padding: 24px 32px; color: var(--text); }
 .folder-view-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
 .folder-view-header h1 { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 0; font-size: 20px; overflow-wrap: anywhere; }
@@ -84,5 +85,6 @@ const fileSize = (file: FileEntry) => file.kind === 'directory' ? '—' : file.s
   .folder-view { padding: 20px 16px; }
   .folder-view-columns, .folder-view-entry { grid-template-columns: minmax(0, 1fr) 64px; gap: 12px; }
   .folder-view-date, .folder-view-type, .folder-view-columns > :nth-child(2), .folder-view-columns > :nth-child(3) { display: none; }
+}
 }
 </style>

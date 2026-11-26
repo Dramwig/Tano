@@ -120,7 +120,7 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
 <template>
   <div
     v-if="opened"
-    class="page-search"
+    class="page-search" data-surface-role="popover"
     role="search"
     :aria-label="t('页内搜索')"
     @keydown.stop="keydown"
@@ -209,6 +209,7 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
 </template>
 
 <style scoped>
+@layer components {
 .page-search {
   position: absolute;
   top: calc(var(--topbar-height, 44px) + 4px);
@@ -335,5 +336,6 @@ defineExpose({ open, close, navigate, isOpen: () => opened.value });
   .page-search {
     right: 16px;
   }
+}
 }
 </style>

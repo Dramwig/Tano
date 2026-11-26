@@ -248,7 +248,7 @@ onBeforeUnmount(() => {
 
   <Teleport to="body">
     <section v-surface-motion="'HelpLauncher:0'" v-if="preview && !opened && available" :id="`${id}-preview`" ref="previewPanel" data-help-surface
-      role="region" :aria-label="t('上手指引')" class="help-preview" :style="position"
+      role="region" :aria-label="t('上手指引')" class="help-preview" data-surface-role="popover" :style="position"
       @pointerenter="previewHovered = true; keepPreview()" @pointerleave="previewHovered = false; leavePreview()"
       @focusin="previewFocused = true; keepPreview()" @focusout="previewFocusOut">
       <HelpChecklistTimeline :heading-id="`${id}-preview-title`" :completed="completed" :context="context" :availability="availability" :documentation-base-url="documentationBaseUrl"
@@ -256,7 +256,7 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-surface-motion="'HelpLauncher:1'" v-if="opened && available" :id="`${id}-panel`" ref="panel" data-help-surface
-      class="help-popover" :style="position" role="dialog" aria-modal="false" :aria-label="t('帮助与上手')"
+      class="help-popover" data-surface-role="popover" :style="position" role="dialog" aria-modal="false" :aria-label="t('帮助与上手')"
       @keydown="menuKeys" @scroll="closeMore()">
         <div class="help-menu-heading">{{ t('帮助与上手') }}</div>
         <div class="help-main-links">
@@ -272,12 +272,12 @@ onBeforeUnmount(() => {
     </section>
 
     <div v-surface-motion="'HelpLauncher:2'" v-if="opened && available && more" :id="`${id}-more`" ref="morePanel" data-help-surface
-      class="help-submenu" :style="morePosition" role="menu" :aria-label="t('更多帮助选项')" @keydown="moreKeys">
+      class="help-submenu" data-surface-role="popover" :style="morePosition" role="menu" :aria-label="t('更多帮助选项')" @keydown="moreKeys">
       <button class="help-row" role="menuitem" @click="settings('shortcuts')"><Keyboard :size="15" /><span>{{ t('键盘快捷键') }}</span></button>
       <button class="help-row" role="menuitem" @click="settings('about')"><CircleHelp :size="15" /><span>{{ t('关于同页') }}</span></button>
     </div>
 
-    <aside v-surface-motion="'HelpLauncher:3'" v-if="hint && available && !opened" ref="bubble" data-help-surface class="help-bubble" :style="position" :aria-label="t('使用小提示')"
+    <aside v-surface-motion="'HelpLauncher:3'" v-if="hint && available && !opened" ref="bubble" data-help-surface class="help-bubble" data-surface-role="popover" :style="position" :aria-label="t('使用小提示')"
       @pointerenter="bubbleHovered = true" @pointerleave="bubbleHovered = false"
       @focusin="bubbleFocused = true" @focusout="bubbleFocused = !!bubble?.contains($event.relatedTarget as Node)">
       <div class="help-bubble-heading"><span>{{ t('小提示') }}</span><button class="help-close" :aria-label="t('暂时不提示')" @click="dismiss(true)"><X :size="14" /></button></div>
@@ -291,6 +291,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+@layer components {
 .help-popover, .help-submenu, .help-bubble, .help-preview { position: fixed; z-index: 65; }
 .help-popover, .help-submenu, .help-bubble, .help-preview { --help-surface: var(--paper); color: var(--text); background: var(--help-surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 30px #00000012, 0 2px 6px #00000008; font-size: 13px; line-height: 1.5; }
 .help-popover { width: min(248px, calc(100vw - 24px)); overflow-y: auto; padding: 5px; border-radius: 9px; font-size: 12px; overscroll-behavior: contain; }
@@ -315,4 +316,5 @@ onBeforeUnmount(() => {
 .help-bubble-actions :is(button, a) { display: flex; align-items: center; gap: 3px; padding: 2px 0; font-size: 12px; color: var(--text-secondary); }
 .help-bubble-actions button:last-child { font-size: 11px; color: var(--muted); }
 .help-bubble-actions :is(button, a):hover { color: var(--green); }
+}
 </style>

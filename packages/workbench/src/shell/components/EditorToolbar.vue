@@ -378,6 +378,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
     class="contextual-toolbar"
     :style="{ '--toolbar-divider-thickness': dividerThickness }"
     :class="compact ? 'selection-format-toolbar' : 'editor-toolbar'"
+    :data-surface-role="compact ? 'popover' : undefined"
     :data-selection-level="source ? 'source' : context.level"
     role="toolbar"
     :aria-orientation="vertical ? 'vertical' : 'horizontal'"
@@ -410,7 +411,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
           </button>
           <div v-surface-motion="'EditorToolbar:0'"
             v-if="open && !disabled"
-            class="dropdown compact-action-menu block-type-menu panel-scrollbar"
+            class="dropdown compact-action-menu block-type-menu panel-scrollbar" data-surface-role="popover"
             data-tooltip-boundary
             :aria-label="t('Block Level 选项')"
           >
@@ -675,6 +676,7 @@ onBeforeUnmount(() => { for (const element of actionMotions.keys()) clearActionM
 </template>
 
 <style scoped>
+@layer components {
 .contextual-toolbar {
   --editor-tool-radius: 5px;
   position: relative;
@@ -965,5 +967,6 @@ button[aria-pressed='true'] {
   .toolbar-input-panel {
     left: 12px;
   }
+}
 }
 </style>

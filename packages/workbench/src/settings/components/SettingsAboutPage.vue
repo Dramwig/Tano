@@ -61,7 +61,7 @@ onBeforeUnmount(() => clearTimeout(versionCopiedTimer));
   <div class="settings-content settings-about">
     <h2 id="settings-title">{{ t('关于同页') }}</h2>
     <p class="settings-lead">{{ t('了解同页与版本信息。') }}</p>
-    <div class="settings-card settings-brand-card" data-settings-key="about-updates">
+    <div class="settings-card settings-brand-card" data-surface-role="section" data-settings-key="about-updates">
       <div class="settings-about-brand">
         <img src="../../assets/tano-logo.svg" alt="" />
         <div class="settings-about-identity">
@@ -133,7 +133,7 @@ onBeforeUnmount(() => clearTimeout(versionCopiedTimer));
 
     <section class="settings-section" aria-labelledby="settings-work-mode">
       <h3 id="settings-work-mode">{{ t('工作方式') }}</h3>
-      <div class="settings-about-feature settings-card">
+      <div class="settings-about-feature settings-card" data-surface-role="section">
         <Monitor :size="21" />
         <div>
           <strong>{{

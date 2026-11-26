@@ -1,3 +1,4 @@
+@layer components {
 .plugin-center {
   display: flex;
   flex-direction: column;
@@ -586,3 +587,4 @@
 .workspace-plugin-policy select { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--text); font: inherit; font-size: 12.5px; }
 .dev-optin-link { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: 6px; }
 .dev-optin-link:hover { color: var(--text); background: var(--hover); }
+}

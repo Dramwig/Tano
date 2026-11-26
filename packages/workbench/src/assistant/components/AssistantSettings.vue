@@ -472,7 +472,7 @@ onBeforeUnmount(() => {
           <div class="assistant-connection-add-actions"><AssistantCcSwitchImport @changed="emit('changed')" />
           <button v-if="assistant.canConfigure !== false" ref="addButton" type="button" class="assistant-add-connection" aria-haspopup="dialog" @click="addConnection"><Plus :size="15" />{{ t('添加连接') }}</button></div>
         </div>
-        <div class="settings-card assistant-settings-card">
+        <div class="settings-card assistant-settings-card" data-surface-role="section">
           <div class="assistant-connection-list">
             <div v-for="connection in assistant.connections" :key="connection.id">
               <button type="button" aria-haspopup="dialog" :disabled="connection.platformProvider" @click="editConnection(connection)">
@@ -531,10 +531,10 @@ onBeforeUnmount(() => {
   </div>
 
   <Teleport :to="document.body">
-    <dialog v-surface-motion="'AssistantSettings:0'" v-if="quotaConnection" ref="quotaDialog" class="assistant-connection-dialog assistant-config-dialog assistant-quota-dialog" :aria-label="t('额度查询配置')" @cancel.prevent="closeQuotaEditor" @keydown.stop>
+    <dialog v-surface-motion="'AssistantSettings:0'" v-if="quotaConnection" ref="quotaDialog" class="assistant-connection-dialog assistant-config-dialog assistant-quota-dialog" data-surface-role="dialog" :aria-label="t('额度查询配置')" @cancel.prevent="closeQuotaEditor" @keydown.stop>
       <AssistantQuotaConfig :key="quotaConnection.id" :connection="quotaConnection" @close="closeQuotaEditor" @busy="quotaSaving = $event" @saved="emit('changed')" />
     </dialog>
-    <dialog v-surface-motion="'AssistantSettings:1'" v-if="pendingDeletion" ref="deletionDialog" class="assistant-connection-dialog assistant-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="assistant-delete-title" aria-describedby="assistant-delete-description" @cancel.prevent="closeDeletion" @keydown.stop>
+    <dialog v-surface-motion="'AssistantSettings:1'" v-if="pendingDeletion" ref="deletionDialog" class="assistant-connection-dialog assistant-delete-dialog" data-surface-role="dialog" role="alertdialog" aria-modal="true" aria-labelledby="assistant-delete-title" aria-describedby="assistant-delete-description" @cancel.prevent="closeDeletion" @keydown.stop>
       <form class="assistant-connection-form" :aria-busy="removing" @submit.prevent="removeConnection">
         <header class="assistant-form-heading"><h2 id="assistant-delete-title">{{ t('删除模型连接') }}</h2></header>
         <div class="assistant-form-scroll">
@@ -547,7 +547,7 @@ onBeforeUnmount(() => {
         </footer>
       </form>
     </dialog>
-    <div v-surface-motion="'AssistantSettings:2'" v-if="menuConnection" id="assistant-connection-actions" ref="menu" class="dropdown compact-action-menu assistant-connection-menu" role="menu" tabindex="-1" :aria-label="t('{0} 操作', [menuConnection.name])" :style="menuPosition" @keydown.stop="menuKey">
+    <div v-surface-motion="'AssistantSettings:2'" v-if="menuConnection" id="assistant-connection-actions" ref="menu" class="dropdown compact-action-menu assistant-connection-menu" data-surface-role="popover" role="menu" tabindex="-1" :aria-label="t('{0} 操作', [menuConnection.name])" :style="menuPosition" @keydown.stop="menuKey">
       <button type="button" role="menuitem" :disabled="checkControllers.has(menuConnection.id) || saving" @click="checkConnection(menuConnection)"><Wifi :size="15" />{{ checkControllers.has(menuConnection.id) ? t('正在检测…') : menuConnection.platformProvider ? t('刷新模型名单') : t('检测连通') }}</button>
       <button v-if="canQueryQuota(menuConnection)" type="button" role="menuitem" :disabled="saving || quotaLoading[menuConnection.id]" @click="queryConnectionQuota(menuConnection)"><Gauge :size="15" />{{ quotaLoading[menuConnection.id] ? t('正在查询额度…') : t('查询额度') }}</button>
       <div v-if="!menuConnection.platformProvider" class="menu-divider" role="separator" />
@@ -556,7 +556,7 @@ onBeforeUnmount(() => {
       <div v-if="!menuConnection.platformProvider" class="menu-divider" role="separator" />
       <button v-if="!menuConnection.platformProvider" type="button" role="menuitem" :disabled="saving || assistant.busy || assistant.loading" @click="configureQuota(menuConnection)"><Settings2 :size="15" />{{ t('配置额度查询') }}</button>
     </div>
-    <dialog v-surface-motion="'AssistantSettings:3'" v-if="draft" ref="editor" class="assistant-connection-dialog assistant-config-dialog" aria-labelledby="assistant-connection-editor-title" @cancel.prevent="closeEditor" @keydown.stop>
+    <dialog v-surface-motion="'AssistantSettings:3'" v-if="draft" ref="editor" class="assistant-connection-dialog assistant-config-dialog" data-surface-role="dialog" aria-labelledby="assistant-connection-editor-title" @cancel.prevent="closeEditor" @keydown.stop>
       <form class="assistant-connection-form" :aria-busy="saving" @submit.prevent="saveConnection">
         <header class="assistant-form-heading">
           <h2 id="assistant-connection-editor-title">{{ assistant.connections.some(connection => connection.id === draft?.id) ? t('编辑连接') : t('新建连接') }}</h2>
@@ -629,6 +629,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+@layer components {
 .assistant-settings-page :deep([data-settings-key='assistant-connections'] + .assistant-usage) {
   margin-top: 64px;
 }
@@ -902,5 +903,6 @@ onBeforeUnmount(() => {
     padding-right: 18px;
     padding-left: 18px;
   }
+}
 }
 </style>

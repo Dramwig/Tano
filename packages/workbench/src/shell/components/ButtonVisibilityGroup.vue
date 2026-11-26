@@ -164,7 +164,7 @@ onBeforeUnmount(() => {
     <div v-surface-motion="'ButtonVisibilityGroup:0'"
       v-if="menu"
       ref="menuElement"
-      class="dropdown compact-action-menu button-visibility-menu"
+      class="dropdown compact-action-menu button-visibility-menu" data-surface-role="popover"
       role="menu"
       :aria-label="menuLabel"
       :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"

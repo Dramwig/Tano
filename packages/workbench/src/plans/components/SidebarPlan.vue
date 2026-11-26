@@ -574,7 +574,7 @@ onBeforeUnmount(() => {
         <button type="button" class="sidebar-calendar-today" :aria-label="t('回到今天')" @click="goToToday">{{ t('今天') }}</button>
       </div>
       <Teleport to="body">
-        <div v-surface-motion="'SidebarPlan:0'" v-if="viewOpen" id="plan-view-menu" ref="viewMenu" class="plan-scope-menu plan-view-menu" :style="viewMenuPosition" role="menu" :aria-label="t('查看计划')" @keydown="onPickerKeydown($event, viewMenu)" @keydown.esc.stop.prevent="closeViewMenu()">
+        <div v-surface-motion="'SidebarPlan:0'" v-if="viewOpen" id="plan-view-menu" ref="viewMenu" class="plan-scope-menu plan-view-menu" data-surface-role="popover" :style="viewMenuPosition" role="menu" :aria-label="t('查看计划')" @keydown="onPickerKeydown($event, viewMenu)" @keydown.esc.stop.prevent="closeViewMenu()">
           <span class="plan-scope-menu-heading">{{ t('查看计划') }}</span>
           <button v-for="option in viewOptions" :key="option.value" type="button" role="menuitemradio" :aria-label="option.label" :aria-checked="effectiveView === option.value" :disabled="option.disabled" @click="chooseView(option.value)">
             <component :is="option.icon" :size="16" aria-hidden="true" />
@@ -645,10 +645,10 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <Teleport to="body">
-      <div v-surface-motion="'SidebarPlan:1'" v-if="draft" class="modal-backdrop plan-create-backdrop" @mousedown.self="closeCreate">
+      <div v-surface-motion="'SidebarPlan:1'" v-if="draft" class="modal-backdrop plan-create-backdrop" data-surface-role="backdrop" @mousedown.self="closeCreate">
         <section
           ref="createPanel"
-          class="modal plan-create-panel"
+          class="modal plan-create-panel" data-surface-role="dialog"
           role="dialog"
           aria-modal="true"
           :aria-label="t('新建事件')"
@@ -682,7 +682,7 @@ onBeforeUnmount(() => {
                 <div v-surface-motion="'SidebarPlan:2'"
                   v-if="scopeOpen"
                   id="plan-create-scope-menu"
-                  class="plan-scope-menu"
+                  class="plan-scope-menu" data-surface-role="popover"
                   role="menu"
                   :aria-label="t('保存位置')"
                   @keydown="onPickerKeydown($event, scopePicker)"
@@ -872,6 +872,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+@layer components {
 .plan-view-trigger { display: flex; flex-shrink: 0; align-items: center; gap: 4px; height: 24px; padding: 2px 6px; border-radius: 5px; color: var(--muted); font-size: 12px; font-weight: 400; line-height: inherit; }
 .plan-view-trigger > svg { color: var(--muted); }
 .plan-view-trigger:hover,
@@ -1315,5 +1316,6 @@ onBeforeUnmount(() => {
   color: var(--muted);
   font-size: 12px;
   padding: 7px 2px;
+}
 }
 </style>

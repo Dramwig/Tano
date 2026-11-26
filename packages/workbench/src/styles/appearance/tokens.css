@@ -1,0 +1,48 @@
+/* Appearance contract defaults (loaded in @layer base).
+   Runtime color and shape tokens injected by theme.ts sit unlayered above this layer,
+   while material stylesheets in @layer material write the semantic --surface-* slots. */
+:root {
+  --on-accent: #ffffff;
+  --selection: var(--accent);
+  --font-prose: var(--font-ui);
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --radius-dialog: 14px;
+  --space-control-x: 10px;
+  --space-control-y: 6px;
+  --space-panel: 20px;
+  --space-row-gap: 8px;
+  --surface-raised: var(--paper);
+  --line-strong: var(--control-border);
+  --backdrop: #00000055;
+  --overlay-shadow: 0 8px 28px #00000018, 0 2px 8px #00000010;
+  --dialog-shadow: 0 24px 80px #00000026, 0 4px 16px #00000014;
+
+  /* Semantic surface-role slots (owned by Material; consumed by surface-roles and Layout). */
+  --surface-hairline: color-mix(in srgb, var(--line) 85%, var(--text) 6%);
+  --surface-dialog-border: var(--line-strong);
+  --surface-dialog-shadow: var(--dialog-shadow);
+  --surface-popover-border: var(--line-strong);
+  --surface-popover-shadow: var(--overlay-shadow);
+  --surface-card-border: var(--line-strong);
+  --surface-card-shadow: none;
+  --surface-card-expanded-shadow: 0 4px 12px rgb(25 25 25 / 2.7%), 0 1px 2px rgb(25 25 25 / 2%);
+  --surface-control-border: var(--control-border);
+  --surface-control-shadow: none;
+  --surface-focus-border: color-mix(in srgb, var(--green) 65%, var(--line-strong));
+  --surface-sheet-border: 0px solid transparent;
+  --surface-sheet-shadow: 0 0 0 1px var(--surface-hairline), 0 1px 2px #0000000f;
+  --surface-sheet-bevel: none;
+  --surface-sheet-texture: none;
+  --surface-sheet-texture-size: auto;
+  --surface-document-border: var(--surface-hairline);
+  --surface-document-shadow: 0 1px 2px #0000000d, 0 12px 32px -16px #0000002e;
+  --surface-slip-tab-border: 0px solid transparent;
+  --surface-slip-tab-shadow: 0 0 0 1px var(--surface-hairline), 0 1px 2px #00000012;
+}
+
+/* Color contract bindings for semantic editor marks (dark-theme.css overrides in @layer palette). */
+.tano-file-mention { color: var(--text-secondary); background: var(--surface); }
+.tano-prose sup[data-type='footnote_reference'] { color: var(--green); }
+.tano-search-match { background: var(--highlight-bg); }
+.tano-search-current { background: var(--block-selection); box-shadow: 0 0 0 1px var(--green); }

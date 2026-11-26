@@ -190,12 +190,13 @@ const {
       <div
         v-surface-motion="'App:8'"
         v-if="modal && modal !== 'newTab'"
-        class="modal-backdrop"
+        class="modal-backdrop" data-surface-role="backdrop"
         :class="{ 'search-backdrop': modal === 'search' }"
         @mousedown.self="!modalBusy && !updateLock && (modal = '')"
       >
         <section
           :class="modal === 'search' ? 'search-modal' : 'modal'"
+          :data-surface-role="modal === 'search' ? undefined : 'dialog'"
           role="dialog"
           aria-modal="true"
           :aria-label="modalTitle"
@@ -212,7 +213,7 @@ const {
             </button>
           </header>
           <template v-if="modal === 'search'"
-            ><div class="search-input-wrap">
+            ><div class="search-input-wrap" data-surface-role="popover">
               <input
                 :ref="setModalInputElement"
                 v-model="input"
@@ -231,7 +232,7 @@ const {
                 <X :size="18" />
               </button>
             </div>
-            <div v-if="input.trim()" class="search-results">
+            <div v-if="input.trim()" class="search-results" data-surface-role="popover">
               <button
                 v-for="file in searchResults"
                 :key="file.id"

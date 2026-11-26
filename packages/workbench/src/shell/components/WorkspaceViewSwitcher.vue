@@ -175,7 +175,7 @@ onBeforeUnmount(() => {
       v-if="position"
       :id="menuId"
       ref="menuElement"
-      class="dropdown compact-action-menu workspace-view-menu"
+      class="dropdown compact-action-menu workspace-view-menu" data-surface-role="popover"
       role="menu"
       :aria-label="t('侧边栏视图')"
       :style="{

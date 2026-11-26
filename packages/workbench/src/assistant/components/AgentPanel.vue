@@ -154,9 +154,9 @@ onBeforeUnmount(() => {
 
 </script>
 <template>
-  <div v-surface-motion="'AgentPanel:0'" class="modal-backdrop" @mousedown.self="!busy && emit('close')">
+  <div v-surface-motion="'AgentPanel:0'" class="modal-backdrop" data-surface-role="backdrop" @mousedown.self="!busy && emit('close')">
     <section
-      class="modal agent-modal"
+      class="modal agent-modal" data-surface-role="dialog"
       role="dialog"
       aria-modal="true"
       :aria-label="t('与 Agent 一起工作')"

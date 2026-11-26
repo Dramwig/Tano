@@ -35,7 +35,7 @@ function trapFocus(event: KeyboardEvent) {
 <template>
   <dialog v-surface-motion="'PluginDialog:0'"
     ref="dialog"
-    class="plugin-dialog"
+    class="plugin-dialog" data-surface-role="dialog"
     :aria-labelledby="titleId"
     @cancel.prevent="!busy && emit('close')"
     @keydown.stop="trapFocus"
@@ -57,6 +57,7 @@ function trapFocus(event: KeyboardEvent) {
 </template>
 
 <style scoped>
+@layer components {
 .plugin-dialog {
   width: min(600px, calc(100vw - 32px));
   max-height: calc(100dvh - 48px);
@@ -105,5 +106,6 @@ function trapFocus(event: KeyboardEvent) {
   .plugin-dialog-body {
     padding: 20px 16px;
   }
+}
 }
 </style>

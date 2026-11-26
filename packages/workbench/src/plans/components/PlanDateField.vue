@@ -137,7 +137,7 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
         <button ref="timeAction" type="button" class="plan-schedule-trigger" :aria-label="t('时间安排')" aria-haspopup="menu" :aria-controls="pickerId" :aria-expanded="pickerOpen" :disabled="disabled" @click="togglePicker" @keydown.down.prevent="pickerOpen || togglePicker()">
           <CalendarDays :size="22" :stroke-width="1.8" aria-hidden="true" /><span>{{ label }}</span><ChevronDown :size="16" aria-hidden="true" />
         </button>
-        <div v-surface-motion="'PlanDateField:0'" v-if="pickerOpen" :id="pickerId" class="plan-date-menu" role="menu" :aria-label="t('时间安排')" @keydown="pickerKeydown">
+        <div v-surface-motion="'PlanDateField:0'" v-if="pickerOpen" :id="pickerId" class="plan-date-menu" data-surface-role="popover" role="menu" :aria-label="t('时间安排')" @keydown="pickerKeydown">
           <button v-for="option in options" :key="option.value" type="button" role="menuitemradio" :aria-checked="mode === option.value" @click="chooseSchedule(option.value)"><component :is="option.icon" :size="17" aria-hidden="true" /><span>{{ option.label }}</span><Check v-if="mode === option.value" :size="16" aria-hidden="true" /></button>
         </div>
       </div>
@@ -164,6 +164,7 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
 </template>
 
 <style scoped>
+@layer components {
 .plan-date-field { min-width: 0; }
 .plan-date-field .plan-date-heading { display: flex; align-items: center; gap: 22px; min-height: 36px; }
 .plan-date-field label { margin: 0; color: var(--text-secondary); font-size: 13px; }
@@ -202,5 +203,6 @@ watch(() => props.disabled, disabled => { if (disabled) pickerOpen.value = false
   .plan-date-field .plan-date-heading { gap: 12px; }
   .plan-date-picker.with-leading { padding-left: 12px; }
   .with-leading .plan-date-menu { left: auto; right: 0; min-width: 152px; }
+}
 }
 </style>

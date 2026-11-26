@@ -288,8 +288,8 @@ onBeforeUnmount(() => { nameResize?.disconnect(); if (previousFocus?.isConnected
 </script>
 
 <template>
-  <div v-surface-motion="'PlanDetailPanel:0'" class="plan-detail-backdrop" @mousedown.self="requestNavigation({ kind: 'close' })">
-    <form ref="panel" class="plan-detail-panel" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1" @submit.prevent="save()" @keydown="keyboard">
+  <div v-surface-motion="'PlanDetailPanel:0'" class="plan-detail-backdrop" data-surface-role="backdrop" @mousedown.self="requestNavigation({ kind: 'close' })">
+    <form ref="panel" class="plan-detail-panel" data-surface-role="dialog" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1" @submit.prevent="save()" @keydown="keyboard">
       <header>
         <div class="plan-detail-heading"><component :is="checkable ? ListTodo : CalendarDays" :size="18" /><h2>{{ title }}</h2><span>{{ personal ? t('个人') : base.source?.name ?? store.workspace?.name }}</span></div>
         <div class="plan-detail-actions">
@@ -381,6 +381,7 @@ onBeforeUnmount(() => { nameResize?.disconnect(); if (previousFocus?.isConnected
 </template>
 
 <style scoped>
+@layer components {
 .plan-detail-backdrop { position: fixed; inset: 0; z-index: 85; display: flex; align-items: center; justify-content: center; padding: 28px; box-sizing: border-box; background: #161a2238; backdrop-filter: blur(3px); }
 .plan-detail-panel { display: flex; flex-direction: column; width: min(720px, 100%); height: min(740px, calc(100dvh - 56px)); min-height: 0; margin: 0; overflow: hidden; background: var(--paper); color: var(--text); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--dialog-shadow, 0 20px 80px #12182026, 0 2px 8px #12182012); outline: none; }
 header, footer { display: flex; align-items: center; gap: 10px; padding: 12px 24px; flex-shrink: 0; }
@@ -529,4 +530,5 @@ footer { border-top: 1px solid var(--line); padding-bottom: max(12px, env(safe-a
 @keyframes detail-spin { to { transform: rotate(360deg); } }
 @media (max-width: 600px) { .plan-detail-backdrop { padding: 12px; } .plan-detail-panel { height: min(740px, calc(100dvh - 24px)); } header, footer { padding-left: 16px; padding-right: 16px; } .plan-detail-content { padding: 24px 20px; } .plan-detail-name textarea { font-size: 22px; } .plan-detail-panel :deep(.plan-detail-references) { gap: 16px; } .detail-save-state { font-size: 11px; } }
 @media (max-width: 420px) { .plan-detail-row { grid-template-columns: minmax(0, 1fr); } .plan-detail-meta { margin-left: 0; } .plan-detail-panel :deep(.plan-detail-references) { grid-template-columns: minmax(0, 1fr); gap: 20px; } .detail-save-state.has-changes { max-width: 98px; line-height: 1.5; } .detail-close { padding: 8px; } .detail-save { min-width: 76px; } }
+}
 </style>

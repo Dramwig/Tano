@@ -64,9 +64,9 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <div v-surface-motion="'MobileRecycle:0'" class="modal-backdrop" @mousedown.self="emit('close')">
+  <div v-surface-motion="'MobileRecycle:0'" class="modal-backdrop" data-surface-role="backdrop" @mousedown.self="emit('close')">
     <section
-      class="modal mobile-recycle"
+      class="modal mobile-recycle" data-surface-role="dialog"
       role="dialog"
       aria-modal="true"
       :aria-label="t('手机回收站')"

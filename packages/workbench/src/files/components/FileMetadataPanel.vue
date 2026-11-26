@@ -84,8 +84,8 @@ async function save() {
 
 </script>
 <template>
-  <div v-surface-motion="'FileMetadataPanel:0'" class="file-metadata-backdrop" @click.self="!busy && emit('close')" @keydown.esc.stop="!busy && emit('close')">
-    <section ref="panel" role="dialog" aria-modal="true" :aria-label="t('文件属性')" class="file-metadata-panel" @keydown="trapFocus">
+  <div v-surface-motion="'FileMetadataPanel:0'" class="file-metadata-backdrop" data-surface-role="backdrop" @click.self="!busy && emit('close')" @keydown.esc.stop="!busy && emit('close')">
+    <section ref="panel" role="dialog" aria-modal="true" :aria-label="t('文件属性')" class="file-metadata-panel" data-surface-role="dialog" @keydown="trapFocus">
       <div ref="scrollElement" class="file-metadata-scroll"><div>
       <div class="heading"><h2>{{ t('文件属性') }}</h2><button type="button" class="icon-button" :aria-label="t('关闭')" :disabled="busy" @click="emit('close')"><X :size="18" /></button></div>
       <template v-if="file">
@@ -127,6 +127,7 @@ async function save() {
   </div>
 </template>
 <style scoped>
+@layer components {
 .file-metadata-backdrop { position: fixed; inset: 0; z-index: 1200; background: #0006; display: grid; place-items: center; padding: 16px; }
 .file-metadata-panel { background: var(--surface, var(--paper)); color: var(--text); width: min(520px, 100%); max-height: 90dvh; overflow: hidden; display: flex; padding: 0; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 40px #0003; }
 .file-metadata-scroll { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 22px 24px; }
@@ -152,4 +153,5 @@ textarea { font: 12.5px/1.5 var(--font-mono); }
 .link-picker select { flex: 1; min-width: 0; }
 .link-picker button { flex-shrink: 0; }
 [role=alert] { color: var(--danger, #b33); overflow-wrap: anywhere; font-size: 13px; }
+}
 </style>

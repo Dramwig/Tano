@@ -75,12 +75,12 @@ onBeforeUnmount(() => {
 <template>
   <div
     v-surface-motion="'PlanArchiveDialog:0'"
-    class="modal-backdrop"
+    class="modal-backdrop" data-surface-role="backdrop"
     @mousedown.self="emit('close')"
     @keydown.esc.stop.prevent="emit('close')"
   >
     <section
-      class="modal plan-archive-dialog"
+      class="modal plan-archive-dialog" data-surface-role="dialog"
       role="dialog"
       aria-modal="true"
       :aria-label="t('已归档事项')"

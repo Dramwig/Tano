@@ -4,12 +4,13 @@ const emit = defineEmits<{ close: [] }>();
 </script>
 
 <template>
-  <div :class="{ 'modal-backdrop workbench-modal-backdrop': active }" @mousedown.self="active && emit('close')">
+  <div :class="{ 'modal-backdrop workbench-modal-backdrop': active }" :data-surface-role="active ? 'backdrop' : undefined" @mousedown.self="active && emit('close')">
     <slot />
   </div>
 </template>
 
 <style>
+@layer components {
 .modal-backdrop.workbench-modal-backdrop {
   box-sizing: border-box;
   align-items: center;
@@ -23,5 +24,6 @@ const emit = defineEmits<{ close: [] }>();
   border: 1px solid var(--line);
   border-radius: 16px;
   box-shadow: 0 24px 80px #18212b29, 0 4px 16px #18212b0d;
+}
 }
 </style>
