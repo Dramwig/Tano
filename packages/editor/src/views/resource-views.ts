@@ -64,7 +64,7 @@ export function resourceView(
     editButton.title = '编辑附件';
     editButton.append(icon(Ellipsis));
     actions.append(openButton, editButton);
-    const panel = createEditorPanel('div', 'tano-resource-editor-panel', '编辑附件');
+    const panel = createEditorPanel('div', 'tano-resource-editor-panel', '编辑附件', document);
     const field = (labelText: string) => {
       const label = document.createElement('label');
       const caption = document.createElement('span');

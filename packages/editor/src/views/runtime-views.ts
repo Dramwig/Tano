@@ -23,15 +23,16 @@ export function runtimeMarkViews(policy: WorkspaceCapabilities): Record<string, 
     ['superscript', '^', 'sup'], ['subscript', '~', 'sub'],
     ['underline', '++', 'u'], ['highlight', '==', 'mark'],
     ['inline_comment', '%%', 'span'],
-  ] as const).map(([name, marker, tag]) => [name, (mark: Mark) => {
+  ] as const).map(([name, marker, tag]) => [name, (mark: Mark, view) => {
+    const doc = view.dom.ownerDocument;
     if (featureEnabled(name, policy.features))
-      return DOMSerializer.renderSpec(document, mark.type.spec.toDOM!(mark, true));
-    const dom = document.createElement('span');
+      return DOMSerializer.renderSpec(doc, mark.type.spec.toDOM!(mark, true));
+    const dom = doc.createElement('span');
     dom.dataset.tanoDisabledStyle = name;
-    const contentDOM = document.createElement('span');
+    const contentDOM = doc.createElement('span');
     const delimiter = mark.attrs.delimiter as string | null;
-    const before = document.createElement('span');
-    const after = document.createElement('span');
+    const before = doc.createElement('span');
+    const after = doc.createElement('span');
     before.contentEditable = after.contentEditable = 'false';
     before.textContent = delimiter ?? `<${tag}>`;
     after.textContent = delimiter ?? `</${tag}>`;
@@ -266,6 +267,7 @@ export function mermaidView(
       language.setAttribute('aria-expanded', 'false');
       const menu = document.createElement('div');
       menu.className = 'tano-code-language-menu';
+      menu.dataset.surfaceRole = 'popover';
       menu.id = `tano-code-language-menu-${++codeLanguageMenuId}`;
       const results = document.createElement('div');
       results.className = 'tano-code-language-results';
@@ -469,7 +471,7 @@ export function mermaidView(
     dom.contentEditable = 'false';
     const preview = document.createElement('div');
     preview.className = 'tano-mermaid-preview';
-    const panel = createEditorPanel('div', 'tano-mermaid-editor-panel', '编辑 Mermaid 图表');
+    const panel = createEditorPanel('div', 'tano-mermaid-editor-panel', '编辑 Mermaid 图表', document);
     const input = document.createElement('textarea');
     input.setAttribute('aria-label', 'Mermaid 源码');
     input.placeholder = 'Esc 或点击外部关闭';

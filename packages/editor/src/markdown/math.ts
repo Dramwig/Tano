@@ -231,7 +231,7 @@ export function mathView(
     input.wrap = 'off';
     input.spellcheck = false;
     input.hidden = true;
-    const panel = createEditorPanel('span', 'math-editor-panel', '编辑公式');
+    const panel = createEditorPanel('span', 'math-editor-panel', '编辑公式', document);
     const field = document.createElement('span');
     field.className = 'math-editor-input';
     const highlight = document.createElement('div');

@@ -4,9 +4,15 @@ import { observePanelPosition } from './panel-position';
 
 const openEvent = 'tano-editor-panel-open';
 
-export function createEditorPanel<T extends 'div' | 'span'>(tag: T, className: string, label: string): HTMLElementTagNameMap[T] {
-  const panel = document.createElement(tag);
+export function createEditorPanel<T extends 'div' | 'span'>(
+  tag: T,
+  className: string,
+  label: string,
+  doc: Document = document,
+): HTMLElementTagNameMap[T] {
+  const panel = doc.createElement(tag);
   panel.className = `tano-editor-panel ${className}`;
+  panel.dataset.surfaceRole = 'popover';
   panel.setAttribute('role', 'group');
   panel.setAttribute('aria-label', label);
   panel.hidden = true;

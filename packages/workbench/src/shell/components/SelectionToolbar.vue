@@ -25,7 +25,6 @@ const props = defineProps<{
   context: EditorSelectionContext;
   editorElement?: HTMLElement;
   features?: DocumentFeatures;
-  enabledLevels?: readonly number[];
   mode?: Exclude<ToolbarMode, 'fixed'>;
   dragging?: boolean;
   assistant?: boolean;
@@ -383,7 +382,6 @@ onBeforeUnmount(() => {
           @annotation="visible && emit('annotation')"
           :context="context"
           :features="features"
-          :enabled-levels="enabledLevels"
           @dismiss="dismissAndFocus"
           @command="(name, value) => visible && emit('command', name, value)"
         >

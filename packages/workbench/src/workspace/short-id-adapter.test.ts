@@ -18,8 +18,8 @@ it('keeps deleted demo document and imported object IDs reserved after reopening
     archived: false,
     properties: {},
   };
-  await adapter.create('person.tano.json', JSON.stringify(object));
-  await adapter.remove('person.tano.json');
+  await adapter.create('.tano/objects/person.tano.json', JSON.stringify(object));
+  await adapter.remove('.tano/objects/person.tano.json');
   const reopened = new DemoAdapter();
   const random = vi.spyOn(crypto, 'getRandomValues');
   random.mockImplementationOnce((bytes: any) => {

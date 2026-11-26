@@ -68,11 +68,11 @@ export function tableControls(readonly: () => boolean) {
       const insertionLine = document.createElement('div');
       insertionLine.className = 'tano-table-insert-line';
       insertionLine.hidden = true;
-      const menu = createEditorPanel('div', 'tano-table-menu compact-action-menu', '表格操作');
+      const menu = createEditorPanel('div', 'tano-table-menu compact-action-menu', '表格操作', document);
       menu.setAttribute('role', 'menu');
       menu.tabIndex = -1;
       const items = document.createElement('div');
-      const palette = createEditorPanel('div', 'tano-table-color-menu compact-action-menu', '表格颜色');
+      const palette = createEditorPanel('div', 'tano-table-color-menu compact-action-menu', '表格颜色', document);
       palette.setAttribute('role', 'menu');
       const back = document.createElement('button');
       back.type = 'button';

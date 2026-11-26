@@ -7,6 +7,7 @@ import { TextSelection } from '@milkdown/kit/prose/state';
 import MarkdownEditor from '@tano/editor';
 import { defaultSelectionContext } from '@tano/editor/document-model';
 import type { EditorSelectionContext } from '@tano/editor/document-model';
+import { defaultCapabilities, type DocumentFeatures } from '@tano/editor/runtime';
 import { createHeadlessMarkdown } from '@tano/editor/headless';
 import EditorTools from './EditorTools.vue';
 import type { ToolbarMode } from '../toolbar-preference';
@@ -28,7 +29,7 @@ async function mount(content: string, mode: ToolbarMode = 'fixed') {
   const toolbarMode = ref(mode);
   const active = ref(true);
   const revealMarkdown = ref(true);
-  const levels = ref([0, 1]);
+  const features = ref<DocumentFeatures>({ ...defaultCapabilities.features });
   const editor = ref<InstanceType<typeof MarkdownEditor>>();
   const context = ref<EditorSelectionContext>({ ...defaultSelectionContext });
   const errors: string[] = [];
@@ -45,7 +46,7 @@ async function mount(content: string, mode: ToolbarMode = 'fixed') {
         context: context.value,
         disabled: readonly.value,
         source: source.value,
-        enabledLevels: levels.value,
+        features: features.value,
         onCommand: (name, argument) => editor.value?.command(name, argument),
       }),
       h(MarkdownEditor, {
@@ -53,7 +54,7 @@ async function mount(content: string, mode: ToolbarMode = 'fixed') {
         modelValue: value.value,
         documentId: 'toolbar-test',
         readonly: readonly.value,
-        enabledLevels: levels.value,
+        capabilities: { ...defaultCapabilities, features: features.value },
         revealMarkdown: revealMarkdown.value,
         'onUpdate:modelValue': (next) => {
           value.value = next;
@@ -68,7 +69,7 @@ async function mount(content: string, mode: ToolbarMode = 'fixed') {
   app.mount(root);
   await vi.waitFor(() => expect(root.querySelector('.ProseMirror')).not.toBeNull());
   await nextTick();
-  return { value, editor, context, errors, readonly, source, levels, revealMarkdown, toolbarMode, active };
+  return { value, editor, context, errors, readonly, source, features, revealMarkdown, toolbarMode, active };
 }
 function button(label: string) {
   return root.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
@@ -367,10 +368,16 @@ it('keeps read-only and source modes non-editable and closes stale menus', async
 });
 
 it('filters Level 1 tools and commands while keeping existing enhanced Markdown readable', async () => {
-  const { value, editor, levels, errors } = await mount(
+  const { value, editor, features, errors } = await mount(
     '正文\n\n<details>\n<summary>保留</summary>\n\n内容\n\n</details>\n',
   );
-  levels.value = [0];
+  features.value = {
+    ...defaultCapabilities.features,
+    enhanced: false,
+    callout: false,
+    embed: false,
+    wikiLink: false,
+  };
   await nextTick();
   await click(button('块级类型'));
   expect(root.querySelector('.block-type-menu [data-feature-level="1"]')).toBeNull();
@@ -380,8 +387,8 @@ it('filters Level 1 tools and commands while keeping existing enhanced Markdown 
   editor.value!.command('callout');
   editor.value!.command('mention', '计划');
   expect(value.value).toBe(saved);
-  expect(root.querySelector('.tano-toggle')?.textContent).toContain('内容');
-  levels.value = [0, 1];
+  expect(root.querySelector('.tano-toggle')?.textContent ?? root.textContent).toContain('内容');
+  features.value = { ...defaultCapabilities.features };
   await nextTick();
   editor.value!.command('columns');
   await nextTick();

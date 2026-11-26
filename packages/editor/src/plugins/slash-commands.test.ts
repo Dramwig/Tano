@@ -7,6 +7,7 @@ import { history } from '@milkdown/kit/plugin/history';
 import { undo, redo } from '@milkdown/kit/prose/history';
 import { TextSelection } from '@milkdown/kit/prose/state';
 import { $prose } from '@milkdown/kit/utils';
+import { defaultCapabilities, type DocumentFeatures } from '../core/runtime';
 import { enhanced } from '../markdown/enhanced';
 import { mathRemark, blockMath, inlineMath } from '../markdown/math';
 import { applySlashCommand, slashCommands, slashItems, slashQuery } from './slash-commands';
@@ -25,7 +26,7 @@ async function mount(markdown = '') {
   Range.prototype.getBoundingClientRect = () => new DOMRect(80, 80, 1, 24);
   Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
   let readonly = false;
-  let levels: readonly number[] = [0, 1];
+  let features: DocumentFeatures = { ...defaultCapabilities.features };
   editor = await Editor.make()
     .config((ctx) => {
       ctx.set(rootCtx, host!);
@@ -38,7 +39,7 @@ async function mount(markdown = '') {
     .use(inlineMath)
     .use(enhanced)
     .use(history)
-    .use($prose(() => slashCommands({ readonly: () => readonly, levels: () => levels })))
+    .use($prose(() => slashCommands({ readonly: () => readonly, features: () => features })))
     .create();
   const view = editor.action((ctx) => ctx.get(editorViewCtx));
   view.focus();
@@ -72,8 +73,8 @@ async function mount(markdown = '') {
       readonly = true;
       view.setProps({ editable: () => false });
     },
-    setLevels(next: readonly number[]) {
-      levels = next;
+    setFeatures(patch: Partial<DocumentFeatures>) {
+      features = { ...features, ...patch };
       view.dispatch(view.state.tr);
     },
   };
@@ -128,7 +129,7 @@ describe('slash block commands', () => {
     expect(slashItems('表格').map((item) => item.command)).toEqual(['table']);
     expect(slashItems('H2')[0]?.value).toBe('2');
     expect(slashItems('heading')).toHaveLength(4);
-    expect(slashItems('toggle', [0])).toEqual([]);
+    expect(slashItems('toggle', { ...defaultCapabilities.features, enhanced: false })).toEqual([]);
   });
 
   it.each([
@@ -188,7 +189,7 @@ describe('slash block commands', () => {
     const { type, menu } = await mount();
     type('/');
     const icons = [...menu().querySelectorAll('.tano-slash-icon')];
-    expect(icons).toHaveLength(slashItems('', [0, 1]).length);
+    expect(icons).toHaveLength(slashItems('', defaultCapabilities.features).length);
     for (const icon of icons) {
       expect(icon.getAttribute('aria-hidden')).toBe('true');
       expect(icon.textContent).toBe('');
@@ -525,7 +526,7 @@ describe('slash block commands', () => {
   });
 
   it('closes stale URL forms after document edits and hides disabled commands immediately', async () => {
-    const { view, type, key, menu, setLevels, setReadonly } = await mount();
+    const { view, type, key, menu, setFeatures, setReadonly } = await mount();
     type('/file');
     key('Enter');
     expect(menu().querySelector('input')).not.toBeNull();
@@ -537,7 +538,7 @@ describe('slash block commands', () => {
     view.dispatch(view.state.tr.delete(1, view.state.doc.content.size - 1));
     type('/toggle');
     expect(menu().querySelector('[role="option"]')?.textContent).toContain('折叠');
-    setLevels([0]);
+    setFeatures({ enhanced: false });
     expect(menu().textContent).toContain('没有匹配');
     setReadonly();
     expect(menu().hidden).toBe(true);

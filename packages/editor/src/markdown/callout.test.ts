@@ -4,6 +4,7 @@ import { EditorState, NodeSelection } from '@milkdown/kit/prose/state';
 import { createHeadlessMarkdown } from '../core/headless';
 import { blockCommand } from '../plugins/block-commands';
 import { blockType } from '../core/document-model';
+import { defaultCapabilities } from '../core/runtime';
 import { customCalloutMarker, blockContentStart } from './callout';
 import { slashItems } from '../plugins/slash-commands';
 
@@ -47,7 +48,7 @@ it('converts custom callouts to built-in types and plain quotes without leaking 
 it('offers custom callouts by Chinese, English and emoji keywords', () => {
   for (const query of ['自定义', 'custom', 'emoji'])
     expect(slashItems(query)).toContainEqual(expect.objectContaining({ command: 'callout', value: 'CUSTOM' }));
-  expect(slashItems('custom', [0])).toHaveLength(0);
+  expect(slashItems('custom', { ...defaultCapabilities.features, callout: false })).toHaveLength(0);
 });
 
 it('rejects multiline and executable icon values', () => {

@@ -17,13 +17,13 @@ const referenceIcons: Record<string, Component> = {
   project: Folder, document: FileText, asset: Paperclip,
 };
 
-function eventDetail(target: ReferenceTarget) {
+function eventDetail(target: ReferenceTarget, doc: Document = document) {
   const values = [target.properties?.start, target.properties?.end]
     .filter((value): value is string => typeof value === 'string' && !!value.trim());
   if (!values.length) return '';
   const dates = values.map(value => new Date(value));
   if (dates.some(date => !Number.isFinite(date.getTime()))) return values.join(' — ');
-  const formatter = new Intl.DateTimeFormat(document.documentElement.lang || 'zh-CN', {
+  const formatter = new Intl.DateTimeFormat(doc.documentElement.lang || 'zh-CN', {
     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
   return dates.length === 2 && dates[0]! <= dates[1]!
@@ -42,32 +42,33 @@ export function referenceViews(
     ['tano_reference', 'tano_reference_block'].map((type) => [
       type,
       ((node, view, getPos) => {
+        const doc = view.dom.ownerDocument;
         let current = node;
         const block = type === 'tano_reference_block';
         const canEditSource = () => !block && enabled() && revealSource();
-        const dom = document.createElement(block ? 'div' : 'span');
+        const dom = doc.createElement(block ? 'div' : 'span');
         dom.contentEditable = 'false';
         dom.className = block ? 'tano-reference-card' : 'tano-reference';
         dom.dataset.tanoReference = block ? 'block' : 'inline';
         dom.dataset.featureLevel = '2';
-        const button = document.createElement('button');
+        const button = doc.createElement('button');
         button.type = 'button';
-        const label = document.createElement('span'),
-          badge = document.createElement('small');
+        const label = doc.createElement('span'),
+          badge = doc.createElement('small');
         label.className = 'tano-reference-label';
         badge.className = 'tano-reference-badge';
-        const icon = document.createElement('span');
+        const icon = doc.createElement('span');
         icon.className = 'tano-reference-icon';
         icon.setAttribute('aria-hidden', 'true');
-        const detail = document.createElement('small');
+        const detail = doc.createElement('small');
         detail.className = 'tano-reference-detail';
-        const arrow = document.createElement('span');
+        const arrow = doc.createElement('span');
         arrow.className = 'tano-reference-arrow';
         arrow.setAttribute('aria-hidden', 'true');
         if (block) {
-          const body = document.createElement('span');
+          const body = doc.createElement('span');
           body.className = 'tano-reference-body';
-          const heading = document.createElement('span');
+          const heading = doc.createElement('span');
           heading.className = 'tano-reference-heading';
           heading.append(label, badge);
           body.append(heading, detail);
@@ -115,7 +116,7 @@ export function referenceViews(
               ? '引用不可用'
               : `${task ? `任务 · ${completed ? '已完成' : '未完成'}` : referenceTypeLabel(target.type)}${target.archived ? ' · 已归档' : ''}`;
           detail.textContent =
-            (target?.type === 'event' ? eventDetail(target) : '') ||
+            (target?.type === 'event' ? eventDetail(target, doc) : '') ||
             (target?.type === 'asset'
               ? `${target.mime} · ${target.size} 字节 · ${target.path}`
               : '') ||

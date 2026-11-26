@@ -21,7 +21,6 @@ const props = defineProps<{
   editorElement?: HTMLElement;
   context: EditorSelectionContext;
   features?: DocumentFeatures;
-  enabledLevels?: readonly number[];
   disabled?: boolean;
   source?: boolean;
   assistant?: boolean;
@@ -105,7 +104,7 @@ function positionPreview() {
   panel.style.top = `${position.y}px`;
 }
 watch(
-  [drag, previewPanel, () => props.context, () => props.features, () => props.enabledLevels],
+  [drag, previewPanel, () => props.context, () => props.features],
   positionPreview,
   { flush: 'post' },
 );
@@ -149,7 +148,6 @@ async function changeMode(mode: ToolbarMode) {
     :class="{ 'toolbar-being-dragged': drag }"
     :context="context"
     :features="features"
-    :enabled-levels="enabledLevels"
     :disabled="disabled"
     :source="source"
     :dragging="!!drag"
@@ -177,7 +175,6 @@ async function changeMode(mode: ToolbarMode) {
       :editor-element="editorElement"
       :context="context"
       :features="features"
-      :enabled-levels="enabledLevels"
       :mode="mode"
       :dragging="!!drag"
       :assistant="assistant"
@@ -213,7 +210,6 @@ async function changeMode(mode: ToolbarMode) {
             :class="{ 'switchable-toolbar': drag.target === 'fixed' }"
             :context="context"
             :features="features"
-            :enabled-levels="enabledLevels"
             :disabled="disabled"
             :source="source"
             :assistant="assistant"

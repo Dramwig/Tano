@@ -27,7 +27,6 @@ export interface EditorUploadsOptions {
   getEditor: () => Editor | undefined;
   isDisposed: () => boolean;
   readonly: () => boolean;
-  enabledLevels: () => readonly number[] | undefined;
   policy: () => WorkspaceCapabilities;
   referencesEnabled: () => boolean;
   referenceTargets: () => readonly ReferenceTarget[];
@@ -43,7 +42,6 @@ export function createEditorUploads(options: EditorUploadsOptions) {
     getEditor,
     isDisposed,
     readonly,
-    enabledLevels,
     policy,
     referencesEnabled,
     referenceTargets,
@@ -75,7 +73,7 @@ export function createEditorUploads(options: EditorUploadsOptions) {
       if (!placeholder) throw new Error('插入位置已被删除；附件已保存在 assets 文件夹');
       const node = resource.image
         ? imageSchema.type(ctx).create({ src: resource.url, alt: resource.name })
-        : commandEnabled('file', enabledLevels(), policy().features)
+        : commandEnabled('file', policy().features)
           ? view.state.schema.nodes.tano_file!.create({ title: resource.name, url: resource.url })
           : view.state.schema.text(resource.name, [
               view.state.schema.marks.link!.create({ href: resource.url }),

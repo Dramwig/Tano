@@ -8,9 +8,9 @@ import { resizeHeight, settleHeight } from '../primitives/motion';
 
 let tabsId = 0;
 
-function tabActionIcon(kind: 'add' | 'more'): SVGSVGElement {
+function tabActionIcon(kind: 'add' | 'more', doc: Document = document): SVGSVGElement {
   const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
+  const svg = doc.createElementNS(ns, 'svg');
   svg.setAttribute('viewBox', '0 0 16 16');
   svg.setAttribute('width', '16');
   svg.setAttribute('height', '16');
@@ -18,7 +18,7 @@ function tabActionIcon(kind: 'add' | 'more'): SVGSVGElement {
   svg.setAttribute('focusable', 'false');
   svg.style.display = 'block';
   if (kind === 'add') {
-    const path = document.createElementNS(ns, 'path');
+    const path = doc.createElementNS(ns, 'path');
     path.setAttribute('d', 'M8 4v8M4 8h8');
     path.setAttribute('fill', 'none');
     path.setAttribute('stroke', 'currentColor');
@@ -27,7 +27,7 @@ function tabActionIcon(kind: 'add' | 'more'): SVGSVGElement {
     svg.append(path);
   } else {
     for (const x of [3, 8, 13]) {
-      const dot = document.createElementNS(ns, 'circle');
+      const dot = doc.createElementNS(ns, 'circle');
       dot.setAttribute('cx', String(x));
       dot.setAttribute('cy', '8');
       dot.setAttribute('r', '1');
@@ -72,7 +72,7 @@ export function enhancedViews(
       const panelMenu = document.createElement('details');
       panelMenu.className = 'tano-panel-menu';
       const panelMenuTrigger = document.createElement('summary');
-      panelMenuTrigger.append(tabActionIcon('more'));
+      panelMenuTrigger.append(tabActionIcon('more', document));
       panelMenuTrigger.setAttribute('aria-label', '标签页操作');
       panelMenuTrigger.title = '标签页操作';
       const panelActions = document.createElement('div');
@@ -213,7 +213,7 @@ export function enhancedViews(
         const add = document.createElement('button');
         add.type = 'button';
         add.className = 'tano-add-panel';
-        add.append(tabActionIcon('add'));
+        add.append(tabActionIcon('add', document));
         add.setAttribute('aria-label', '添加标签页');
         add.title = '添加标签页';
         add.onclick = () => {
@@ -238,7 +238,6 @@ export function enhancedViews(
       if (kind === 'panel') dom.addEventListener('tano-panel-layout', refreshPanel);
       function render() {
         dom.dataset.title = current.attrs.title;
-        dom.dataset.url = current.attrs.url;
         title.value = current.attrs.title;
         title.readOnly = readonly();
         header.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {

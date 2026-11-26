@@ -42,7 +42,6 @@ export type BlockType =
   | 'LocalSource';
 export type InlineType = (typeof inlineTypes)[number]['type'];
 export type FeatureLevel = 0 | 1 | 2;
-export const defaultEnabledLevels: readonly FeatureLevel[] = [0, 1, 2];
 export const insertionCommands = new Set([
   'object-reference',
   'image',
@@ -64,13 +63,8 @@ export function featureLevel(type: string): FeatureLevel {
     (type === 'Panel' ? 1 : 0)
   );
 }
-export function commandEnabled(
-  command: string,
-  levels: readonly number[] = defaultEnabledLevels,
-  features?: DocumentFeatures,
-) {
-  const definition = [...blockTypes, ...inlineTypes].find((item) => item.command === command);
-  return levels.includes(definition?.level ?? 0) && featureEnabled(command, features);
+export function commandEnabled(command: string, features?: DocumentFeatures) {
+  return featureEnabled(command, features);
 }
 export interface EditorSelectionContext {
   level: 'block' | 'inline';
