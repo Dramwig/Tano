@@ -3604,6 +3604,8 @@
   "段落内换行或删减使高度变化时，下方内容平滑跟随。": "Cuando un bloque pasa a otra línea o se acorta, el contenido de debajo lo sigue con suavidad.",
   "Markdown 源码展开收起动画": "Animación al mostrar y ocultar el Markdown",
   "光标进入或离开链接、行内代码、公式和引用时，源码平滑展开，离开后平滑收起。": "Al entrar o salir de un enlace, código en línea, fórmula o referencia, el código fuente se despliega y se recoge con suavidad.",
+  "页面入场动画": "Animación de entrada de páginas",
+  "打开欢迎页、插件中心、文件夹，或切换侧栏视图和设置分区时，内容从上到下依次浮现。": "Al abrir una página de bienvenida, el centro de complementos o una carpeta, o al cambiar de vista lateral o sección de ajustes, el contenido aparece de arriba abajo.",
   "减少动态效果": "Reducir movimiento",
   "关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。": "Desactiva el rebote de botones, la aparición de paneles y las animaciones del editor. Siempre activo si el sistema reduce el movimiento.",
   "自动补全": "Autocompletar",

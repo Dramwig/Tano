@@ -5,6 +5,7 @@ import { usePluginActions, matchesPlugin } from '../use-plugin-actions';
 import LoadingSkeleton from '../../shell/components/LoadingSkeleton.vue';
 import { retiredSystemPlugin } from '../workspace-plugins';
 import { t } from '../../i18n/i18n';
+import { vEnterStagger } from '../../shell/enter-stagger';
 import { computed, inject, nextTick, ref, useSlots, watch } from 'vue';
 import {
   Check,
@@ -200,7 +201,12 @@ watch(
 <template>
   <div class="plugin-center">
     <LoadingSkeleton v-if="store.workspaceLoading?.plugins" :rows="6" />
-    <div v-show="!store.workspaceLoading?.plugins" class="component-loading-content">
+    <!-- Hidden behind the skeleton while plugins load: enters when shown. -->
+    <div
+      v-show="!store.workspaceLoading?.plugins"
+      v-enter-stagger="'.center-heading, .catalog-navigation, .catalog-heading, .plugin-list > *, .pc-empty, .catalog-more, .center-footer'"
+      class="component-loading-content"
+    >
       <div class="catalog-controls">
         <header class="center-heading">
           <div class="center-title">

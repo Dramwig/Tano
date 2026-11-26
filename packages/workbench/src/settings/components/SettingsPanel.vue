@@ -24,6 +24,7 @@ import { glassMaterials, type AppearanceSelection } from '../../appearance/appea
 import { defaultSplitFontSettings, type SplitFontSettings, type VisualFontChoice } from '../../appearance/editor-font';
 import { glassWallpaper } from '../../appearance/glass-wallpaper';
 import { t, uiSearchText } from '../../i18n/i18n';
+import { vEnterStagger } from '../../shell/enter-stagger';
 import { readSettingsPage, rememberSettingsPage } from '../settings-preference';
 import { defaultShortcutBindings, type ShortcutBindings } from '../../shell/shortcuts';
 import { fixedColorMode, type ThemePreference } from '../../appearance/theme';
@@ -537,8 +538,22 @@ function keydown(event: KeyboardEvent) {
         <X :size="18" />
       </button>
 
+      <!-- Switching sections builds the new page up row by row (About
+           included). Pages wrap their sections differently (ShortcutSettings,
+           SSH, plugin pages), so instead of naming each layout, `split`
+           opens any block taller than a row into its stacked children; whole
+           sections would otherwise rise as a few big slabs.
+           As a dialog it already pops in, so opening does not replay it; as a
+           tab or window it enters like any page. -->
       <main
         ref="mainContent"
+        v-enter-stagger="{
+          items: '.settings-content > *, .settings-main > .plugin-surface',
+          split: 120,
+          key: page,
+          initial: !!(windowed || tabbed),
+          spread: 300,
+        }"
         class="settings-main panel-scrollbar"
         @scroll="atTop = ($event.target as HTMLElement).scrollTop <= 0"
       >

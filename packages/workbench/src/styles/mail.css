@@ -228,6 +228,11 @@
   margin-top: 2px;
   animation: tano-rise-in var(--motion-spring, 380ms) var(--ease-spring-smooth) both;
 }
+/* 「页面入场动画」 off: the mail welcome page and empty sidebar appear at once. */
+:root[data-entrance-motion='off'] :is(
+  .sidebar-mail-empty, .mail-hero, .mail-welcome-head, .mail-welcome-providers > h3,
+  .mail-welcome .mail-provider, .mail-welcome-note
+) { animation: none; }
 .sidebar-mail-empty p {
   margin: 0;
   padding: 4px 8px 6px;

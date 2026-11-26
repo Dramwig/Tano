@@ -4,6 +4,7 @@ const { window, document } = useWindowContext();
 
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../../i18n/i18n';
+import { vEnterStagger } from '../../shell/enter-stagger';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   ArrowDown,
@@ -136,7 +137,9 @@ async function onSearchKeydown(event: KeyboardEvent) {
       @mousedown.self="emit('close')"
       @keydown.esc.stop.prevent="emit('close')"
     >
-      <section class="modal new-tab-picker" data-surface-role="dialog" role="dialog" aria-modal="true" :aria-label="t('打开文件')">
+      <!-- Rows enter once as the dialog opens; filtering never replays it. -->
+      <section v-enter-stagger="{ items: '.new-tab-context, .new-tab-group, .new-tab-choice, .new-tab-empty', delay: 40, step: 20 }"
+        class="modal new-tab-picker" data-surface-role="dialog" role="dialog" aria-modal="true" :aria-label="t('打开文件')">
         <div class="new-tab-search">
           <Search :size="21" :stroke-width="1.6" />
           <input

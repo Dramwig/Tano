@@ -5,6 +5,7 @@ const getComputedStyle = (element: Element, pseudo?: string | null) => window.ge
 const ResizeObserver = (window as Window & typeof globalThis).ResizeObserver;
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../../i18n/i18n';
+import { vEnterStagger } from '../../shell/enter-stagger';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { CalendarDays, ClipboardList, LayoutTemplate, ListTodo, MoreHorizontal, Sparkles } from 'lucide-vue-next';
 const props = defineProps<{ assistant: boolean; assistantBusy: boolean }>();
@@ -136,7 +137,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="document-starter" :aria-label="t('开始使用文档')">
+  <!-- scale 1: measure() reads the buttons' widths while they enter. -->
+  <section
+    v-enter-stagger="{ items: '.document-starter > p, .document-starter-actions > button:not(.is-overflowed)', scale: 1, delay: 60 }"
+    class="document-starter" :aria-label="t('开始使用文档')">
+
     <p>{{ t('开始使用') }}</p>
     <div ref="row" class="document-starter-actions">
       <button v-for="(action, index) in actions" :key="action.id" type="button" :data-starter-action="action.id"

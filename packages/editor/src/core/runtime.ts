@@ -75,6 +75,8 @@ export interface EditorPreferences {
   blockResizeMotion?: boolean;
   /** Live Markdown fields (links, code, math, references) open and close smoothly. */
   sourceRevealMotion?: boolean;
+  /** Pages and sidebar views build up row by row when they appear. */
+  entranceMotion?: boolean;
   /** Turns interface motion (press, panels, popovers) down like the OS setting. */
   reduceInterfaceMotion?: boolean;
 }
@@ -102,6 +104,7 @@ export const defaultEditorPreferences: EditorPreferences = {
   blockMotion: true,
   blockResizeMotion: true,
   sourceRevealMotion: true,
+  entranceMotion: true,
   reduceInterfaceMotion: false,
 };
 

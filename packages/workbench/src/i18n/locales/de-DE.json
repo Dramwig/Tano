@@ -3604,6 +3604,8 @@
   "段落内换行或删减使高度变化时，下方内容平滑跟随。": "Wenn ein Block umbricht oder kürzer wird, gleitet der Inhalt darunter mit.",
   "Markdown 源码展开收起动画": "Animation beim Ein- und Ausblenden von Markdown",
   "光标进入或离开链接、行内代码、公式和引用时，源码平滑展开，离开后平滑收起。": "Betritt oder verlässt der Cursor einen Link, Inline-Code, eine Formel oder einen Verweis, klappt der Quelltext weich auf und wieder zu.",
+  "页面入场动画": "Einblendanimation für Seiten",
+  "打开欢迎页、插件中心、文件夹，或切换侧栏视图和设置分区时，内容从上到下依次浮现。": "Beim Öffnen einer Startseite, des Plugin-Centers oder eines Ordners sowie beim Wechsel von Seitenleisten-Ansichten und Einstellungsbereichen baut sich der Inhalt von oben nach unten auf.",
   "减少动态效果": "Bewegung reduzieren",
   "关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。": "Schaltet Tastenfedern, Panel-Einblendungen und Editor-Animationen ab. Immer aktiv, wenn das System Bewegung reduziert.",
   "自动补全": "Autovervollständigung",

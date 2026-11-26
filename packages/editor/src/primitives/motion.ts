@@ -341,6 +341,106 @@ export function riseIn(element: HTMLElement, delay = 0, distance = 6) {
   ], { duration: MOTION_DURATION.snappy, easing: spring('snappy'), delay, fill: 'backwards' });
 }
 
+/* Staggered entrance ------------------------------------------------------- */
+/* A freshly shown panel (a sidebar view, a welcome page) builds itself up:
+ * the first visible items rise one after another, the same feel as the mail
+ * welcome page (tano-rise-in, spring-smooth, 28ms steps). Only items inside
+ * the viewport play, at most `max` of them; an item nested in another picked
+ * item moves with its parent. Replaying cancels the previous run on the same
+ * elements, so rapid view switches never stack animations. */
+const entrances = new WeakMap<HTMLElement, Animation>();
+export type StaggerOptions = {
+  /** Clip rect for "visible"; defaults to `root`. */
+  viewport?: Element;
+  /** Safety cap on animated items (default: every visible item). */
+  max?: number;
+  /** Delay between two items, ms. Shrinks when many items are visible. */
+  step?: number;
+  /** Longest delay of the last item, ms: a tall panel builds up in the same
+   * time as a short one instead of trickling in. */
+  spread?: number;
+  /** Delay before the first item, ms. */
+  delay?: number;
+  distance?: number;
+  /** Starting scale; pass 1 where siblings are measured during the entrance
+   * (scale changes getBoundingClientRect widths). */
+  scale?: number;
+  /** Matched items taller than this (px) are split into their children, and
+   * so on down, while those children stack in a column. Lets a page whose
+   * sections are wrapped in component containers still enter row by row
+   * instead of as a few tall slabs. Rows laid out side by side (grids,
+   * chart bars, inline text) are never split. */
+  split?: number;
+};
+
+function isColumn(children: HTMLElement[]) {
+  let previous: DOMRect | undefined;
+  for (const child of children) {
+    const rect = child.getBoundingClientRect();
+    if (!rect.width || !rect.height) continue;
+    if (previous) return rect.top >= previous.bottom - 1;
+    previous = rect;
+  }
+  return false;
+}
+
+/** The user's 「页面入场动画」 switch (html[data-entrance-motion="off"]).
+ * Auxiliary windows share the main window's JS, so the main document counts. */
+export function entranceMotionOff(element?: Element): boolean {
+  const off = (doc: Document | null | undefined) => doc?.documentElement?.dataset.entranceMotion === 'off';
+  return off(element?.ownerDocument) || (typeof document !== 'undefined' && off(document));
+}
+
+export function staggerIn(root: Element | null | undefined, selector: string, options: StaggerOptions = {}): HTMLElement[] {
+  if (!root || !canAnimate(root) || entranceMotionOff(root) || !root.getClientRects().length) return [];
+  const max = options.max ?? 80;
+  const box = (options.viewport ?? root).getBoundingClientRect();
+  // A tall page inside a scroller: only what fits in the window can be seen.
+  const innerHeight = ownerWindow(root).innerHeight || Infinity;
+  const view = { top: Math.max(box.top, 0), bottom: Math.min(box.bottom, innerHeight) };
+  const picked: HTMLElement[] = [];
+  let done = false;
+  const visit = (element: HTMLElement) => {
+    if (done || picked.length >= max) { done = true; return; }
+    if (element.closest('[data-motion-ghost]') || picked.some(parent => parent.contains(element))) return;
+    const rect = element.getBoundingClientRect();
+    if (!rect.width || !rect.height || rect.bottom < view.top) return;
+    // Document order follows the visual order in a column: nothing below
+    // the fold is worth measuring.
+    if (rect.top > view.bottom) { done = true; return; }
+    if (options.split && rect.height > options.split) {
+      const children = [...element.children].filter((child): child is HTMLElement =>
+        typeof (child as HTMLElement).animate === 'function' && child.getClientRects().length > 0);
+      // A lone child is just another wrapper: look inside it.
+      if (children.length === 1 || (children.length > 1 && isColumn(children))) { children.forEach(visit); return; }
+    }
+    picked.push(element);
+  };
+  const candidates = root.matches(selector) ? [root as HTMLElement] : root.querySelectorAll<HTMLElement>(selector);
+  for (const element of candidates) {
+    if (done) break;
+    visit(element);
+  }
+  const step = Math.min(options.step ?? 28, (options.spread ?? 360) / Math.max(1, picked.length - 1));
+  picked.forEach((element, index) => {
+    entrances.get(element)?.cancel();
+    const animation = element.animate([
+      { opacity: 0, translate: `0 ${options.distance ?? 6}px`, scale: String(options.scale ?? 0.985) },
+      { opacity: 1, translate: '0 0', scale: '1' },
+    ], {
+      duration: MOTION_DURATION.snappy,
+      easing: spring('smooth'),
+      delay: (options.delay ?? 0) + index * step,
+      fill: 'backwards',
+    });
+    entrances.set(element, animation);
+    const settle = () => { if (entrances.get(element) === animation) entrances.delete(element); };
+    animation.addEventListener('finish', settle);
+    animation.addEventListener('cancel', settle);
+  });
+  return picked;
+}
+
 export function flipFrom(element: HTMLElement, from: DOMRect, to: DOMRect = element.getBoundingClientRect(), delay = 0) {
   const dx = from.left - to.left, dy = from.top - to.top;
   if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;

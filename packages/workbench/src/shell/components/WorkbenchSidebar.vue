@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, ref, toRefs } from 'vue';
+import { inject, nextTick, onBeforeUnmount, ref, toRefs, watch } from 'vue';
 import { CalendarDays, FolderPlus, GitFork, Mail, Search, SquarePen } from 'lucide-vue-next';
 import { GRAPH_TAB_ID } from '../../documents/document-graph';
 import { openExternalUrl } from '../../files/attachments';
@@ -13,6 +13,7 @@ import PluginView from '../../plugins/components/PluginView.vue';
 import { isOverlaySidebarNavHidden } from '../../plugins/overlay-mapping';
 import WorkspacePickerMenu from '../../workspace/components/WorkspacePickerMenu.vue';
 import { vScrollFade } from '../scroll-fade';
+import { playSidebarEntrance } from '../sidebar-entrance';
 import {
   SidebarAssistant,
   SidebarMail,
@@ -134,6 +135,25 @@ const {
 
 const { modal, settingsPanel, showModal } = toRefs(modals);
 
+// Switching sidebar views replays the mail-style entrance on the new view.
+// Opening/closing the sidebar itself keeps its own slide, so a hidden sidebar
+// does not play.
+const sidebarHeader = ref<HTMLElement | null>(null);
+let stopEntrance: (() => void) | undefined;
+watch(
+  () => `${navigationModule.value}\u0000${sidebarView.value}`,
+  async (_, __, onCleanup) => {
+    let cancelled = false;
+    onCleanup(() => { cancelled = true; });
+    stopEntrance?.();
+    stopEntrance = undefined;
+    await nextTick();
+    if (cancelled || !sidebar.value) return;
+    stopEntrance = playSidebarEntrance(sidebarHeader.value?.parentElement);
+  },
+);
+onBeforeUnmount(() => stopEntrance?.());
+
 const brandButton = ref<HTMLElement | null>(null);
 function setBrandButton(el: unknown) {
   brandButton.value = (el as HTMLElement | null) ?? null;
@@ -149,7 +169,7 @@ function setBrandButton(el: unknown) {
     :content-element="mainColumn"
     @dismiss="sidebar = false"
   >
-    <div class="sidebar-header">
+    <div ref="sidebarHeader" class="sidebar-header">
       <div class="sidebar-brand-slot">
         <button
           v-if="native && !mobile"

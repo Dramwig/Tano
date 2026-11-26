@@ -92,6 +92,7 @@ export function buildSettingSearchEntries(options: {
     settingSearchEntry('appearance', 'appearance-outline', '显示目录', '', 'outline table of contents'),
     settingSearchEntry('appearance', 'appearance-outline-position', '目录显示在左侧', '将文档大纲放到编辑区左侧。', 'outline left right'),
     settingSearchEntry('appearance', 'appearance-reduce-motion', '减少动态效果', '关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。', 'reduce motion animation accessibility 减少 动态 动画 动效 无障碍'),
+    settingSearchEntry('appearance', 'appearance-entrance-motion', '页面入场动画', '打开欢迎页、插件中心、文件夹，或切换侧栏视图和设置分区时，内容从上到下依次浮现。', 'entrance page sidebar stagger animation motion 入场 进场 页面 侧栏 依次 浮现 动画 动效'),
     settingSearchEntry('appearance', 'appearance-smooth-caret', '光标平滑移动', '输入、移动光标和换行时，光标平滑滑到新位置。', 'caret cursor smooth animation motion 光标 平滑 动画 动效'),
     settingSearchEntry('appearance', 'appearance-typing-motion', '文字输入与删除动画', '新输入的文字淡入，删除的文字在原位置淡出。', 'typing delete animation motion 打字 输入 删除 退格 动画 动效'),
     settingSearchEntry('appearance', 'appearance-block-motion', '段落增删动画', '新段落浮现，删除的段落淡出，其余段落平滑让位。', 'block paragraph animation motion 段落 块 动画 动效'),

@@ -8,6 +8,7 @@ import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { MOTION_DURATION, captureList, spring } from '@tano/editor/motion';
 import LoadingSkeleton from '../../shell/components/LoadingSkeleton.vue';
 import { t, uiLocale } from '../../i18n/i18n';
+import { vEnterStagger } from '../../shell/enter-stagger';
 import { assistantCopy, assistantTaskPrompts } from '../language';
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { agentInboxKey, type useAgentInboxController } from '../agent-controller';
@@ -789,7 +790,11 @@ watch(() => [assistant.session?.messages.map(message => `${message.content.lengt
       <div class="assistant-transcript">
       <div ref="messages" class="assistant-messages panel-scrollbar" role="log" :aria-label="t('助手对话')" @scroll="updateScroll">
         <LoadingSkeleton v-if="assistant.loading && !assistant.session?.messages.length" :rows="5" />
-        <div v-else-if="!assistant.session?.messages.length" class="assistant-welcome">
+        <div
+          v-else-if="!assistant.session?.messages.length"
+          v-enter-stagger="'.assistant-welcome-mark, .assistant-welcome > h3, .assistant-starter, .assistant-extension-starters'"
+          class="assistant-welcome"
+        >
           <!-- Reserved for platform AI settings; currently greets with a flutter. -->
           <button type="button" class="assistant-welcome-mark" :aria-label="t('同页助手')" :data-tooltip="t('同页助手')" @click="welcomeButterfly?.flutter()">
             <AssistantButterfly ref="welcomeButterfly" class="assistant-welcome-butterfly" />

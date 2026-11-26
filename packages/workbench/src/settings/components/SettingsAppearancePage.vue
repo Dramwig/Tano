@@ -109,6 +109,7 @@ type MotionOptionKey =
   | 'blockMotion'
   | 'blockResizeMotion'
   | 'sourceRevealMotion'
+  | 'entranceMotion'
   | 'reduceInterfaceMotion';
 const motionOptions: { key: MotionOptionKey; settingsKey: string; readonly label: string; readonly description: string }[] = [
   {
@@ -116,6 +117,12 @@ const motionOptions: { key: MotionOptionKey; settingsKey: string; readonly label
     settingsKey: 'appearance-reduce-motion',
     get label() { return t('减少动态效果'); },
     get description() { return t('关闭按钮回弹、面板弹出和编辑区动画。系统开启“减少动态效果”时始终生效。'); },
+  },
+  {
+    key: 'entranceMotion',
+    settingsKey: 'appearance-entrance-motion',
+    get label() { return t('页面入场动画'); },
+    get description() { return t('打开欢迎页、插件中心、文件夹，或切换侧栏视图和设置分区时，内容从上到下依次浮现。'); },
   },
   {
     key: 'smoothCaret',

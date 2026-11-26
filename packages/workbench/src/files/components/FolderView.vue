@@ -4,6 +4,7 @@ import { captureList } from '@tano/editor/motion';
 import { ArrowUp } from 'lucide-vue-next';
 import { isDataTableFilePath, isMarkdown, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
 import { uiLocale, t } from '../../i18n/i18n';
+import { vEnterStagger } from '../../shell/enter-stagger';
 import { indexFolderHomes, type FolderHomeFileName } from '../folder-home';
 import DocumentFileIcon from '../../documents/components/DocumentFileIcon.vue';
 import ResourceIcon from './ResourceIcon.vue';
@@ -34,7 +35,11 @@ const fileSize = (file: FileEntry) => file.kind === 'directory' ? '—' : file.s
 </script>
 
 <template>
-  <section class="folder-view panel-scrollbar" :aria-label="t('文件夹视图')">
+  <!-- Opening a folder (or moving to another one) builds the page up; edits
+       inside the same folder use the captureList motion above instead. -->
+  <section
+    v-enter-stagger="{ items: '.folder-view-header, .folder-view-columns, .folder-view-list > li, .folder-view-empty', key: directory.path }"
+    class="folder-view panel-scrollbar" :aria-label="t('文件夹视图')">
     <header class="folder-view-header">
       <h1><ResourceIcon :path="directory.path" kind="directory" :size="22" />{{ directory.name }}</h1>
       <button v-if="directory.path && !directory.missing" type="button" @click="emit('up')"><ArrowUp :size="16" />{{ t('返回上级目录') }}</button>

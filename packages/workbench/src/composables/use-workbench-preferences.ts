@@ -514,6 +514,7 @@ export function useWorkbenchPreferences(deps: WorkbenchPreferencesDeps) {
     blockMotion: readPreference('blockMotion', true),
     blockResizeMotion: readPreference('blockResizeMotion', true),
     sourceRevealMotion: readPreference('sourceRevealMotion', true),
+    entranceMotion: readPreference('entranceMotion', true),
     reduceInterfaceMotion: readPreference('reduceInterfaceMotion', false),
   });
   watch(
@@ -546,6 +547,7 @@ export function useWorkbenchPreferences(deps: WorkbenchPreferencesDeps) {
       savePreference('blockMotion', preferences.blockMotion !== false);
       savePreference('blockResizeMotion', preferences.blockResizeMotion !== false);
       savePreference('sourceRevealMotion', preferences.sourceRevealMotion !== false);
+      savePreference('entranceMotion', preferences.entranceMotion !== false);
       savePreference('reduceInterfaceMotion', preferences.reduceInterfaceMotion === true);
     },
     { deep: true },
@@ -558,6 +560,16 @@ export function useWorkbenchPreferences(deps: WorkbenchPreferencesDeps) {
       if (reduced) document.documentElement.dataset.motion = 'reduced';
       else if (document.documentElement.dataset.motion === 'reduced')
         delete document.documentElement.dataset.motion;
+    },
+    { immediate: true },
+  );
+  // `data-entrance-motion="off"` stops staggerIn and the mail page's CSS
+  // entrance; other motion is unaffected.
+  watch(
+    () => editorPreferences.value.entranceMotion === false,
+    (off) => {
+      if (off) document.documentElement.dataset.entranceMotion = 'off';
+      else delete document.documentElement.dataset.entranceMotion;
     },
     { immediate: true },
   );

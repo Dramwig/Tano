@@ -4,6 +4,7 @@ import { computed, inject, ref, watch } from 'vue';
 import { ArrowUpRight, Download, LoaderCircle, ShieldCheck } from 'lucide-vue-next';
 import { checkPluginCompatibility, type PluginMode } from '@tano/protocol';
 import { t } from '../../i18n/i18n';
+import { vEnterStagger } from '../../shell/enter-stagger';
 import { workbenchPrefsKey } from '../../shell/workbench-context';
 import { useWorkspaceStore } from '../../stores/workspace';
 import { bundledPluginCatalog } from '../plugin-catalog';
@@ -82,7 +83,11 @@ const modeLabels: Record<PluginMode, string> = {
 };
 </script>
 <template>
-  <article v-if="detail" class="plugin-detail-page">
+  <article
+    v-if="detail"
+    v-enter-stagger="{ items: '.detail-heading, .dialog-intro, .detail-footer, .center-nav, .detail-description, .detail-section', key: detail.id }"
+    class="plugin-detail-page"
+  >
     <p v-if="error || store.pluginError" role="alert">{{ error || store.pluginError }}</p>
     <p v-if="status" role="status">{{ status }}</p>
 

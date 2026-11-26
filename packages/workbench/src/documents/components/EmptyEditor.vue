@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { t } from '../../i18n/i18n';
 import { FolderOpen, Search, SquarePen } from 'lucide-vue-next';
+import { vEnterStagger } from '../../shell/enter-stagger';
 
 defineProps<{ createDisabled?: boolean }>();
 defineEmits<{ create: []; open: []; search: [] }>();
 </script>
 
 <template>
-  <div class="editor-empty">
+  <div v-enter-stagger="'.editor-empty-mark, .editor-empty-actions > button'" class="editor-empty">
     <div class="editor-empty-mark" aria-hidden="true" />
     <nav class="editor-empty-actions" :aria-label="t('文档操作')">
       <button :disabled="createDisabled" @click="$emit('create')">
