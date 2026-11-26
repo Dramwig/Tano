@@ -629,9 +629,10 @@ test('runs the SDK in a CSP sandbox and blocks ambient network, cookies and pare
     await host.invoke(pkg.manifest.id, 'command', 'refresh');
     const message = states[0].message;
     host.dispose();
-    return { checks, message, remainingFrames: document.querySelectorAll('iframe[title="插件隔离运行时"]').length };
+    return { checks, message };
   }, moduleUrl);
-  expect(result).toEqual({ checks: { document: 'undefined', localStorage: 'undefined', parent: 'undefined', network: 'blocked', storage: 'blocked', write: 'blocked' }, message: 'command executed', remainingFrames: 0 });
+  expect(result).toEqual({ checks: { document: 'undefined', localStorage: 'undefined', parent: 'undefined', network: 'blocked', storage: 'blocked', write: 'blocked' }, message: 'command executed' });
+  await expect(page.locator('iframe[title="插件隔离运行时"]')).toHaveCount(0);
 });
 
 test('installs, authorizes and runs a plugin through the plugin center', async ({ page }) => {
