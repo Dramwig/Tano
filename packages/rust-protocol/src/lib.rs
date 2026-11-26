@@ -6,8 +6,15 @@ use sha2::{Digest, Sha256};
 pub const WORKSPACE_DATA_DIRECTORY: &str = ".tano";
 pub const OBJECT_DIRECTORY: &str = ".tano/objects";
 pub const WORKSPACE_CAPABILITY_PATH: &str = ".tano/capabilities.json";
+pub const WORKSPACE_FOLDER_REGISTRY_PATH: &str = ".tano/folders.tano.json";
 pub const WORKSPACE_SETTINGS_PATH: &str = ".tano/settings.tano.json";
+pub const WORKSPACE_PLUGIN_PATH: &str = ".tano/plugins.tano.json";
 pub const WORKSPACE_RELATION_PATH: &str = ".tano/relations.tano-relations.json";
+pub const ASSISTANT_RULES_PATH: &str = ".tano/rules/assistant.md";
+pub const ANNOTATION_DIRECTORY: &str = ".tano/annotations";
+pub const DISCUSSION_DIRECTORY: &str = ".tano/discussions";
+pub const TEMPLATE_DIRECTORY: &str = ".tano/templates";
+pub const WORKSPACE_VIEW_DIRECTORY: &str = ".tano/views";
 
 /// SHA-256 of the exact bytes, suitable for Tano's expectedHash protocol field.
 pub fn content_hash(content: &[u8]) -> String {
@@ -29,11 +36,45 @@ pub fn is_workspace_internal_path(path: &str) -> bool {
 
 /// Classifies portable data paths; excludes workspace identity and app caches.
 pub fn is_workspace_data_path(path: &str) -> bool {
+    let Some(relative) = path.strip_prefix(".tano/") else {
+        return false;
+    };
     matches!(
-        path,
-        WORKSPACE_CAPABILITY_PATH | WORKSPACE_SETTINGS_PATH | WORKSPACE_RELATION_PATH
-    ) || (path.starts_with(".tano/conflicts/") && path.ends_with(".json"))
-        || (path.starts_with(".tano/objects/") && path.ends_with(".tano.json"))
+        relative,
+        "capabilities.json"
+            | "folders.tano.json"
+            | "settings.tano.json"
+            | "plugins.tano.json"
+            | "relations.tano-relations.json"
+            | "rules/assistant.md"
+    ) || (relative.starts_with("objects/") && relative.ends_with(".tano.json"))
+        || (relative.starts_with("conflicts/") && relative.ends_with(".json"))
+        || relative
+            .strip_prefix("templates/")
+            .is_some_and(|name| name.strip_suffix(".md").is_some_and(is_short_id))
+        || relative.strip_prefix("views/").is_some_and(|name| {
+            name.strip_suffix(".tano.json").is_some_and(|id| {
+                !id.is_empty()
+                    && id.len() <= 64
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            })
+        })
+        || [
+            "annotations/",
+            "discussions/",
+            "document-layout/",
+            "suggestions/",
+            "tables/",
+            "files/",
+        ]
+        .iter()
+        .any(|prefix| {
+            relative
+                .strip_prefix(prefix)
+                .is_some_and(|name| name.strip_suffix(".tano.json").is_some_and(is_short_id))
+        })
 }
 
 #[cfg(test)]

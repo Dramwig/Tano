@@ -107,3 +107,62 @@ it('enforces host scopes on legacy and new interfaces and follows catalog moves 
   manifest.files.find((file: { id: string }) => file.id === '111111').path = 'papers/moved.md'; writeFileSync(manifestPath, JSON.stringify(manifest));
   expect(store.readFile('111111')).toMatchObject({ fileId: '111111', path: 'papers/moved.md', sha256: before.sha256 });
 });
+it('loads enabled plugin object schemas from .tano/plugins.tano.json when validating proposals', () => {
+  writeFileSync(join(root, '.tano/plugins.tano.json'), JSON.stringify({
+    version: 1,
+    plugins: [{
+      mode: 'required',
+      settings: {},
+      manifest: {
+        manifestVersion: 1,
+        id: 'research',
+        name: 'Research',
+        version: '1.0.0',
+        description: 'Research plugin',
+        objectTypes: [{
+          type: 'research.paper',
+          label: 'Paper',
+          fields: [{ key: 'year', label: 'Year', type: 'number', required: true }],
+        }],
+        relationTypes: [],
+      },
+    }],
+  }));
+  store.close();
+  store = new AgentWorkspace(root, join(directory, 'data'), { access: 'review', directories: [''], objectTypes: ['research.paper'] });
+  const receipt = store.proposeChanges({
+    operationId: randomUUID(),
+    edits: [{
+      path: '.tano/objects/ab12cd.tano.json',
+      expectedHash: null,
+      reason: 'Create research paper object',
+      content: JSON.stringify({
+        version: 1,
+        id: 'ab12cd',
+        type: 'research.paper',
+        name: 'Attention Is All You Need',
+        description: '',
+        archived: false,
+        properties: { year: 2017 },
+      }),
+    }],
+  }, 'client');
+  expect(receipt.items).toHaveLength(1);
+  expect(() => store.proposeChanges({
+    operationId: randomUUID(),
+    edits: [{
+      path: '.tano/objects/ab12ce.tano.json',
+      expectedHash: null,
+      reason: 'Invalid plugin property type',
+      content: JSON.stringify({
+        version: 1,
+        id: 'ab12ce',
+        type: 'research.paper',
+        name: 'Bad Paper',
+        description: '',
+        archived: false,
+        properties: { year: 'not-a-number' },
+      }),
+    }],
+  }, 'client')).toThrow('Year');
+});

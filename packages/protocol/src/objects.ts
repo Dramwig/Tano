@@ -1,6 +1,6 @@
 import type { FileEntry } from './types';
 import { isMarkdown } from './paths';
-import { isWorkspaceInternalPath } from './workspace-paths';
+import { isWorkspaceInternalPath, objectDirectory } from './workspace-paths';
 import { isShortId } from './short-id';
 import { coreObjectTypes, objectTypeRegistry, validObjectType } from './object-types';
 import { parseTaskReview } from './task-review';
@@ -35,8 +35,8 @@ export interface ReferenceTarget extends ReferenceIdentity {
   properties?: Record<string, unknown>;
 }
 export const objectSuffix = '.tano.json';
-export const isObjectPath = (path: string) => path.endsWith(objectSuffix) &&
-  (!path.startsWith('.tano/') || path.startsWith('.tano/objects/'));
+export const isObjectPath = (path: string) =>
+  path.startsWith(`${objectDirectory}/`) && path.endsWith(objectSuffix);
 export const referenceTypeLabel = (type: string) =>
   objectTypeRegistry.get(type)?.label ?? `未启用类型（${type}）`;
 export function parseObject(content: string): WorkspaceObject {

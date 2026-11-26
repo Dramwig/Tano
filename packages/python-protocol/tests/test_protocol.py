@@ -3,11 +3,18 @@ from pathlib import Path
 import unittest
 
 from tano_page_protocol import (
+    ANNOTATION_DIRECTORY,
+    ASSISTANT_RULES_PATH,
+    DISCUSSION_DIRECTORY,
     OBJECT_DIRECTORY,
+    TEMPLATE_DIRECTORY,
     WORKSPACE_CAPABILITY_PATH,
     WORKSPACE_DATA_DIRECTORY,
+    WORKSPACE_FOLDER_REGISTRY_PATH,
+    WORKSPACE_PLUGIN_PATH,
     WORKSPACE_RELATION_PATH,
     WORKSPACE_SETTINGS_PATH,
+    WORKSPACE_VIEW_DIRECTORY,
     content_hash,
     is_short_id,
     is_workspace_data_path,
@@ -58,8 +65,15 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(WORKSPACE_DATA_DIRECTORY, vectors["constants"]["WORKSPACE_DATA_DIRECTORY"])
         self.assertEqual(OBJECT_DIRECTORY, vectors["constants"]["OBJECT_DIRECTORY"])
         self.assertEqual(WORKSPACE_CAPABILITY_PATH, vectors["constants"]["WORKSPACE_CAPABILITY_PATH"])
+        self.assertEqual(WORKSPACE_FOLDER_REGISTRY_PATH, vectors["constants"]["WORKSPACE_FOLDER_REGISTRY_PATH"])
         self.assertEqual(WORKSPACE_SETTINGS_PATH, vectors["constants"]["WORKSPACE_SETTINGS_PATH"])
+        self.assertEqual(WORKSPACE_PLUGIN_PATH, vectors["constants"]["WORKSPACE_PLUGIN_PATH"])
         self.assertEqual(WORKSPACE_RELATION_PATH, vectors["constants"]["WORKSPACE_RELATION_PATH"])
+        self.assertEqual(ASSISTANT_RULES_PATH, vectors["constants"]["ASSISTANT_RULES_PATH"])
+        self.assertEqual(ANNOTATION_DIRECTORY, vectors["constants"]["ANNOTATION_DIRECTORY"])
+        self.assertEqual(DISCUSSION_DIRECTORY, vectors["constants"]["DISCUSSION_DIRECTORY"])
+        self.assertEqual(TEMPLATE_DIRECTORY, vectors["constants"]["TEMPLATE_DIRECTORY"])
+        self.assertEqual(WORKSPACE_VIEW_DIRECTORY, vectors["constants"]["WORKSPACE_VIEW_DIRECTORY"])
         for item in vectors["hashes"]:
             self.assertEqual(content_hash(item["input"].encode("utf-8")), item["sha256"])
         for value in vectors["shortIds"]["valid"]:

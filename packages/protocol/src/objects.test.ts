@@ -211,11 +211,19 @@ it('derives Document and Asset metadata from file identity without storing conte
     },
     {
       id: 'a00003',
-      path: 'objects/a00004.tano.json',
+      path: '.tano/objects/a00004.tano.json',
       name: 'a00004.tano.json',
       kind: 'file' as const,
       size: 200,
       modified: 14,
+    },
+    {
+      id: 'a00006',
+      path: 'notes/ordinary.tano.json',
+      name: 'ordinary.tano.json',
+      kind: 'file' as const,
+      size: 128,
+      modified: 15,
     },
     {
       id: 'a00004',
@@ -246,6 +254,7 @@ it('derives Document and Asset metadata from file identity without storing conte
   const assets = assetTargets('ws', files);
   expect(assets).toEqual([
     expect.objectContaining({ type: 'asset', id: 'a00002', mime: 'image/png', size: 1024 }),
+    expect.objectContaining({ type: 'asset', id: 'a00006', path: 'notes/ordinary.tano.json', mime: 'application/json', size: 128 }),
   ]);
   const renamed = assetTargets('ws', [{ ...files[1]!, path: 'moved/figure.png' }]);
   expect(resolveReference(renamed, assets[0]!).target?.path).toBe('moved/figure.png');

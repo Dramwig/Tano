@@ -3,8 +3,15 @@
     "WORKSPACE_DATA_DIRECTORY": ".tano",
     "OBJECT_DIRECTORY": ".tano/objects",
     "WORKSPACE_CAPABILITY_PATH": ".tano/capabilities.json",
+    "WORKSPACE_FOLDER_REGISTRY_PATH": ".tano/folders.tano.json",
     "WORKSPACE_SETTINGS_PATH": ".tano/settings.tano.json",
-    "WORKSPACE_RELATION_PATH": ".tano/relations.tano-relations.json"
+    "WORKSPACE_PLUGIN_PATH": ".tano/plugins.tano.json",
+    "WORKSPACE_RELATION_PATH": ".tano/relations.tano-relations.json",
+    "ASSISTANT_RULES_PATH": ".tano/rules/assistant.md",
+    "ANNOTATION_DIRECTORY": ".tano/annotations",
+    "DISCUSSION_DIRECTORY": ".tano/discussions",
+    "TEMPLATE_DIRECTORY": ".tano/templates",
+    "WORKSPACE_VIEW_DIRECTORY": ".tano/views"
   },
   "hashes": [
     {
@@ -50,16 +57,35 @@
   "workspaceDataPaths": {
     "valid": [
       ".tano/capabilities.json",
+      ".tano/folders.tano.json",
       ".tano/settings.tano.json",
+      ".tano/plugins.tano.json",
       ".tano/relations.tano-relations.json",
+      ".tano/rules/assistant.md",
+      ".tano/templates/a1b2c3.md",
+      ".tano/views/research_view-1.tano.json",
       ".tano/objects/a1b2c3.tano.json",
-      ".tano/conflicts/conflict.json"
+      ".tano/conflicts/conflict.json",
+      ".tano/annotations/a1b2c3.tano.json",
+      ".tano/discussions/a1b2c3.tano.json",
+      ".tano/document-layout/a1b2c3.tano.json",
+      ".tano/suggestions/a1b2c3.tano.json",
+      ".tano/tables/a1b2c3.tano.json",
+      ".tano/files/a1b2c3.tano.json"
     ],
     "invalid": [
       ".tano",
       ".tano/config.json",
+      ".tano/identities.json",
       ".tano/cache.sqlite",
       ".tano/objects/a.json",
+      ".tano/templates/short.md",
+      ".tano/templates/A1B2C3.md",
+      ".tano/views/nested/view.tano.json",
+      ".tano/views/bad.name.tano.json",
+      ".tano/files/nothex.tano.json",
+      ".tano/files/A1B2C3.tano.json",
+      ".tano/rules/other.md",
       "notes/welcome.md"
     ]
   }
