@@ -1,17 +1,18 @@
+import {
+  assistantCatalog as protocolAssistantCatalog,
+  type AssistantCopy,
+} from '@tano/protocol/assistant-language';
 import { localeDefinition, type UiLocale } from './locale-registry';
-// Small synchronous fallbacks also serve non-UI consumers of assistantCopy().
-import chineseAssistant from '../assistant/locales/zh-CN.json';
-import englishAssistant from '../assistant/locales/en-US.json';
 import type { PluralCatalog } from './plurals';
 
 export type Messages = Readonly<Record<string, string>>;
-export interface LocaleCatalogs { messages: Messages; icons: Messages; assistant: typeof chineseAssistant; plurals: PluralCatalog }
+export interface LocaleCatalogs { messages: Messages; icons: Messages; assistant: AssistantCopy; plurals: PluralCatalog }
 const catalogs = new Map<UiLocale, LocaleCatalogs>();
 const pending = new Map<UiLocale, Promise<void>>();
 
 export function loadedLocale(locale: UiLocale) { return catalogs.get(locale); }
-export function assistantCatalog(locale: UiLocale) {
-  return catalogs.get(locale)?.assistant ?? (locale === 'zh-CN' ? chineseAssistant : englishAssistant);
+export function assistantCatalog(locale: UiLocale): AssistantCopy {
+  return catalogs.get(locale)?.assistant ?? protocolAssistantCatalog(locale);
 }
 
 /** Deduplicate concurrent imports; a failed request remains retryable. */

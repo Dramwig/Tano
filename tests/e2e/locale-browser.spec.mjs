@@ -4,7 +4,7 @@ const read = path => JSON.parse(readFileSync(new URL(path, import.meta.url), 'ut
 const uiText = (locale, key) => locale === 'zh-CN' ? key : read(`../../packages/workbench/src/i18n/locales/${locale}.json`)[key];
 
 for (const locale of ['zh-CN', 'en-US', 'zh-TW', 'ja-JP', 'es-ES', 'de-DE']) test(`uses English AI task prompts with ${locale} UI and responses while preserving the document`, async ({ page }, testInfo) => {
-  const copy = read(`../../packages/workbench/src/assistant/locales/${locale}.json`);
+  const copy = read(`../../packages/protocol/src/domain/locales/${locale}.json`);
   await page.addInitScript(value => localStorage.setItem('tano.preference.locale', value), locale);
   await page.goto('http://127.0.0.1:43845');
   const editor = page.locator('.ProseMirror').first();

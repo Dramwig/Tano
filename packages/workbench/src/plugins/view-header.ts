@@ -1,12 +1,7 @@
 import { pluginRecord, type PluginJson } from '@tano/protocol';
+import type { PluginViewHeader } from '@tano/protocol/plugin-sdk';
 import type { PluginRuntimeState } from './host';
-export interface PluginViewHeader {
-  title: string;
-  status?: string;
-  statusAfter?: string;
-  previewInfo?: { label: string; detail: string };
-  actions: { id: string; label: string; icon?: 'open' | 'previous' | 'next' | 'minus' | 'plus' | 'fit' | 'info'; disabled?: boolean; accept?: string; group?: string }[];
-}
+export type { PluginViewHeader };
 export function parseViewHeader(value: PluginJson): PluginViewHeader {
   if (!pluginRecord(value) || typeof value.title !== 'string' || value.title.length > 200 ||
     (value.status !== undefined && (typeof value.status !== 'string' || value.status.length > 80)) ||

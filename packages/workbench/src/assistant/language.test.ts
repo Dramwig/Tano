@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
-import chinese from './locales/zh-CN.json';
-import english from './locales/en-US.json';
-import { assistantDiscussionPrompt, assistantLanguagePolicy, assistantRequestLocale, formatAssistantText } from './language';
+import { assistantCopy, assistantDiscussionPrompt, assistantLanguagePolicy, assistantRequestLocale, formatAssistantText } from './language';
+
+const chinese = assistantCopy('zh-CN');
+const english = assistantCopy('en-US');
 
 it('keeps both JSON catalogs complete with matching interpolation parameters', () => {
   function inspect(a: unknown, b: unknown, path: string) {

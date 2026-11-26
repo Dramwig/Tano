@@ -6,7 +6,7 @@ import {
   validateObjectProperties,
 } from '@tano/protocol';
 import type { FileSnapshot, Workspace, WorkspaceAdapter, WorkspaceObject } from '@tano/protocol';
-import { mergeDescription } from '../documents/description-merge';
+import { mergeObject } from '@tano/editor/workspace-objects';
 
 export interface ObjectRecord {
   object: WorkspaceObject;
@@ -44,8 +44,7 @@ export async function loadObjects(adapter: Pick<ObjectStorage, 'read'>, workspac
     if (count > 1) errors.push(`对象 ID ${id} 重复，引用已停用；请修复重复文件`);
   return { records: records.filter((record) => ids.get(record.object.id) === 1), errors };
 }
-import { mergeWorkspaceObject } from '@tano/protocol';
-export const mergeObject = (base: WorkspaceObject, ours: WorkspaceObject, theirs: WorkspaceObject) => mergeWorkspaceObject(base, ours, theirs, mergeDescription);
+export { mergeObject };
 export async function saveObject(
   adapter: Pick<ObjectStorage, 'write'> & Partial<Pick<ObjectStorage, 'create'>>,
   record: ObjectRecord,
