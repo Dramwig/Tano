@@ -23,7 +23,7 @@ import { t } from '../i18n/i18n';
 import type { FileMutationPreview, optimisticFiles } from '../files/optimistic-files';
 import { writeWorkspaceImport } from '../workspace/workspace-import';
 import type { WorkspaceSettings } from '../workspace/workspace-settings';
-import type { Activity } from './workspace';
+import type { Activity } from './workspace-types';
 
 export interface WorkspaceFileOpsDeps {
   adapter: WorkspaceAdapter;
