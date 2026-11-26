@@ -41,6 +41,12 @@ export const mailBridge = {
       offset: options?.offset ?? 0,
       filter: options?.filter && options.filter !== 'all' ? options.filter : null,
     }),
+  messagesListInbox: (options?: { limit?: number; offset?: number; filter?: MailFilter }) =>
+    invoke<MailMessageSummary[]>('mail_messages_list_inbox', {
+      limit: options?.limit ?? 80,
+      offset: options?.offset ?? 0,
+      filter: options?.filter && options.filter !== 'all' ? options.filter : null,
+    }),
   messagesSearch: (query: string, accountId?: string, limit = 60) =>
     invoke<MailMessageSummary[]>('mail_messages_search', {
       accountId: accountId ?? null,
@@ -53,6 +59,7 @@ export const mailBridge = {
     invoke<MailMessageDetail>('mail_message_flags_update', { messageId, patch }),
   moveMessage: (messageId: string, targetFolderId: string) =>
     invoke<void>('mail_message_move', { messageId, targetFolderId }),
+  deleteMessage: (messageId: string) => invoke<void>('mail_message_delete', { messageId }),
   updateInvite: (inviteId: string, importedObjectId?: string | null, rsvpStatus?: string | null) =>
     invoke<void>('mail_invite_update', {
       inviteId,

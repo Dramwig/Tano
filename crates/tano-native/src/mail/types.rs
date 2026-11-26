@@ -178,8 +178,11 @@ pub struct MailFolder {
     pub id: String,
     pub account_id: String,
     pub remote_name: String,
+    pub decoded_path: String,
     pub display_name: String,
     pub special_use: Option<String>,
+    #[serde(default)]
+    pub delimiter: Option<String>,
     pub uid_validity: Option<u32>,
     pub uid_next: Option<u32>,
     pub unread_count: u32,

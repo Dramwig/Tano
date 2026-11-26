@@ -1,6 +1,8 @@
 //! Device-local SQLite storage (mail.sqlite) and bounded attachment cache (mail-cache/).
 //! Completely isolated from workspace files and workspace index.sqlite.
 
+use super::folders::normalize_cached_folders;
+use super::mime::decode_modified_utf7;
 use super::types::{
     unix_timestamp_secs, MailAddress, MailAttachmentInfo, MailCacheStats, MailCalendarInvite,
     MailDraft, MailFolder, MailMessageDetail, MailMessageSummary, DEFAULT_CACHE_LIMIT_BYTES,
@@ -8,6 +10,7 @@ use super::types::{
 };
 use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 const SCHEMA_VERSION: i64 = 1;
@@ -22,6 +25,7 @@ pub struct FolderUpsert {
     pub remote_name: String,
     pub display_name: String,
     pub special_use: Option<String>,
+    pub delimiter: Option<String>,
     pub uid_validity: Option<u32>,
     pub uid_next: Option<u32>,
     pub unread_count: u32,
@@ -117,36 +121,37 @@ impl MailStore {
         folders: &[FolderUpsert],
     ) -> Result<Vec<MailFolder>, String> {
         let mut conn = self.connect()?;
-        let now = unix_timestamp_secs();
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         let mut keep_ids = Vec::with_capacity(folders.len());
         for folder in folders {
             let id = Self::folder_id(account_id, &folder.remote_name);
             keep_ids.push(id.clone());
+            // Keep `synced_at` NULL until message headers for this folder are actually synced
+            // via `upsert_headers`, and preserve any existing `synced_at` on metadata refreshes.
             tx.execute(
                 "INSERT INTO mail_folders (
-                    id, account_id, remote_name, display_name, special_use,
+                    id, account_id, remote_name, display_name, special_use, delimiter,
                     uid_validity, uid_next, unread_count, total_count, synced_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL)
                 ON CONFLICT(id) DO UPDATE SET
                     display_name = excluded.display_name,
-                    special_use = COALESCE(excluded.special_use, mail_folders.special_use),
+                    special_use = excluded.special_use,
+                    delimiter = excluded.delimiter,
                     uid_validity = COALESCE(excluded.uid_validity, mail_folders.uid_validity),
                     uid_next = COALESCE(excluded.uid_next, mail_folders.uid_next),
                     unread_count = excluded.unread_count,
-                    total_count = excluded.total_count,
-                    synced_at = excluded.synced_at",
+                    total_count = excluded.total_count",
                 params![
                     id,
                     account_id,
                     folder.remote_name,
                     folder.display_name,
                     folder.special_use,
+                    folder.delimiter,
                     folder.uid_validity,
                     folder.uid_next,
                     folder.unread_count,
-                    folder.total_count,
-                    now
+                    folder.total_count
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -175,75 +180,56 @@ impl MailStore {
     pub fn list_folders(&self, account_id: Option<&str>) -> Result<Vec<MailFolder>, String> {
         let conn = self.connect()?;
         let sql = if account_id.is_some() {
-            "SELECT id, account_id, remote_name, display_name, special_use, uid_validity, uid_next, unread_count, total_count, synced_at
+            "SELECT id, account_id, remote_name, display_name, special_use, delimiter, uid_validity, uid_next, unread_count, total_count, synced_at
              FROM mail_folders WHERE account_id = ?1
              ORDER BY CASE special_use
                 WHEN 'inbox' THEN 0
                 WHEN 'flagged' THEN 1
-                WHEN 'sent' THEN 2
-                WHEN 'drafts' THEN 3
-                WHEN 'archive' THEN 4
-                WHEN 'junk' THEN 5
-                WHEN 'trash' THEN 6
+                WHEN 'important' THEN 2
+                WHEN 'sent' THEN 3
+                WHEN 'drafts' THEN 4
+                WHEN 'archive' THEN 5
+                WHEN 'all' THEN 6
+                WHEN 'junk' THEN 7
+                WHEN 'trash' THEN 8
+                WHEN 'notes' THEN 9
                 ELSE 10 END, display_name COLLATE NOCASE"
         } else {
-            "SELECT id, account_id, remote_name, display_name, special_use, uid_validity, uid_next, unread_count, total_count, synced_at
+            "SELECT id, account_id, remote_name, display_name, special_use, delimiter, uid_validity, uid_next, unread_count, total_count, synced_at
              FROM mail_folders
              ORDER BY account_id, CASE special_use
                 WHEN 'inbox' THEN 0
                 WHEN 'flagged' THEN 1
-                WHEN 'sent' THEN 2
-                WHEN 'drafts' THEN 3
-                WHEN 'archive' THEN 4
-                WHEN 'junk' THEN 5
-                WHEN 'trash' THEN 6
+                WHEN 'important' THEN 2
+                WHEN 'sent' THEN 3
+                WHEN 'drafts' THEN 4
+                WHEN 'archive' THEN 5
+                WHEN 'all' THEN 6
+                WHEN 'junk' THEN 7
+                WHEN 'trash' THEN 8
+                WHEN 'notes' THEN 9
                 ELSE 10 END, display_name COLLATE NOCASE"
         };
         let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
-        let mapper = |row: &rusqlite::Row<'_>| {
-            Ok(MailFolder {
-                id: row.get(0)?,
-                account_id: row.get(1)?,
-                remote_name: row.get(2)?,
-                display_name: row.get(3)?,
-                special_use: row.get(4)?,
-                uid_validity: row.get(5)?,
-                uid_next: row.get(6)?,
-                unread_count: row.get(7)?,
-                total_count: row.get(8)?,
-                synced_at: row.get(9)?,
-            })
-        };
         let rows = if let Some(account_id) = account_id {
-            stmt.query_map(params![account_id], mapper)
+            stmt.query_map(params![account_id], map_folder_row)
         } else {
-            stmt.query_map([], mapper)
+            stmt.query_map([], map_folder_row)
         }
         .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())
+        let list = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        Ok(normalize_cached_folders(list))
     }
 
     pub fn get_folder(&self, folder_id: &str) -> Result<MailFolder, String> {
         let conn = self.connect()?;
         conn.query_row(
-            "SELECT id, account_id, remote_name, display_name, special_use, uid_validity, uid_next, unread_count, total_count, synced_at
+            "SELECT id, account_id, remote_name, display_name, special_use, delimiter, uid_validity, uid_next, unread_count, total_count, synced_at
              FROM mail_folders WHERE id = ?1",
             params![folder_id],
-            |row| {
-                Ok(MailFolder {
-                    id: row.get(0)?,
-                    account_id: row.get(1)?,
-                    remote_name: row.get(2)?,
-                    display_name: row.get(3)?,
-                    special_use: row.get(4)?,
-                    uid_validity: row.get(5)?,
-                    uid_next: row.get(6)?,
-                    unread_count: row.get(7)?,
-                    total_count: row.get(8)?,
-                    synced_at: row.get(9)?,
-                })
-            },
+            map_folder_row,
         )
         .optional()
         .map_err(|e| e.to_string())?
@@ -255,28 +241,10 @@ impl MailStore {
         account_id: &str,
         special_use: &str,
     ) -> Result<Option<MailFolder>, String> {
-        let conn = self.connect()?;
-        conn.query_row(
-            "SELECT id, account_id, remote_name, display_name, special_use, uid_validity, uid_next, unread_count, total_count, synced_at
-             FROM mail_folders WHERE account_id = ?1 AND special_use = ?2 LIMIT 1",
-            params![account_id, special_use],
-            |row| {
-                Ok(MailFolder {
-                    id: row.get(0)?,
-                    account_id: row.get(1)?,
-                    remote_name: row.get(2)?,
-                    display_name: row.get(3)?,
-                    special_use: row.get(4)?,
-                    uid_validity: row.get(5)?,
-                    uid_next: row.get(6)?,
-                    unread_count: row.get(7)?,
-                    total_count: row.get(8)?,
-                    synced_at: row.get(9)?,
-                })
-            },
-        )
-        .optional()
-        .map_err(|e| e.to_string())
+        let folders = self.list_folders(Some(account_id))?;
+        Ok(folders
+            .into_iter()
+            .find(|folder| folder.special_use.as_deref() == Some(special_use)))
     }
 
     pub fn max_uid_in_folder(&self, folder_id: &str) -> Result<u32, String> {
@@ -564,6 +532,43 @@ impl MailStore {
             .map_err(|e| e.to_string())
     }
 
+    /// Lists cached messages across all accounts' primary inbox folders (`special_use = 'inbox'`),
+    /// sorted newest-first for the Unified Inbox view.
+    pub fn list_unified_inbox_messages(
+        &self,
+        limit: usize,
+        offset: usize,
+        filter: Option<&str>,
+    ) -> Result<Vec<MailMessageSummary>, String> {
+        let conn = self.connect()?;
+        let extra = match filter {
+            Some("unread") => "AND (m.flags & 1) = 0",
+            Some("flagged") => "AND (m.flags & 2) != 0",
+            Some("calendar") => "AND m.has_ics = 1",
+            Some("attachments") => "AND m.has_attachments = 1",
+            _ => "",
+        };
+        let sql = format!(
+            "SELECT m.id, m.account_id, m.folder_id, m.uid, m.message_id, m.thread_key, m.subject,
+                    m.from_json, m.to_json, m.date_ts, m.snippet, m.flags,
+                    m.has_attachments, m.has_ics, m.body_fetched
+             FROM mail_messages m
+             JOIN mail_folders f ON f.id = m.folder_id
+             WHERE f.special_use = 'inbox' {extra}
+             ORDER BY m.date_ts DESC, m.uid DESC
+             LIMIT ?1 OFFSET ?2"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(
+                params![limit.min(200) as i64, offset as i64],
+                map_summary_row,
+            )
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
     pub fn search_messages(
         &self,
         account_id: Option<&str>,
@@ -826,6 +831,144 @@ impl MailStore {
         conn.execute(
             "DELETE FROM mail_messages WHERE id = ?1",
             params![message_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Removes the moved message from the source folder cache, updates local total/unread
+    /// counts on both folders, and clears the destination folder's `synced_at` so the next
+    /// visit automatically fetches the newly assigned remote UID.
+    pub fn record_message_moved_local(
+        &self,
+        message_id: &str,
+        from_folder_id: &str,
+        to_folder_id: &str,
+    ) -> Result<(), String> {
+        let mut conn = self.connect()?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let flags: Option<u32> = tx
+            .query_row(
+                "SELECT flags FROM mail_messages WHERE id = ?1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let was_unread = flags.map(|bits| (bits & FLAG_SEEN) == 0).unwrap_or(false);
+        let unread_delta: i64 = if was_unread { 1 } else { 0 };
+
+        tx.execute(
+            "DELETE FROM mail_messages WHERE id = ?1",
+            params![message_id],
+        )
+        .map_err(|e| e.to_string())?;
+
+        if flags.is_some() {
+            tx.execute(
+                "UPDATE mail_folders
+                 SET total_count = MAX(0, total_count - 1),
+                     unread_count = MAX(0, unread_count - ?2)
+                 WHERE id = ?1",
+                params![from_folder_id, unread_delta],
+            )
+            .map_err(|e| e.to_string())?;
+            tx.execute(
+                "UPDATE mail_folders
+                 SET total_count = total_count + 1,
+                     unread_count = unread_count + ?2,
+                     synced_at = NULL
+                 WHERE id = ?1",
+                params![to_folder_id, unread_delta],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Removes locally cached messages in `folder_id` whose remote UIDs are no longer
+    /// present on the IMAP server (deleted or moved on another device).
+    pub fn prune_missing_uids(
+        &self,
+        folder_id: &str,
+        present_uids: &[u32],
+    ) -> Result<usize, String> {
+        let mut conn = self.connect()?;
+        let present: HashSet<u32> = present_uids.iter().copied().collect();
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let stale_ids: Vec<String> = {
+            let mut stmt = tx
+                .prepare("SELECT id, uid FROM mail_messages WHERE folder_id = ?1")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![folder_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+                })
+                .map_err(|e| e.to_string())?;
+            let mut stale = Vec::new();
+            for row in rows {
+                let (id, uid) = row.map_err(|e| e.to_string())?;
+                if !present.contains(&uid) {
+                    stale.push(id);
+                }
+            }
+            stale
+        };
+        let count = stale_ids.len();
+        for id in stale_ids {
+            tx.execute("DELETE FROM mail_messages WHERE id = ?1", params![id])
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(count)
+    }
+
+    /// Removes a permanently deleted message locally and decrements folder total/unread counts.
+    pub fn record_message_deleted_local(
+        &self,
+        message_id: &str,
+        folder_id: &str,
+    ) -> Result<(), String> {
+        let mut conn = self.connect()?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let flags: Option<u32> = tx
+            .query_row(
+                "SELECT flags FROM mail_messages WHERE id = ?1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let was_unread = flags.map(|bits| (bits & FLAG_SEEN) == 0).unwrap_or(false);
+        let unread_delta: i64 = if was_unread { 1 } else { 0 };
+
+        tx.execute(
+            "DELETE FROM mail_messages WHERE id = ?1",
+            params![message_id],
+        )
+        .map_err(|e| e.to_string())?;
+
+        if flags.is_some() {
+            tx.execute(
+                "UPDATE mail_folders
+                 SET total_count = MAX(0, total_count - 1),
+                     unread_count = MAX(0, unread_count - ?2)
+                 WHERE id = ?1",
+                params![folder_id, unread_delta],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Clears `synced_at` on a folder so the next visit or background sync re-fetches headers.
+    pub fn invalidate_folder_sync(&self, folder_id: &str) -> Result<(), String> {
+        let conn = self.connect()?;
+        conn.execute(
+            "UPDATE mail_folders SET synced_at = NULL WHERE id = ?1",
+            params![folder_id],
         )
         .map_err(|e| e.to_string())?;
         Ok(())
@@ -1121,6 +1264,7 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             remote_name TEXT NOT NULL,
             display_name TEXT NOT NULL,
             special_use TEXT,
+            delimiter TEXT,
             uid_validity INTEGER,
             uid_next INTEGER,
             unread_count INTEGER NOT NULL DEFAULT 0,
@@ -1223,7 +1367,43 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(|e| e.to_string())?;
+    ensure_mail_folders_delimiter_column(conn)?;
     Ok(())
+}
+
+fn ensure_mail_folders_delimiter_column(conn: &Connection) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(mail_folders)")
+        .map_err(|e| e.to_string())?;
+    let cols = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    if !cols.iter().any(|col| col == "delimiter") {
+        conn.execute("ALTER TABLE mail_folders ADD COLUMN delimiter TEXT", [])
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn map_folder_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MailFolder> {
+    let remote_name: String = row.get(2)?;
+    let decoded_path = decode_modified_utf7(&remote_name);
+    Ok(MailFolder {
+        id: row.get(0)?,
+        account_id: row.get(1)?,
+        remote_name,
+        decoded_path,
+        display_name: row.get(3)?,
+        special_use: row.get(4)?,
+        delimiter: row.get(5)?,
+        uid_validity: row.get(6)?,
+        uid_next: row.get(7)?,
+        unread_count: row.get(8)?,
+        total_count: row.get(9)?,
+        synced_at: row.get(10)?,
+    })
 }
 
 fn map_summary_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MailMessageSummary> {

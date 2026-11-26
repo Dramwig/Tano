@@ -3,6 +3,7 @@
 //! Modified UTF-7 Chinese folder decoding, SPECIAL-USE folder mapping, incremental UID header sync,
 //! on-demand body fetch, flag updates, message moves, and Sent folder append.
 
+use super::folders::{classify_remote_folders, RemoteFolderCandidate};
 use super::mime::{decode_modified_utf7, make_snippet, parse_header_addresses, parse_references};
 use super::store::{FolderUpsert, HeaderUpsert};
 use super::types::{
@@ -10,7 +11,7 @@ use super::types::{
     FLAG_FLAGGED, FLAG_SEEN, INITIAL_SYNC_LIMIT,
 };
 use imap::types::Flag;
-use imap_proto::{BodyStructure, ContentDisposition, NameAttribute};
+use imap_proto::{BodyStructure, ContentDisposition};
 use mail_parser::{MessageParser, MimeHeaders};
 use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -160,21 +161,27 @@ pub fn list_remote_folders(
         .list(None, Some("*"))
         .map_err(|err| format!("读取邮箱文件夹失败：{}", summarize_imap_error(&err)))?;
 
-    let mut folders = Vec::new();
-    for name in names.iter() {
-        if name
-            .attributes()
-            .iter()
-            .any(|attr| matches!(attr, NameAttribute::NoSelect))
-        {
-            continue;
-        }
-        let remote_name = name.name().to_string();
-        let decoded = decode_modified_utf7(&remote_name);
-        let special_use = detect_special_use(&remote_name, &decoded, name.attributes());
-        let display_name = friendly_folder_name(&decoded, special_use.as_deref());
+    let candidates: Vec<RemoteFolderCandidate<'_>> = names
+        .iter()
+        .map(|name| {
+            let remote_name = name.name();
+            RemoteFolderCandidate {
+                remote_name,
+                decoded_path: decode_modified_utf7(remote_name),
+                delimiter: name
+                    .delimiter()
+                    .filter(|d| !d.is_empty())
+                    .map(str::to_string),
+                attributes: name.attributes(),
+            }
+        })
+        .collect();
+    let classified = classify_remote_folders(&candidates);
+
+    let mut folders = Vec::with_capacity(classified.len());
+    for item in classified {
         let (uid_validity, uid_next, unread_count, total_count) =
-            match session.status(&remote_name, "(MESSAGES UNSEEN UIDNEXT UIDVALIDITY)") {
+            match session.status(&item.remote_name, "(MESSAGES UNSEEN UIDNEXT UIDVALIDITY)") {
                 Ok(status) => (
                     status.uid_validity,
                     status.uid_next,
@@ -183,10 +190,14 @@ pub fn list_remote_folders(
                 ),
                 Err(_) => (None, None, 0, 0),
             };
+        if item.hide_when_empty && total_count == 0 && unread_count == 0 {
+            continue;
+        }
         folders.push(FolderUpsert {
-            remote_name,
-            display_name,
-            special_use,
+            remote_name: item.remote_name,
+            display_name: item.display_name,
+            special_use: item.special_use,
+            delimiter: item.delimiter,
             uid_validity,
             uid_next,
             unread_count,
@@ -205,6 +216,10 @@ pub struct FolderSyncBatch {
     pub uid_validity_changed: bool,
     pub headers: Vec<HeaderUpsert>,
     pub flag_updates: Vec<(u32, u32)>,
+    /// Full authoritative set of UIDs currently present in this remote folder (when
+    /// `UID SEARCH ALL` succeeded cleanly), used to prune locally cached messages deleted
+    /// or moved on other devices.
+    pub present_uids: Option<Vec<u32>>,
 }
 
 pub fn sync_folder_headers(
@@ -232,30 +247,48 @@ pub fn sync_folder_headers(
         .unwrap_or(0);
 
     let effective_last_uid = if uid_validity_changed { 0 } else { last_uid };
-    let target_uids: Vec<u32> = if effective_last_uid > 0 {
-        let query = format!("UID {}:*", effective_last_uid.saturating_add(1));
-        let mut uids: Vec<u32> = session
-            .uid_search(&query)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|uid| *uid > effective_last_uid)
-            .collect();
-        uids.sort_unstable();
-        if uids.len() > INITIAL_SYNC_LIMIT {
-            uids = uids[uids.len() - INITIAL_SYNC_LIMIT..].to_vec();
+    let all_search = session.uid_search("ALL");
+    let (present_uids, target_uids): (Option<Vec<u32>>, Vec<u32>) = match all_search {
+        Ok(set) => {
+            let mut all: Vec<u32> = set.into_iter().collect();
+            all.sort_unstable();
+            // Guard against buggy servers returning an empty search set for a non-empty mailbox.
+            let present = if !all.is_empty() || total_count == 0 {
+                Some(all.clone())
+            } else {
+                None
+            };
+            let mut targets: Vec<u32> = if effective_last_uid > 0 {
+                all.into_iter()
+                    .filter(|uid| *uid > effective_last_uid)
+                    .collect()
+            } else {
+                all
+            };
+            if targets.len() > INITIAL_SYNC_LIMIT {
+                targets = targets[targets.len() - INITIAL_SYNC_LIMIT..].to_vec();
+            }
+            (present, targets)
         }
-        uids
-    } else {
-        let mut all: Vec<u32> = session
-            .uid_search("ALL")
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        all.sort_unstable();
-        if all.len() > INITIAL_SYNC_LIMIT {
-            all = all[all.len() - INITIAL_SYNC_LIMIT..].to_vec();
+        Err(_) => {
+            // Fall back to incremental range search without pruning if `UID SEARCH ALL` failed.
+            let mut targets = if effective_last_uid > 0 {
+                let query = format!("UID {}:*", effective_last_uid.saturating_add(1));
+                session
+                    .uid_search(&query)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|uid| *uid > effective_last_uid)
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            targets.sort_unstable();
+            if targets.len() > INITIAL_SYNC_LIMIT {
+                targets = targets[targets.len() - INITIAL_SYNC_LIMIT..].to_vec();
+            }
+            (None, targets)
         }
-        all
     };
 
     let mut headers = Vec::new();
@@ -316,6 +349,7 @@ pub fn sync_folder_headers(
         uid_validity_changed,
         headers,
         flag_updates,
+        present_uids,
     })
 }
 
@@ -400,6 +434,39 @@ pub fn move_remote_message(
             .map_err(|err| format!("标记删除原邮件失败：{}", summarize_imap_error(&err)))?;
         let _ = session.expunge();
     }
+    let _ = session.logout();
+    Ok(())
+}
+
+/// Permanently deletes a single message from a remote IMAP folder by marking `\Deleted`
+/// and expunging (preferring RFC 4315 `UID EXPUNGE` when advertised by the server).
+pub fn delete_remote_message(
+    account: &MailAccount,
+    creds: &MailCredentials,
+    remote_folder: &str,
+    uid: u32,
+) -> Result<(), String> {
+    let mut session = connect_session(account, creds)?;
+    session
+        .select(remote_folder)
+        .map_err(|err| format!("打开文件夹失败：{}", summarize_imap_error(&err)))?;
+    let uid_str = uid.to_string();
+    session
+        .uid_store(&uid_str, "+FLAGS.SILENT (\\Deleted)")
+        .map_err(|err| format!("标记永久删除失败：{}", summarize_imap_error(&err)))?;
+    let has_uidplus = session
+        .capabilities()
+        .map(|caps| caps.has_str("UIDPLUS"))
+        .unwrap_or(false);
+    let expunge_res = if has_uidplus {
+        let cmd = format!("UID EXPUNGE {uid_str}");
+        session
+            .run_command_and_check_ok(&cmd)
+            .or_else(|_| session.expunge().map(|_| ()))
+    } else {
+        session.expunge().map(|_| ())
+    };
+    expunge_res.map_err(|err| format!("永久删除邮件失败：{}", summarize_imap_error(&err)))?;
     let _ = session.logout();
     Ok(())
 }
@@ -564,85 +631,4 @@ fn walk_bodystructure(bs: &BodyStructure<'_>, has_attachments: &mut bool, has_ic
 fn is_attachment_disposition(disp: Option<&ContentDisposition<'_>>) -> bool {
     disp.map(|d| d.ty.eq_ignore_ascii_case("attachment"))
         .unwrap_or(false)
-}
-
-fn detect_special_use(
-    remote_name: &str,
-    decoded: &str,
-    attributes: &[NameAttribute<'_>],
-) -> Option<String> {
-    if remote_name.eq_ignore_ascii_case("INBOX") {
-        return Some("inbox".into());
-    }
-    for attr in attributes {
-        match attr {
-            NameAttribute::Sent => return Some("sent".into()),
-            NameAttribute::Drafts => return Some("drafts".into()),
-            NameAttribute::Trash => return Some("trash".into()),
-            NameAttribute::Junk => return Some("junk".into()),
-            NameAttribute::Archive => return Some("archive".into()),
-            NameAttribute::Flagged => return Some("flagged".into()),
-            NameAttribute::All => return Some("all".into()),
-            NameAttribute::Extension(name) => {
-                let lower = name.to_ascii_lowercase();
-                if lower.contains("sent") {
-                    return Some("sent".into());
-                }
-                if lower.contains("draft") {
-                    return Some("drafts".into());
-                }
-                if lower.contains("trash") || lower.contains("deleted") {
-                    return Some("trash".into());
-                }
-                if lower.contains("junk") || lower.contains("spam") {
-                    return Some("junk".into());
-                }
-                if lower.contains("archive") {
-                    return Some("archive".into());
-                }
-                if lower.contains("flagged") || lower.contains("starred") {
-                    return Some("flagged".into());
-                }
-            }
-            _ => {}
-        }
-    }
-    let leaf = decoded.rsplit(['/', '.']).next().unwrap_or(decoded);
-    let lower = leaf.to_ascii_lowercase();
-    if matches!(
-        lower.as_str(),
-        "sent" | "sent messages" | "sent mail" | "sent items" | "已发送"
-    ) {
-        return Some("sent".into());
-    }
-    if matches!(lower.as_str(), "drafts" | "draft" | "草稿箱" | "草稿") {
-        return Some("drafts".into());
-    }
-    if matches!(
-        lower.as_str(),
-        "trash" | "deleted messages" | "deleted items" | "已删除" | "废纸篓"
-    ) {
-        return Some("trash".into());
-    }
-    if matches!(lower.as_str(), "junk" | "junk email" | "spam" | "垃圾邮件") {
-        return Some("junk".into());
-    }
-    if matches!(lower.as_str(), "archive" | "归档") {
-        return Some("archive".into());
-    }
-    None
-}
-
-fn friendly_folder_name(decoded: &str, special_use: Option<&str>) -> String {
-    match special_use {
-        Some("inbox") => "收件箱".into(),
-        Some("sent") => "已发送".into(),
-        Some("drafts") => "草稿箱".into(),
-        Some("trash") => "已删除".into(),
-        Some("junk") => "垃圾邮件".into(),
-        Some("archive") => "归档".into(),
-        Some("flagged") => "星标邮件".into(),
-        Some("all") => "全部邮件".into(),
-        _ => decoded.to_string(),
-    }
 }

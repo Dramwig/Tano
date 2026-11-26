@@ -431,6 +431,11 @@ pub async fn mail_sync_account(
             if !batch.flag_updates.is_empty() {
                 store.update_known_flags(&folder.id, &batch.flag_updates)?;
             }
+            if !batch.uid_validity_changed {
+                if let Some(ref present) = batch.present_uids {
+                    store.prune_missing_uids(&folder.id, present)?;
+                }
+            }
         }
 
         Ok(MailSyncSummary {
@@ -486,6 +491,11 @@ pub async fn mail_sync_folder(
         if !batch.flag_updates.is_empty() {
             store.update_known_flags(&folder.id, &batch.flag_updates)?;
         }
+        if !batch.uid_validity_changed {
+            if let Some(ref present) = batch.present_uids {
+                store.prune_missing_uids(&folder.id, present)?;
+            }
+        }
         Ok(MailSyncSummary {
             account_id: account.id,
             folders_synced: 1,
@@ -513,6 +523,18 @@ pub fn mail_messages_list(
         offset.unwrap_or(0),
         filter.as_deref(),
     )
+}
+
+#[tauri::command]
+pub fn mail_messages_list_inbox(
+    app: tauri::AppHandle,
+    limit: Option<usize>,
+    offset: Option<usize>,
+    filter: Option<String>,
+) -> Result<Vec<MailMessageSummary>, String> {
+    let dir = data_dir(&app)?;
+    let store = MailStore::open(&dir)?;
+    store.list_unified_inbox_messages(limit.unwrap_or(80), offset.unwrap_or(0), filter.as_deref())
 }
 
 #[tauri::command]
@@ -599,23 +621,51 @@ pub async fn mail_message_move(
     if from_folder.account_id != to_folder.account_id {
         return Err("不支持跨邮箱账号移动邮件".into());
     }
+    if from_folder.id == to_folder.id {
+        return Ok(());
+    }
+    let lock = state.lock_for(&from_folder.account_id);
+    let _guard = lock.lock().await;
     let account = accounts::get_account(&dir, &from_folder.account_id)?;
     let creds = state.resolve_credentials(&dir, &account).await?;
     let uid = detail.summary.uid;
+    let from_remote = from_folder.remote_name.clone();
+    let to_remote = to_folder.remote_name.clone();
 
     tokio::task::spawn_blocking(move || {
-        imap_client::move_remote_message(
-            &account,
-            &creds,
-            &from_folder.remote_name,
-            &to_folder.remote_name,
-            uid,
-        )
+        imap_client::move_remote_message(&account, &creds, &from_remote, &to_remote, uid)
     })
     .await
     .map_err(|_| "移动邮件中断".to_string())??;
 
-    store.remove_message_local(&message_id)?;
+    store.record_message_moved_local(&message_id, &from_folder.id, &to_folder.id)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mail_message_delete(
+    app: tauri::AppHandle,
+    state: State<'_, MailState>,
+    message_id: String,
+) -> Result<(), String> {
+    let dir = data_dir(&app)?;
+    let store = MailStore::open(&dir)?;
+    let detail = store.get_message_detail(&message_id)?;
+    let folder = store.get_folder(&detail.summary.folder_id)?;
+    let lock = state.lock_for(&folder.account_id);
+    let _guard = lock.lock().await;
+    let account = accounts::get_account(&dir, &folder.account_id)?;
+    let creds = state.resolve_credentials(&dir, &account).await?;
+    let uid = detail.summary.uid;
+    let remote_folder = folder.remote_name.clone();
+
+    tokio::task::spawn_blocking(move || {
+        imap_client::delete_remote_message(&account, &creds, &remote_folder, uid)
+    })
+    .await
+    .map_err(|_| "永久删除邮件中断".to_string())??;
+
+    store.record_message_deleted_local(&message_id, &folder.id)?;
     Ok(())
 }
 
@@ -703,13 +753,18 @@ pub async fn mail_send(
         AppendSentPolicy::Always | AppendSentPolicy::Auto => true,
     };
 
+    let store = MailStore::open(&dir)?;
+    let sent_folder = store
+        .find_special_folder(&account.id, "sent")
+        .ok()
+        .flatten();
+
     let mut appended_to_sent = false;
     if should_append {
-        let store = MailStore::open(&dir)?;
-        if let Ok(Some(sent_folder)) = store.find_special_folder(&account.id, "sent") {
+        if let Some(ref sent) = sent_folder {
             let append_account = account.clone();
             let append_creds = creds.clone();
-            let remote_name = sent_folder.remote_name.clone();
+            let remote_name = sent.remote_name.clone();
             let res = tokio::task::spawn_blocking(move || {
                 imap_client::append_to_sent(
                     &append_account,
@@ -723,6 +778,10 @@ pub async fn mail_send(
                 appended_to_sent = true;
             }
         }
+    }
+
+    if let Some(ref sent) = sent_folder {
+        let _ = store.invalidate_folder_sync(&sent.id);
     }
 
     Ok(MailSendResult {

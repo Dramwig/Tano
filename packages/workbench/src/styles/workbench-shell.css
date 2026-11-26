@@ -407,6 +407,7 @@ button:hover {
   flex-shrink: 0;
 }
 .sidebar-navigation-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -450,6 +451,32 @@ button:hover {
   grid-template-columns: 1fr;
   margin-left: 6px;
   opacity: 1;
+}
+.sidebar-nav-badge {
+  position: absolute;
+  top: 2px;
+  right: 1px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--green-fill, var(--green));
+  color: var(--on-accent, #fff);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  box-shadow: 0 0 0 1.5px var(--paper);
+}
+.sidebar-navigation-button[aria-pressed='true'] .sidebar-nav-badge {
+  position: static;
+  margin-left: 5px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  box-shadow: none;
 }
 .sidebar-brand-slot {
   display: flex;

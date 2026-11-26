@@ -7,6 +7,7 @@ import FileTree from '../../files/components/FileTree.vue';
 import HelpLauncher from '../../help/components/HelpLauncher.vue';
 import { t } from '../../i18n/i18n';
 import { MAIL_TAB_ID } from '../../mail/types';
+import { useMailStore } from '../../stores/mail';
 import { mobile } from '../../platform/platform';
 import PluginExplorer from '../../plugins/components/PluginExplorer.vue';
 import PluginView from '../../plugins/components/PluginView.vue';
@@ -134,6 +135,15 @@ const {
 } = toRefs(treeMenus);
 
 const { modal, settingsPanel, showModal } = toRefs(modals);
+
+const mail = useMailStore();
+watch(
+  mailEnabled,
+  (enabled) => {
+    if (enabled) void mail.init();
+  },
+  { immediate: true },
+);
 
 // Switching sidebar views replays the mail-style entrance on the new view.
 // Opening/closing the sidebar itself keeps its own slide, so a hidden sidebar
@@ -272,14 +282,17 @@ function setBrandButton(el: unknown) {
         type="button"
         class="sidebar-navigation-button"
         :style="orderStyle(MAIL_TAB_ID)"
-        :aria-label="t('邮箱')"
-        :data-tooltip="t('邮箱')"
+        :aria-label="mail.totalUnread > 0 ? t('邮箱（{0} 封未读）', [mail.totalUnread]) : t('邮箱')"
+        :data-tooltip="mail.totalUnread > 0 ? t('邮箱（{0} 封未读）', [mail.totalUnread]) : t('邮箱')"
         :aria-controls="`sidebar-${MAIL_TAB_ID}`"
         :aria-pressed="sidebarView === MAIL_TAB_ID"
         @click="openMail()"
       >
         <Mail :size="18" :stroke-width="1.6" aria-hidden="true" />
         <span :aria-hidden="sidebarView !== MAIL_TAB_ID"><span>{{ t('邮箱') }}</span></span>
+        <small v-if="mail.totalUnread > 0" class="sidebar-nav-badge" aria-hidden="true">
+          {{ mail.totalUnread > 99 ? '99+' : mail.totalUnread }}
+        </small>
       </button>
       <template v-for="view in extensionViews" :key="view.id">
         <button

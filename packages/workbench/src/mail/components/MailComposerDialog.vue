@@ -9,6 +9,7 @@ import type { MailSendAttachment } from '../types';
 
 const mail = useMailStore();
 
+const draftId = ref('');
 const accountId = ref('');
 const toText = ref('');
 const ccText = ref('');
@@ -26,11 +27,12 @@ watch(
   () => [mail.composerOpen, mail.composeSeed] as const,
   ([open, seed]) => {
     if (!open) return;
+    draftId.value = seed?.draftId ?? '';
     accountId.value = seed?.accountId || mail.accounts[0]?.id || '';
     toText.value = (seed?.to ?? []).join(', ');
     ccText.value = (seed?.cc ?? []).join(', ');
-    bccText.value = '';
-    showCcBcc.value = Boolean(seed?.cc?.length);
+    bccText.value = (seed?.bcc ?? []).join(', ');
+    showCcBcc.value = Boolean(seed?.cc?.length || seed?.bcc?.length);
     subject.value = seed?.subject ?? '';
     markdownBody.value = seed?.markdownBody ?? '';
     attachments.value = [...(seed?.attachments ?? [])];
@@ -128,7 +130,7 @@ async function saveLocalDraft() {
   error.value = '';
   try {
     await mail.saveDraft({
-      id: '',
+      id: draftId.value,
       accountId: accountId.value,
       to: parseAddressInput(toText.value),
       cc: parseAddressInput(ccText.value),
@@ -162,18 +164,21 @@ async function send() {
   sending.value = true;
   error.value = '';
   try {
-    await mail.sendMail({
-      accountId: accountId.value,
-      to,
-      cc,
-      bcc,
-      subject: subject.value.trim() || t('（无主题）'),
-      textBody: markdownBody.value,
-      htmlBody: markdownToEmailHtml(markdownBody.value),
-      inReplyTo: mail.composeSeed?.inReplyTo ?? undefined,
-      references: mail.composeSeed?.references,
-      attachments: attachments.value,
-    });
+    await mail.sendMail(
+      {
+        accountId: accountId.value,
+        to,
+        cc,
+        bcc,
+        subject: subject.value.trim() || t('（无主题）'),
+        textBody: markdownBody.value,
+        htmlBody: markdownToEmailHtml(markdownBody.value),
+        inReplyTo: mail.composeSeed?.inReplyTo ?? undefined,
+        references: mail.composeSeed?.references,
+        attachments: attachments.value,
+      },
+      { draftId: draftId.value || undefined },
+    );
     mail.closeComposer();
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);

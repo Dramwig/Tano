@@ -9,7 +9,14 @@ import outlook from '../../assets/mail-provider-icons/outlook.svg';
 import qq from '../../assets/mail-provider-icons/qq.svg';
 import yahoo from '../../assets/mail-provider-icons/yahoo.svg';
 
-const props = defineProps<{ provider: string }>();
+const props = withDefaults(
+  defineProps<{
+    provider: string;
+    size?: 'xs' | 'sm' | 'md';
+  }>(),
+  { size: 'md' },
+);
+
 const icons = new Map([
   ['gmail', gmail],
   ['icloud', icloud],
@@ -20,11 +27,16 @@ const icons = new Map([
   ['yahoo', yahoo],
 ]);
 const icon = computed(() => icons.get(props.provider));
+const fallbackSize = computed(() => (props.size === 'xs' ? 11 : props.size === 'sm' ? 12 : 15));
 </script>
 
 <template>
-  <span class="mail-provider-icon" :class="{ generic: !icon }" aria-hidden="true">
+  <span
+    class="mail-provider-icon"
+    :class="[size !== 'md' ? `size-${size}` : '', { generic: !icon }]"
+    aria-hidden="true"
+  >
     <img v-if="icon" :src="icon" alt="" />
-    <Settings2 v-else :size="15" />
+    <Settings2 v-else :size="fallbackSize" />
   </span>
 </template>

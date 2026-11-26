@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 export const MAIL_TAB_ID = 'view:mail';
+export const UNIFIED_INBOX_ID = '__unified_inbox__';
+export const LOCAL_DRAFTS_ID = '__local_drafts__';
 
 export type TlsMode = 'tls' | 'starttls';
 export type AppendSentPolicy = 'auto' | 'never' | 'always';
@@ -95,8 +97,10 @@ export interface MailFolder {
   id: string;
   accountId: string;
   remoteName: string;
+  decodedPath?: string;
   displayName: string;
   specialUse: string | null;
+  delimiter?: string | null;
   uidValidity: number | null;
   uidNext: number | null;
   unreadCount: number;
@@ -232,9 +236,11 @@ export interface MailDraft {
 }
 
 export interface MailComposeSeed {
+  draftId?: string;
   accountId?: string;
   to?: string[];
   cc?: string[];
+  bcc?: string[];
   subject?: string;
   markdownBody?: string;
   inReplyTo?: string | null;

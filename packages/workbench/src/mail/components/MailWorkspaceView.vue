@@ -9,14 +9,17 @@ import {
   Check,
   ChevronRight,
   Download,
+  FilePenLine,
   FilePlus2,
   FileText,
+  FolderInput,
   Forward,
   Image as ImageIcon,
   ListTodo,
   Mail,
   MailOpen,
   Paperclip,
+  PenSquare,
   Plus,
   RefreshCw,
   Reply,
@@ -37,6 +40,7 @@ import {
   buildRsvpReplyIcs,
   parseInvitePreview,
 } from '../mail-calendar';
+import { buildAccountDisplayMeta } from '../mail-folders';
 import {
   buildSandboxedEmailSrcdoc,
   emailToMarkdownDocument,
@@ -46,12 +50,16 @@ import {
   formatMailAddressList,
   type MailAttachmentInfo,
   type MailCalendarInvite,
+  type MailDraft,
   type MailFilter,
+  type MailMessageSummary,
   type RsvpResponseStatus,
 } from '../types';
 import { avatarHue, senderInitial } from '../mail-avatar';
+import { folderDisplayTitle } from '../mail-folder-ui';
 import MailAccountDialog from './MailAccountDialog.vue';
 import MailComposerDialog from './MailComposerDialog.vue';
+import MailMoveFolderPopover from './MailMoveFolderPopover.vue';
 import MailProviderIcon from './MailProviderIcon.vue';
 
 const mail = useMailStore();
@@ -63,6 +71,62 @@ const allowRemoteImages = ref(false);
 const actionFeedback = ref('');
 const actionError = ref('');
 const busyAction = ref('');
+const armedDeleteId = ref('');
+let armedDeleteTimer: ReturnType<typeof setTimeout> | undefined;
+
+const movePopover = ref<{
+  messageId: string;
+  accountId: string;
+  currentFolderId: string;
+  anchorRect: DOMRect;
+  triggerEl: HTMLElement | null;
+} | null>(null);
+
+const movePopoverFolders = computed(() =>
+  movePopover.value ? (mail.foldersByAccount.get(movePopover.value.accountId) ?? []) : [],
+);
+
+const accountMeta = computed(() => buildAccountDisplayMeta(mail.accounts));
+const accountById = computed(() => new Map(mail.accounts.map((acc) => [acc.id, acc])));
+const folderById = computed(() => new Map(mail.folders.map((folder) => [folder.id, folder])));
+
+const visibleDrafts = computed(() => {
+  const needle = searchInput.value.trim().toLowerCase();
+  if (!needle) return mail.drafts;
+  return mail.drafts.filter(
+    (d) =>
+      d.subject.toLowerCase().includes(needle) ||
+      d.to.join(' ').toLowerCase().includes(needle) ||
+      d.markdownBody.toLowerCase().includes(needle),
+  );
+});
+
+const listContextTitle = computed(() => {
+  if (mail.isUnifiedInbox) return t('所有收件箱');
+  if (mail.isLocalDrafts) return t('本机草稿');
+  if (!mail.selectedFolder) return '';
+  return folderDisplayTitle(mail.selectedFolder);
+});
+
+const listContextAccount = computed(() => {
+  if (!mail.selectedFolder) return undefined;
+  return accountById.value.get(mail.selectedFolder.accountId);
+});
+
+const showListContextBar = computed(
+  () => mail.isUnifiedInbox || mail.isLocalDrafts || (mail.accounts.length > 1 && !!mail.selectedFolder),
+);
+
+function clearArmedDelete() {
+  clearTimeout(armedDeleteTimer);
+  armedDeleteTimer = undefined;
+  armedDeleteId.value = '';
+}
+
+function isPermanentDeleteFolder(folderId: string): boolean {
+  const special = folderById.value.get(folderId)?.specialUse;
+  return special === 'trash' || special === 'junk';
+}
 
 onMounted(() => {
   void mail.init();
@@ -70,10 +134,21 @@ onMounted(() => {
 
 watch(
   () => mail.selectedMessageId,
-  () => {
+  (nextId) => {
     allowRemoteImages.value = false;
-    actionFeedback.value = '';
-    actionError.value = '';
+    clearArmedDelete();
+    if (nextId) {
+      actionFeedback.value = '';
+      actionError.value = '';
+    }
+  },
+);
+
+watch(
+  () => mail.selectedFolderId,
+  () => {
+    movePopover.value = null;
+    clearArmedDelete();
   },
 );
 
@@ -204,11 +279,95 @@ function onListKeydown(event: KeyboardEvent) {
 }
 
 function quickArchive(id: string) {
-  void runAction('archive', () => mail.moveToSpecialFolder(id, 'archive'));
+  void runAction('archive', async () => {
+    const target = await mail.moveToSpecialFolder(id, 'archive');
+    return target ? t('已移至「{0}」', [folderDisplayTitle(target)]) : undefined;
+  });
 }
 
 function quickTrash(id: string) {
-  void runAction('trash', () => mail.moveToSpecialFolder(id, 'trash'));
+  void runAction('trash', async () => {
+    const target = await mail.moveToSpecialFolder(id, 'trash');
+    return target ? t('已移至「{0}」', [folderDisplayTitle(target)]) : undefined;
+  });
+}
+
+function quickDeleteOrTrash(item: MailMessageSummary) {
+  if (!isPermanentDeleteFolder(item.folderId)) {
+    quickTrash(item.id);
+    return;
+  }
+  if (armedDeleteId.value !== item.id) {
+    clearArmedDelete();
+    armedDeleteId.value = item.id;
+    armedDeleteTimer = setTimeout(() => {
+      armedDeleteId.value = '';
+    }, 4000);
+    return;
+  }
+  clearArmedDelete();
+  void runAction('delete', async () => {
+    await mail.deleteMessage(item.id);
+    return t('已永久删除该邮件');
+  });
+}
+
+function deleteTooltipFor(item: MailMessageSummary): string {
+  if (!isPermanentDeleteFolder(item.folderId)) return t('移至已删除');
+  return armedDeleteId.value === item.id ? t('再次点击确认彻底删除') : t('彻底删除');
+}
+
+function removeLocalDraft(draft: MailDraft) {
+  void runAction('delete-draft', async () => {
+    await mail.deleteDraft(draft.id);
+  });
+}
+
+function draftAccountMeta(accountId: string) {
+  const acc = accountById.value.get(accountId);
+  if (!acc) return null;
+  return {
+    provider: acc.provider,
+    tag: accountMeta.value.get(accountId)?.shortTag ?? acc.label ?? acc.email,
+  };
+}
+
+function openMovePopover(item: MailMessageSummary, event: MouseEvent) {
+  const triggerEl = event.currentTarget as HTMLElement | null;
+  if (!triggerEl) return;
+  if (
+    movePopover.value?.messageId === item.id &&
+    movePopover.value.triggerEl === triggerEl
+  ) {
+    movePopover.value = null;
+    return;
+  }
+  movePopover.value = {
+    messageId: item.id,
+    accountId: item.accountId,
+    currentFolderId: item.folderId,
+    anchorRect: triggerEl.getBoundingClientRect(),
+    triggerEl,
+  };
+}
+
+function closeMovePopover(restoreFocus = false) {
+  const trigger = movePopover.value?.triggerEl;
+  movePopover.value = null;
+  if (restoreFocus && trigger?.isConnected) {
+    trigger.focus({ preventScroll: true });
+  }
+}
+
+function handleMoveToFolder(targetFolderId: string) {
+  const current = movePopover.value;
+  if (!current) return;
+  const messageId = current.messageId;
+  movePopover.value = null;
+  void runAction('move', async () => {
+    const target = await mail.moveToFolder(messageId, targetFolderId);
+    return target ? t('已移至「{0}」', [folderDisplayTitle(target)]) : undefined;
+  });
 }
 
 function openReply(replyAll: boolean) {
@@ -249,10 +408,10 @@ function openForward() {
     subject: /^(fwd|fw):/i.test(subj) ? subj : `Fwd: ${subj}`,
     markdownBody: [
       '',
-      '---------- 转发的邮件 ----------',
-      `发件人：${formatMailAddressList(detail.value.summary.from)}`,
-      `时间：${formatFullDate(detail.value.summary.dateTs)}`,
-      `主题：${subj}`,
+      `---------- ${t('转发的邮件')} ----------`,
+      `${t('发件人：')}${formatMailAddressList(detail.value.summary.from)}`,
+      `${t('时间：')}${formatFullDate(detail.value.summary.dateTs)}`,
+      `${t('主题：')}${subj}`,
       '',
       detail.value.textBody || detail.value.summary.snippet,
     ].join('\n'),
@@ -413,8 +572,8 @@ async function downloadAttachment(att: MailAttachmentInfo) {
             <input
               v-model="searchInput"
               type="text"
-              :aria-label="t('搜索主题、发件人或正文…')"
-              :placeholder="t('搜索主题、发件人或正文…')"
+              :aria-label="mail.isUnifiedInbox ? t('搜索所有邮箱…') : t('搜索主题、发件人或正文…')"
+              :placeholder="mail.isUnifiedInbox ? t('搜索所有邮箱…') : t('搜索主题、发件人或正文…')"
               @input="!searchInput && mail.search('')"
               @keydown.esc="clearSearch"
             />
@@ -431,16 +590,30 @@ async function downloadAttachment(att: MailAttachmentInfo) {
           <button
             type="button"
             class="icon-button"
-            :aria-label="t('同步当前文件夹')"
-            :data-tooltip="t('同步当前文件夹')"
-            :disabled="!!mail.syncingAccountId || !mail.selectedFolderId"
+            :aria-label="mail.isUnifiedInbox ? t('同步全部邮箱') : t('同步当前文件夹')"
+            :data-tooltip="mail.isUnifiedInbox ? t('同步全部邮箱') : t('同步当前文件夹')"
+            :disabled="mail.isSelectedFolderSyncing || !mail.selectedFolderId"
             @click="mail.syncSelectedFolder()"
           >
-            <RefreshCw :size="15" :class="{ spinning: !!mail.syncingAccountId }" />
+            <RefreshCw :size="15" :class="{ spinning: mail.isSelectedFolderSyncing }" />
           </button>
         </header>
 
-        <div class="mail-filter-bar" role="toolbar">
+        <div v-if="showListContextBar" class="mail-list-context">
+          <MailProviderIcon
+            v-if="listContextAccount"
+            :provider="listContextAccount.provider"
+            size="xs"
+          />
+          <span class="mail-list-context-title">
+            <template v-if="listContextAccount">
+              {{ accountMeta.get(listContextAccount.id)?.shortTag ?? listContextAccount.label }} ·
+            </template>
+            {{ listContextTitle }}
+          </span>
+        </div>
+
+        <div v-if="!mail.isLocalDrafts" class="mail-filter-bar" role="toolbar">
           <button
             v-for="item in filters"
             :key="item.id"
@@ -457,18 +630,102 @@ async function downloadAttachment(att: MailAttachmentInfo) {
         <p v-if="mail.error" class="mail-alert error mail-list-alert">
           <AlertTriangle :size="14" /> <span>{{ mail.error }}</span>
         </p>
+        <p v-else-if="!detail && actionError" class="mail-alert error mail-list-alert" role="alert">
+          <AlertTriangle :size="14" />
+          <span>{{ actionError }}</span>
+          <button type="button" class="mail-alert-close" :aria-label="t('关闭')" @click="actionError = ''">
+            <X :size="13" />
+          </button>
+        </p>
+        <p v-else-if="!detail && actionFeedback" class="mail-alert ok mail-list-alert" role="status">
+          <Check :size="14" /> <span>{{ actionFeedback }}</span>
+        </p>
 
-        <ul ref="listRef" class="mail-message-list" @keydown="onListKeydown">
+        <!-- Local drafts list -->
+        <ul v-if="mail.isLocalDrafts" class="mail-message-list">
+          <li v-if="!visibleDrafts.length" class="mail-list-empty">
+            <FilePenLine :size="20" />
+            <span>{{ t('当前暂无本机草稿') }}</span>
+          </li>
+          <li
+            v-for="draft in visibleDrafts"
+            :key="draft.id"
+            class="mail-message-row"
+          >
+            <button
+              type="button"
+              class="mail-message-item mail-draft-item"
+              @click="mail.openDraftInComposer(draft)"
+            >
+              <span class="mail-draft-icon" aria-hidden="true">
+                <FilePenLine :size="15" />
+              </span>
+              <span class="mail-item-main">
+                <span class="mail-item-top">
+                  <span class="mail-item-sender">
+                    {{ draft.to.length ? draft.to.join(', ') : t('未填写收件人') }}
+                  </span>
+                  <time class="mail-item-date">{{ formatDate(draft.updatedAt) }}</time>
+                </span>
+                <span class="mail-item-subject">{{ draft.subject || t('（无主题）') }}</span>
+                <span class="mail-item-bottom">
+                  <span class="mail-item-snippet">{{ draft.markdownBody.trim() }}</span>
+                  <span
+                    v-if="mail.accounts.length > 1 && draftAccountMeta(draft.accountId)"
+                    class="mail-item-account-tag"
+                  >
+                    <MailProviderIcon
+                      :provider="draftAccountMeta(draft.accountId)!.provider"
+                      size="xs"
+                    />
+                    <span>{{ draftAccountMeta(draft.accountId)!.tag }}</span>
+                  </span>
+                </span>
+              </span>
+            </button>
+            <span class="mail-row-actions">
+              <button
+                type="button"
+                class="mail-row-action danger"
+                :aria-label="t('删除草稿')"
+                :data-tooltip="t('删除草稿')"
+                @click.stop="removeLocalDraft(draft)"
+              >
+                <Trash2 :size="14" />
+              </button>
+            </span>
+          </li>
+        </ul>
+
+        <!-- Remote folder / Unified Inbox message list -->
+        <ul v-else ref="listRef" class="mail-message-list" @keydown="onListKeydown">
           <li v-if="!mail.messages.length" class="mail-list-empty">
-            <Search v-if="mail.searchQuery" :size="20" />
+            <RefreshCw
+              v-if="mail.isSelectedFolderSyncing && !mail.searchQuery"
+              :size="20"
+              class="spinning"
+            />
+            <Search v-else-if="mail.searchQuery" :size="20" />
             <Mail v-else :size="20" />
-            <span>{{ mail.searchQuery ? t('没有匹配的本地缓存邮件') : t('当前文件夹暂无邮件，点击右上角刷新同步') }}</span>
+            <span>
+              {{
+                mail.isSelectedFolderSyncing && !mail.searchQuery
+                  ? t('正在同步此文件夹…')
+                  : mail.searchQuery
+                    ? t('没有匹配的本地缓存邮件')
+                    : t('当前文件夹暂无邮件，点击右上角刷新同步')
+              }}
+            </span>
           </li>
           <li
             v-for="item in mail.messages"
             :key="item.id"
             class="mail-message-row"
-            :class="{ active: mail.selectedMessageId === item.id, unread: !item.seen }"
+            :class="{
+              active: mail.selectedMessageId === item.id,
+              unread: !item.seen,
+              'menu-open': movePopover?.messageId === item.id || armedDeleteId === item.id,
+            }"
           >
             <button
               type="button"
@@ -492,6 +749,17 @@ async function downloadAttachment(att: MailAttachmentInfo) {
                 <span class="mail-item-bottom">
                   <span class="mail-item-snippet">{{ item.snippet }}</span>
                   <span class="mail-item-icons">
+                    <span
+                      v-if="mail.isUnifiedInbox && mail.accounts.length > 1 && draftAccountMeta(item.accountId)"
+                      class="mail-item-account-tag"
+                      :title="accountById.get(item.accountId)?.email"
+                    >
+                      <MailProviderIcon
+                        :provider="draftAccountMeta(item.accountId)!.provider"
+                        size="xs"
+                      />
+                      <span>{{ draftAccountMeta(item.accountId)!.tag }}</span>
+                    </span>
                     <Star v-if="item.flagged" :size="12" class="mail-icon-star" />
                     <CalendarDays v-if="item.hasIcs" :size="12" />
                     <Paperclip v-if="item.hasAttachments" :size="12" />
@@ -524,6 +792,17 @@ async function downloadAttachment(att: MailAttachmentInfo) {
               <button
                 type="button"
                 class="mail-row-action"
+                :aria-label="t('移动到文件夹')"
+                :data-tooltip="t('移动到文件夹')"
+                :aria-expanded="movePopover?.messageId === item.id"
+                aria-haspopup="dialog"
+                @click.stop="openMovePopover(item, $event)"
+              >
+                <FolderInput :size="14" />
+              </button>
+              <button
+                type="button"
+                class="mail-row-action"
                 :aria-label="t('归档')"
                 :data-tooltip="t('归档')"
                 @click.stop="quickArchive(item.id)"
@@ -533,9 +812,10 @@ async function downloadAttachment(att: MailAttachmentInfo) {
               <button
                 type="button"
                 class="mail-row-action danger"
-                :aria-label="t('移至已删除')"
-                :data-tooltip="t('移至已删除')"
-                @click.stop="quickTrash(item.id)"
+                :class="{ armed: armedDeleteId === item.id }"
+                :aria-label="deleteTooltipFor(item)"
+                :data-tooltip="deleteTooltipFor(item)"
+                @click.stop="quickDeleteOrTrash(item)"
               >
                 <Trash2 :size="14" />
               </button>
@@ -552,6 +832,17 @@ async function downloadAttachment(att: MailAttachmentInfo) {
           <span class="mail-skeleton w30" />
           <span class="mail-skeleton block" />
           <span class="mail-sr-only">{{ t('正在从邮箱加载正文…') }}</span>
+        </div>
+        <div v-else-if="mail.isLocalDrafts" class="mail-reader-empty">
+          <span class="mail-hero-icon small"><FilePenLine :size="22" /></span>
+          <p>{{ t('点击左侧本机草稿继续编辑，或点击「写邮件」新建邮件。') }}</p>
+          <button
+            type="button"
+            class="mail-btn-secondary mail-btn-sm mail-reader-cta"
+            @click="mail.openComposer()"
+          >
+            <PenSquare :size="14" /> {{ t('写邮件') }}
+          </button>
         </div>
         <div v-else-if="!detail" class="mail-reader-empty">
           <span class="mail-hero-icon small"><MailOpen :size="22" /></span>
@@ -628,18 +919,33 @@ async function downloadAttachment(att: MailAttachmentInfo) {
               <button
                 type="button"
                 class="icon-button"
+                :aria-label="t('移动到文件夹')"
+                :data-tooltip="t('移动到文件夹')"
+                :aria-expanded="movePopover?.messageId === detail.summary.id"
+                aria-haspopup="dialog"
+                :disabled="!!busyAction"
+                @click="openMovePopover(detail.summary, $event)"
+              >
+                <FolderInput :size="16" />
+              </button>
+              <button
+                type="button"
+                class="icon-button"
                 :aria-label="t('归档')"
                 :data-tooltip="t('归档')"
-                @click="runAction('archive', () => mail.moveToSpecialFolder(detail!.summary.id, 'archive'))"
+                :disabled="!!busyAction"
+                @click="quickArchive(detail!.summary.id)"
               >
                 <Archive :size="16" />
               </button>
               <button
                 type="button"
                 class="icon-button danger"
-                :aria-label="t('移至已删除')"
-                :data-tooltip="t('移至已删除')"
-                @click="runAction('trash', () => mail.moveToSpecialFolder(detail!.summary.id, 'trash'))"
+                :class="{ armed: armedDeleteId === detail.summary.id }"
+                :aria-label="deleteTooltipFor(detail.summary)"
+                :data-tooltip="deleteTooltipFor(detail.summary)"
+                :disabled="!!busyAction"
+                @click="quickDeleteOrTrash(detail!.summary)"
               >
                 <Trash2 :size="16" />
               </button>
@@ -817,5 +1123,14 @@ async function downloadAttachment(att: MailAttachmentInfo) {
 
     <MailAccountDialog />
     <MailComposerDialog />
+    <MailMoveFolderPopover
+      :open="!!movePopover"
+      :anchor-rect="movePopover?.anchorRect ?? null"
+      :folders="movePopoverFolders"
+      :current-folder-id="movePopover?.currentFolderId ?? ''"
+      :busy="!!busyAction"
+      @select="handleMoveToFolder"
+      @close="closeMovePopover"
+    />
   </div>
 </template>
