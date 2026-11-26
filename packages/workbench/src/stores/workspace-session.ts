@@ -1,6 +1,5 @@
 import { computed, watch, type ComputedRef, type Ref } from 'vue';
 import {
-  editableDocumentKind,
   type FileEntry,
   type FileRegistry,
   type FileSnapshot,
@@ -9,7 +8,6 @@ import {
   type WorkspaceLayout,
   type WorkspaceSession,
 } from '@tano/protocol';
-import { isFeatureEnabled } from '../features';
 import type { createDataTableController } from '../data-tables/data-table-controller';
 import { isTableTab, tableFileId, tableTabId } from '../data-tables/data-tables';
 import type { useDocumentIndex } from '../documents/document-index';
@@ -211,19 +209,16 @@ export function createWorkspaceSession(deps: WorkspaceSessionDeps) {
           }
           return;
         }
-        const restoredPath = file?.path ?? tab.path;
-        const restoredKind = editableDocumentKind(restoredPath, isFeatureEnabled('codeFileEditing'));
         const doc: OpenDocument = {
           id: file?.id ?? tab.id,
-          path: restoredPath,
-          format: restoredKind === 'code' ? 'code' : 'markdown',
+          path: file?.path ?? tab.path,
           content: tab.draft.content,
           base: tab.draft.base,
           saving: false,
           creating: file?.pendingCreation,
           missing: !file,
         };
-        if (!doc.creating && doc.format !== 'code') await hydrateDocumentLayout(doc);
+        if (!doc.creating) await hydrateDocumentLayout(doc);
         documents.value.push(doc);
         activity('已恢复未保存草稿', doc.path, 'file');
         if (file) {

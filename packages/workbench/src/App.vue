@@ -29,7 +29,6 @@ import { provideWorkbenchContexts } from './shell/workbench-context';
 import DesktopTabs from './tabs/components/DesktopTabs.vue';
 import AuxiliaryWindows from './windows/AuxiliaryWindows.vue';
 import WindowScope from './windows/WindowScope.vue';
-import { native } from './workspace/adapter';
 
 const props = defineProps<WorkbenchProps>();
 const emit = defineEmits<{ ready: [] }>();
@@ -38,6 +37,7 @@ const { prefs, shell, documents, treeMenus, modals } = provideWorkbenchContexts(
 );
 
 const {
+  native,
   activeWindow,
   workspace,
   compactPanes,

@@ -902,6 +902,7 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
       resizeSidebarWithKeyboard: prefs.resizeSidebarWithKeyboard,
     },
     shell: {
+      native,
       store,
       workspace,
       active,

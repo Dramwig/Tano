@@ -263,14 +263,14 @@ export function referencePicker(options: {
         active = Math.min(active, matches.length - 1);
         for (const host of iconHosts) renderIcon(null, host);
         iconHosts.length = 0;
-        list.replaceChildren();
+        const rows = document.createDocumentFragment();
         if (!matches.length) {
           const empty = document.createElement('p');
           empty.className = 'tano-reference-picker-empty';
           empty.textContent = query
             ? '没有找到匹配结果，试试其他名称或类型。'
             : '此类型暂无可引用内容。';
-          list.append(empty);
+          rows.append(empty);
         }
         let index = 0;
         for (const group of groups) {
@@ -315,8 +315,9 @@ export function referencePicker(options: {
             section.append(button);
             index++;
           }
-          list.append(section);
+          rows.append(section);
         }
+        list.replaceChildren(rows);
         try {
           const rect = view.coordsAtPos(Math.min(session.to, view.state.doc.content.size));
           menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8))}px`;

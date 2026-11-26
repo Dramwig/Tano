@@ -21,7 +21,6 @@ import { mobile } from '../../platform/platform';
 import { pluginPreviewStatus, pluginViewHeader } from '../../plugins/view-header';
 import { PLUGINS_TAB_ID } from '../../plugins/workspace-plugins';
 import type { DocumentTab, OpenDocument } from '../../stores/workspace-types';
-import { native } from '../../workspace/adapter';
 import { shortcutAriaLabel, shortcutKeys } from '../shortcuts';
 import {
   workbenchDocumentsKey,
@@ -52,6 +51,7 @@ const treeMenus = inject(workbenchTreeMenusKey);
 if (!shell || !prefs || !documents || !treeMenus) throw new Error('Workbench context is required');
 
 const {
+  native,
   workspace,
   filesPending,
   sidebar,
@@ -265,7 +265,7 @@ const { treeDocumentIcons, loadTreeDocumentIcon } = toRefs(treeMenus);
         :execute="store.interactWithPlugin"
       />
       <button
-        v-if="active && active.format !== 'code' && touchLayout && showOutline"
+        v-if="active && touchLayout && showOutline"
         type="button"
         class="icon-button"
         :aria-label="t('文档大纲')"
@@ -329,7 +329,7 @@ const { treeDocumentIcons, loadTreeDocumentIcon } = toRefs(treeMenus);
         @open-archive="openPlanArchive"
       />
       <div
-        v-if="active && active.format !== 'code' && documentSuggestions.get(active.id)?.mode && !editing.isManaging(active.id)"
+        v-if="active && documentSuggestions.get(active.id)?.mode && !editing.isManaging(active.id)"
         class="suggestion-mode-badge"
         role="status"
         :aria-label="t('建议模式已开启')"
@@ -347,7 +347,7 @@ const { treeDocumentIcons, loadTreeDocumentIcon } = toRefs(treeMenus);
       </div>
       <template v-if="active">
         <div
-          v-if="active.format !== 'code' && documentToolItems.some((item) => isVisible(item.id))"
+          v-if="documentToolItems.some((item) => isVisible(item.id))"
           class="document-tool-buttons"
         >
           <MarkdownRevealToggle

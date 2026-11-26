@@ -13,8 +13,50 @@ pub fn resolve(root: &Path, relative: &str, must_exist: bool) -> Result<PathBuf,
     resolve_path(root, relative, must_exist, false).map_err(String::from)
 }
 
-pub fn is_workspace_data_path(relative: &str) -> bool {
-    tano_protocol::is_workspace_data_path(relative)
+// Keep native classification aligned with the shared vectors. The published
+// protocol dependency recognizes a smaller set of portable data paths.
+pub fn is_workspace_data_path(path: &str) -> bool {
+    let Some(relative) = path.strip_prefix(".tano/") else {
+        return false;
+    };
+    matches!(
+        relative,
+        "capabilities.json"
+            | "folders.tano.json"
+            | "settings.tano.json"
+            | "plugins.tano.json"
+            | "relations.tano-relations.json"
+            | "rules/assistant.md"
+    ) || (relative.starts_with("objects/") && relative.ends_with(".tano.json"))
+        || (relative.starts_with("conflicts/") && relative.ends_with(".json"))
+        || relative.strip_prefix("templates/").is_some_and(|name| {
+            name.strip_suffix(".md")
+                .is_some_and(tano_protocol::is_short_id)
+        })
+        || relative.strip_prefix("views/").is_some_and(|name| {
+            name.strip_suffix(".tano.json").is_some_and(|id| {
+                !id.is_empty()
+                    && id.len() <= 64
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            })
+        })
+        || [
+            "annotations/",
+            "discussions/",
+            "document-layout/",
+            "suggestions/",
+            "tables/",
+            "files/",
+        ]
+        .iter()
+        .any(|prefix| {
+            relative.strip_prefix(prefix).is_some_and(|name| {
+                name.strip_suffix(".tano.json")
+                    .is_some_and(tano_protocol::is_short_id)
+            })
+        })
 }
 
 pub fn is_workspace_data_directory(relative: &str) -> bool {

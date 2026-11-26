@@ -84,7 +84,9 @@ it.each(['source', 'prose'] as const)('reuses %s projections, preserving every e
   doc.content = '';
   doc.content = '正文';
   await expect.poll(() => marks()).toEqual([]);
-  await expect.poll(async () => (await loadCommentFile(adapter, 'annotation', doc.id)).file.threads[0]?.detached).toBe(true);
+  // Persistence is debounced and then performs an asynchronous workspace write.
+  await expect.poll(async () => (await loadCommentFile(adapter, 'annotation', doc.id)).file.threads[0]?.detached,
+    { timeout: 3000 }).toBe(true);
   if (basis === 'source') expect(parser).not.toHaveBeenCalled();
 });
 

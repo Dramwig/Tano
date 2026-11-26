@@ -4646,7 +4646,7 @@ dependencies = [
 
 [[package]]
 name = "tano"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4663,7 +4663,7 @@ dependencies = [
 
 [[package]]
 name = "tano-native"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "ammonia",
  "base64 0.22.1",

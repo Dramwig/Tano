@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, inject, ref, toRefs } from 'vue';
-import { AlertTriangle, ArrowUpRight, Eye, ListTodo, WrapText } from 'lucide-vue-next';
+import { computed, inject, toRefs } from 'vue';
+import { AlertTriangle, ArrowUpRight, ListTodo } from 'lucide-vue-next';
 import { defaultSelectionContext } from '@tano/editor/selection-context';
 import { safeRemoteImage, type WorkspacePane } from '@tano/protocol';
 import { isFeatureEnabled } from '../../features';
@@ -10,7 +10,6 @@ import { shortcutAriaLabel, shortcutKeys } from '../../shell/shortcuts';
 import { createEditorPluginAdapters } from '../../plugins/editor-plugin-adapters';
 import {
   CalloutIconPicker,
-  CodeEditor,
   DocumentComments,
   EditorTools,
   MarkdownEditor,
@@ -34,25 +33,11 @@ import DocumentTitle from './DocumentTitle.vue';
 import MarkdownRevealToggle from './MarkdownRevealToggle.vue';
 import SourceCodeIcon from './SourceCodeIcon.vue';
 
-const props = defineProps<{
+defineProps<{
   pane: WorkspacePane;
   active: OpenDocument;
   isAuxiliaryWindow: boolean;
 }>();
-
-const isCodeDocument = computed(() => props.active.format === 'code');
-const codeWordWrap = ref(false);
-const codeLanguageTag = computed(() => {
-  const base = props.active.path.split('/').at(-1) ?? '';
-  const dot = base.lastIndexOf('.');
-  return dot > 0 ? base.slice(dot + 1).toUpperCase() : (base.toUpperCase() || 'TEXT');
-});
-const codeLineCount = computed(() => props.active.content.split('\n').length);
-const canSwitchCodePreview = computed(() => /\.(json|jsonc|csv|tsv)$/i.test(props.active.path));
-function switchCodeToPreview() {
-  const entry = workspace.value?.files.find((item) => item.id === props.active.id);
-  if (entry) void store.value.openAttachment(entry);
-}
 
 const shell = inject(workbenchShellKey);
 const prefs = inject(workbenchPrefsKey);

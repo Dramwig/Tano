@@ -11,7 +11,6 @@ import { CALENDAR_TAB_ID } from '../../plans/calendar';
 import { mobile } from '../../platform/platform';
 import { PLUGINS_TAB_ID } from '../../plugins/workspace-plugins';
 import { SETTINGS_TAB_ID } from '../../settings/settings-tab';
-import { native } from '../../workspace/adapter';
 import { layoutPanes } from '../pane-layout';
 import { isEmptyPaneFallback } from '../pane-registry';
 import { useWindowContext } from '../../windows/context';
@@ -67,6 +66,7 @@ if (!shell || !prefs || !documents || !treeMenus || !modals) {
 }
 
 const {
+  native,
   workspace,
   startupPending,
   filesPending,
@@ -395,7 +395,6 @@ function showEmptyPaneFallback(activeId: string, tab?: DocumentTab) {
             v-else-if="workspace && pane.activeId.startsWith('attachment:')"
             status-managed
             @status="receiveAttachmentStatus(pane.id, $event)"
-            @edit-source="(file) => { store.focusPane(pane.id); void store.openFile(file); }"
             :read-only="!!workspace.readOnly || updateLock || busy"
             :controls-target="isAuxiliaryWindow ? undefined : `#attachment-controls-${pane.id}`"
             :file="tab?.attachment"
@@ -458,7 +457,7 @@ function showEmptyPaneFallback(activeId: string, tab?: DocumentTab) {
               !isAuxiliaryWindow &&
               pane.id === store.activePaneId &&
               (activeDocumentSidebarView ||
-                (active.format !== 'code' && showOutline && (!touchLayout || touchOutlineOpen)))
+                (showOutline && (!touchLayout || touchOutlineOpen)))
             "
           />
         </div>

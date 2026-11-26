@@ -50,8 +50,8 @@ test('dispatches document and discussion mentions in the background and preserve
   const ids = (await inboxTasks()).map(task => task.id);
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: '打开同页助手', exact: true }).click();
+  await page.getByRole('button', { name: '机器人收件箱', exact: true }).click();
   const inbox = page.locator('.agent-inbox');
-  await inbox.locator(':scope > summary').click();
   await expect(inbox.locator('ol > li')).toHaveCount(3);
   await inbox.getByRole('button', { name: '执行记录', exact: true }).first().click();
   await expect(inbox.getByRole('region', { name: '执行记录' })).toContainText('机器人');

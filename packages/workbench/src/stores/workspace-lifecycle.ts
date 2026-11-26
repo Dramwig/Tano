@@ -428,10 +428,8 @@ export function createWorkspaceLifecycle(deps: WorkspaceLifecycleDeps) {
           doc.missing = false;
           await reconcile(doc, await adapter.read(doc.path));
           await saveInternal(doc);
-          if (doc.format !== 'code') {
-            if (doc.tableLayout && !layoutDirty(doc.tableLayout)) await hydrateDocumentLayout(doc);
-            await saveTableLayout(doc);
-          }
+          if (doc.tableLayout && !layoutDirty(doc.tableLayout)) await hydrateDocumentLayout(doc);
+          await saveTableLayout(doc);
         }
       });
     } catch (error) {

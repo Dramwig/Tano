@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import { buildPlugin } from './plugin-build.mjs';
-import { acceptTaskInsights, openPluginCenter } from '../../tests/fixtures/task-insights-acceptance.mjs';
+import { acceptTaskInsights, openPluginImport, openPluginCenter } from '../../tests/fixtures/task-insights-acceptance.mjs';
 
 if (process.platform !== 'win32') throw new Error('This acceptance test requires Windows and WebView2.');
 if (!process.env.npm_execpath) throw new Error('Run npm run test:plugins:native from the repository.');
@@ -95,7 +95,7 @@ try {
   console.log('React/Chart.js native acceptance passed: pagination, canvas, filters, events and cleanup.');
   const { canonical, integrity } = await buildPlugin(join(root, 'tests/fixtures/native-query-plugin'));
   await openPluginCenter(page);
-  await page.getByRole('button', { name: '导入插件', exact: true }).click();
+  await openPluginImport(page);
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件', exact: true }).click();
@@ -103,6 +103,7 @@ try {
   await page.locator('.plugin-detail-page').getByRole('button', { name: '权限', exact: true }).click();
   await page.getByRole('button', { name: '授权此版本运行', exact: true }).click();
   await closePluginDetails(page);
+  await selectInstalledPlugins(page);
   const gitPlugin = page.getByRole('region', { name: '插件工具', exact: true })
     .getByRole('article').filter({ hasText: '本机查询测试' });
   await gitPlugin.getByRole('button', { name: '打开标签页', exact: true }).click();
@@ -118,7 +119,7 @@ try {
   expect(await readFile(join(workspace, '.git/index'))).toEqual(indexBefore);
   await openPluginCenter(page);
   const importer = await buildPlugin(join(root, 'examples/plugins/github-importer'));
-  await page.getByRole('button', { name: '导入插件', exact: true }).click();
+  await openPluginImport(page);
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(importer.canonical);
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件', exact: true }).click();
@@ -132,6 +133,7 @@ try {
   await closePluginDetails(page);
   const connection = page.locator('details[aria-label="插件服务连接"]');
   const expandConnections = async () => {
+    await selectInstalledPlugins(page);
     // Tab views no longer render a duplicate preview in the plugin center.
     // Wait for activation, then use the summary's keyboard action across layout changes.
     await expect.poll(() => page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').pluginRuntime.find(plugin => plugin.id === 'github-importer')?.status), { timeout: 30000 }).toBe('running');
@@ -215,7 +217,7 @@ try {
       await page.evaluate(({ workspaceId, entry }) => window.__TAURI_INTERNALS__.invoke('plugin_connections_remove', { requestId: crypto.randomUUID(), workspaceId, pluginId: entry.pluginId, origin: entry.origin, version: entry.version }), { workspaceId: identity, entry });
     }
   }
-  await page.locator('.plugin-center:not(.plugin-center-sidebar)').getByRole('button', { name: /^已安装/ }).click();
+  await selectInstalledPlugins(page);
   await page.locator('.plugin-center:not(.plugin-center-sidebar)').getByRole('button', { name: '查看本机查询测试详情', exact: true }).click();
   await page.getByRole('button', { name: '停用插件', exact: true }).click();
   await closePluginDetails(page);
@@ -261,6 +263,11 @@ try {
   // Do not leave a test application identity in the normal release executable.
   console.log('Restoring the normal release host configuration.');
   await run('cargo', cargoArgs, { env: nativeEnvironment });
+}
+
+function selectInstalledPlugins(page) {
+  return page.getByRole('navigation', { name: '插件中心导航' })
+    .getByRole('button', { name: /^已安装/ }).click();
 }
 
 async function closePluginDetails(page) {

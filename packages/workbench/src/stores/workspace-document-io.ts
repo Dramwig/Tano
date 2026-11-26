@@ -1,7 +1,6 @@
 import type { Ref } from 'vue';
 import {
   documentLayoutPath,
-  editableDocumentKind,
   isDataTableFilePath,
   isMarkdown,
   parentPath,
@@ -14,7 +13,6 @@ import {
   type Workspace,
   type WorkspaceAdapter,
 } from '@tano/protocol';
-import { isFeatureEnabled } from '../features';
 import type { WorkspaceSettings } from '../workspace/workspace-settings';
 import type { createWorkspaceAssistantBridge } from '../assistant/workspace-bridge';
 import type { createDataTableController } from '../data-tables/data-table-controller';
@@ -166,29 +164,22 @@ export function createWorkspaceDocumentIO(deps: WorkspaceDocumentIODeps) {
     }
   }
 
-  const MAX_CODE_DOCUMENT_BYTES = 2 * 1024 * 1024;
-
-  function documentKindForEntry(file: FileEntry): 'markdown' | 'code' | null {
-    if (file.kind !== 'file') return null;
-    const kind = editableDocumentKind(file.path, isFeatureEnabled('codeFileEditing'));
-    if (kind === 'code' && file.size > MAX_CODE_DOCUMENT_BYTES) return null;
-    return kind;
+  function isMarkdownEntry(file: FileEntry): boolean {
+    return file.kind === 'file' && isMarkdown(file.path);
   }
 
   async function readOpenDocument(file: FileEntry): Promise<OpenDocument> {
-    const kind = documentKindForEntry(file);
     const snapshot = await adapter.read(file.path);
     const doc: OpenDocument = {
       id: file.id,
       path: file.path,
-      format: kind === 'code' ? 'code' : 'markdown',
       content: snapshot.content,
       base: snapshot,
       saving: false,
       creating: file.pendingCreation,
       missing: false,
     };
-    if (!doc.creating && doc.format !== 'code') await hydrateDocumentLayout(doc);
+    if (!doc.creating) await hydrateDocumentLayout(doc);
     return doc;
   }
 
@@ -198,7 +189,7 @@ export function createWorkspaceDocumentIO(deps: WorkspaceDocumentIODeps) {
       tabsLayout.activateTab(tableTabId(file.id), replaceId);
       return;
     }
-    if (!documentKindForEntry(file)) return;
+    if (!isMarkdownEntry(file)) return;
     let doc = documentIndex.byId.value.get(file.id);
     if (!doc) doc = await readOpenDocument(file);
     if (!current()) return;
@@ -241,13 +232,12 @@ export function createWorkspaceDocumentIO(deps: WorkspaceDocumentIODeps) {
   }
 
   function prefetchFile(file: FileEntry) {
-    const kind = documentKindForEntry(file);
-    if (!adapter.prefetch || busy.value || isDisposed() || !kind)
+    if (!adapter.prefetch || busy.value || isDisposed() || !isMarkdownEntry(file))
       return;
     const entry = fileRegistry.value?.get(file.id);
     if (!entry || entry.pendingCreation) return;
     void adapter.prefetch(entry.path).catch(() => {});
-    if (kind === 'markdown' && /^[0-9a-f]{6}$/.test(entry.id)) {
+    if (/^[0-9a-f]{6}$/.test(entry.id)) {
       const path = documentLayoutPath(entry.id);
       if (fileRegistry.value?.at(path)) void adapter.prefetch(path).catch(() => {});
     }
@@ -262,20 +252,18 @@ export function createWorkspaceDocumentIO(deps: WorkspaceDocumentIODeps) {
     }
     const entry = fileRegistry.value?.get(file.id);
     if (!entry || entry.pendingCreation) return false;
-    const kind = documentKindForEntry(entry);
-    if (!kind) return false;
+    if (!isMarkdownEntry(entry)) return false;
     const snapshot = adapter.readCached?.(entry.path);
     if (!snapshot) return false;
     const doc: OpenDocument = {
       id: entry.id,
       path: entry.path,
-      format: kind,
       content: snapshot.content,
       base: snapshot,
       saving: false,
       missing: false,
     };
-    if (kind === 'markdown' && /^[0-9a-f]{6}$/.test(entry.id)) {
+    if (/^[0-9a-f]{6}$/.test(entry.id)) {
       const path = documentLayoutPath(entry.id);
       const exists = !!fileRegistry.value?.at(path);
       const base = exists ? adapter.readCached?.(path) : null;
