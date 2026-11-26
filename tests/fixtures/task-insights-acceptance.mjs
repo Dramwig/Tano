@@ -3,6 +3,13 @@ export function selectWorkspaceSidebarTab(page, name) {
     .getByRole('tab', { name, exact: true }).click();
 }
 
+export async function openPluginCenter(page) {
+  await selectWorkspaceSidebarTab(page, '插件');
+  const sidebar = page.getByRole('region', { name: '插件', exact: true });
+  await sidebar.getByLabel('更多操作', { exact: true }).click();
+  await sidebar.getByRole('button', { name: '插件中心…', exact: true }).click();
+}
+
 /** Reused unchanged by the browser demo and the production WebView2/native adapter. */
 export async function acceptTaskInsights(page, expect, canonical, screenshotPath) {
   await page.evaluate(async () => {
@@ -11,11 +18,7 @@ export async function acceptTaskInsights(page, expect, canonical, screenshotPath
       properties: { checkable: true, completed: i % 3 === 2, kanbanLane: i % 3 === 1 ? 'doing' : 'todo' } });
     await store.createObject({ type: 'event', name: '统计验收 普通事件', description: '', archived: false, properties: { checkable: false } });
   });
-  await page.getByRole('button', { name: /^切换上下文：/ }).click();
-  await page.getByRole('button', { name: '更多操作', exact: true }).click();
-  await page.getByRole('menuitem', { name: /命令中心/ }).click();
-  await page.getByRole('combobox', { name: '搜索命令' }).fill('打开插件中心');
-  await page.getByRole('option').filter({ hasText: '打开插件中心' }).click();
+  await openPluginCenter(page);
   await page.getByRole('button', { name: '导入插件', exact: true }).click();
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
   await page.getByRole('button', { name: '检查清单' }).click();
@@ -77,8 +80,7 @@ export async function acceptTaskInsights(page, expect, canonical, screenshotPath
   const runtime = await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').pluginRuntime.find(row => row.id === 'task-insights'));
   expect(runtime.status).toBe('running');
   expect(runtime.logs.filter(row => row.level === 'error')).toEqual([]);
-  await page.getByRole('region', { name: '插件', exact: true }).getByLabel('更多操作', { exact: true }).click();
-  await page.getByRole('button', { name: '插件中心…', exact: true }).click();
+  await openPluginCenter(page);
   await page.locator('.plugin-center:not(.plugin-center-sidebar)').getByRole('button', { name: /^已安装/ }).click();
   await page.locator('.plugin-center:not(.plugin-center-sidebar)').getByRole('button', { name: '查看任务统计详情', exact: true }).click();
   await page.getByRole('button', { name: '停用插件', exact: true }).click();
