@@ -30,6 +30,8 @@ function close() {
   if (authorizing.value) {
     void mail.cancelOAuth();
   }
+  pendingAccountId.value = '';
+  reauthAccountId.value = '';
   mail.accountDialogOpen = false;
 }
 
@@ -44,7 +46,21 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown, true);
 });
 
+const APP_PASSWORD_PROVIDERS = new Set([
+  'qq',
+  'netease-163',
+  'netease-126',
+  'gmail',
+  'icloud',
+  'yahoo',
+]);
+
+function normalizePassword(providerId: string, raw: string): string {
+  return APP_PASSWORD_PROVIDERS.has(providerId) ? raw.replace(/\s+/g, '') : raw;
+}
+
 const selectedPresetId = ref('qq');
+const pendingAccountId = ref('');
 const reauthAccountId = ref('');
 const label = ref('QQ 邮箱');
 const email = ref('');
@@ -80,8 +96,12 @@ const isOAuth = computed(() => currentPreset.value?.authKind === 'oauth2-microso
 const oauthConfigured = computed(() => !!currentPreset.value?.oauthConfigured);
 
 async function pickProvider(presetId: string) {
+  pendingAccountId.value = '';
   reauthAccountId.value = '';
   email.value = '';
+  displayName.value = '';
+  username.value = '';
+  password.value = '';
   oauthClientId.value = '';
   oauthTenant.value = '';
   applyPreset(presetId);
@@ -92,6 +112,7 @@ async function pickProvider(presetId: string) {
 
 function startReauthorize(acc: MailAccount) {
   applyPreset(acc.provider);
+  pendingAccountId.value = '';
   reauthAccountId.value = acc.id;
   label.value = acc.label;
   email.value = acc.email;
@@ -112,6 +133,7 @@ function backToPick() {
   if (authorizing.value) {
     void mail.cancelOAuth();
   }
+  pendingAccountId.value = '';
   reauthAccountId.value = '';
   step.value = 'pick';
   error.value = '';
@@ -155,6 +177,7 @@ watch(
 
 function buildInput(): MailAccountInput {
   return {
+    id: pendingAccountId.value || undefined,
     provider: selectedPresetId.value,
     label: label.value.trim(),
     email: email.value.trim(),
@@ -177,7 +200,7 @@ async function testConnection() {
   try {
     const res = await mail.testAccount(buildInput(), {
       username: username.value.trim() || email.value.trim(),
-      password: password.value,
+      password: normalizePassword(selectedPresetId.value, password.value),
     });
     statusMessage.value = res.message;
   } catch (err) {
@@ -192,14 +215,21 @@ async function submitAccount() {
   error.value = '';
   statusMessage.value = '';
   try {
-    const saved = await mail.saveAccount(buildInput(), {
-      username: username.value.trim() || email.value.trim(),
-      password: password.value,
-    });
+    const normalizedPassword = normalizePassword(selectedPresetId.value, password.value);
+    const creds =
+      pendingAccountId.value && !normalizedPassword
+        ? undefined
+        : {
+            username: username.value.trim() || email.value.trim(),
+            password: normalizedPassword,
+          };
+    const saved = await mail.saveAccount(buildInput(), creds);
+    pendingAccountId.value = saved.id;
     password.value = '';
     statusMessage.value = t('账号已保存，正在首次同步文件夹与近期邮件…');
     try {
       await mail.syncAccount(saved.id);
+      pendingAccountId.value = '';
       email.value = '';
       displayName.value = '';
       username.value = '';
@@ -238,6 +268,7 @@ async function submitOAuth() {
       smtpPort: Number(smtpPort.value),
       smtpTls: smtpTls.value,
     });
+    reauthAccountId.value = saved.id;
     statusMessage.value = t('账号已保存，正在首次同步文件夹与近期邮件…');
     try {
       await mail.syncAccount(saved.id);
@@ -486,7 +517,7 @@ function formatBytes(bytes: number): string {
             <details class="mail-advanced">
               <summary>
                 <ChevronRight :size="14" class="mail-advanced-chevron" />
-                {{ t('更多设置') }}
+                {{ t('高级设置') }}
               </summary>
               <div class="mail-form-grid">
                 <label class="mail-field">

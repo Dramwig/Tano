@@ -233,9 +233,12 @@ mod tests {
         let presets = mail_presets();
         assert_eq!(presets.len(), 8);
         assert!(presets.iter().any(|p| p.id == "qq" && p.imap_port == 993));
-        assert!(presets
-            .iter()
-            .any(|p| p.id == "netease-163" && p.send_imap_id));
+        assert!(presets.iter().any(|p| p.id == "netease-163"
+            && p.send_imap_id
+            && p.append_sent == AppendSentPolicy::Never));
+        assert!(presets.iter().any(|p| p.id == "netease-126"
+            && p.send_imap_id
+            && p.append_sent == AppendSentPolicy::Never));
         assert!(presets.iter().any(|p| {
             p.id == "outlook"
                 && p.auth_kind == MailAuthKind::Oauth2Microsoft
@@ -341,5 +344,50 @@ mod tests {
         .expect("overridden");
         assert_eq!(overridden.client_id, "ui-client-456");
         assert_eq!(overridden.tenant, "organizations");
+    }
+
+    #[test]
+    fn accounts_registry_persists_atomically_in_app_data() {
+        use super::accounts::{get_account, list_accounts, write_accounts_map};
+        use super::types::MailAccount;
+        use std::collections::BTreeMap;
+
+        let dir = tempdir().expect("tempdir");
+        let account_id = "22222222-2222-4222-8222-222222222222".to_string();
+        let mut map = BTreeMap::new();
+        map.insert(
+            account_id.clone(),
+            MailAccount {
+                id: account_id.clone(),
+                provider: "outlook".into(),
+                label: "Outlook".into(),
+                email: "alice@outlook.com".into(),
+                display_name: "Alice".into(),
+                auth_kind: MailAuthKind::Oauth2Microsoft,
+                oauth_client_id: Some("4397e6d7-0c2a-468a-8422-7ba9fe9197b4".into()),
+                oauth_tenant: Some("common".into()),
+                imap_host: "outlook.office365.com".into(),
+                imap_port: 993,
+                imap_tls: TlsMode::Tls,
+                smtp_host: "smtp.office365.com".into(),
+                smtp_port: 587,
+                smtp_tls: TlsMode::Starttls,
+                append_sent: AppendSentPolicy::Never,
+                send_imap_id: false,
+                created_at: 1_764_000_000,
+            },
+        );
+
+        // Creating mail-accounts.json from scratch must succeed.
+        write_accounts_map(dir.path(), &map).expect("create mail-accounts.json");
+        let listed = list_accounts(dir.path()).expect("list accounts");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].email, "alice@outlook.com");
+
+        // Updating an existing mail-accounts.json must atomically replace it.
+        map.get_mut(&account_id).unwrap().label = "Work Outlook".into();
+        write_accounts_map(dir.path(), &map).expect("update mail-accounts.json");
+        let fetched = get_account(dir.path(), &account_id).expect("get account");
+        assert_eq!(fetched.label, "Work Outlook");
     }
 }

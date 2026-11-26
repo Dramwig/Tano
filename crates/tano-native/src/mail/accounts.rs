@@ -155,19 +155,18 @@ fn read_accounts_map(data_dir: &Path) -> Result<BTreeMap<String, MailAccount>, S
     serde_json::from_str(&raw).map_err(|_| "邮箱账号配置损坏，原文件已保留".into())
 }
 
-fn write_accounts_map(data_dir: &Path, map: &BTreeMap<String, MailAccount>) -> Result<(), String> {
+pub(crate) fn write_accounts_map(
+    data_dir: &Path,
+    map: &BTreeMap<String, MailAccount>,
+) -> Result<(), String> {
     std::fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
     let path = accounts_file(data_dir);
     let body = serde_json::to_string_pretty(map).map_err(|e| e.to_string())?;
-    if path.exists() {
-        let base = crate::storage::read(&path)?;
-        match crate::storage::write(&path, &body, &base.hash)? {
-            crate::storage::WriteResult::Saved { .. } => Ok(()),
-            _ => Err("邮箱账号配置已变化，请重试".into()),
-        }
-    } else {
-        crate::storage::create(&path, &body)
-    }
+    // App-data registry file: write atomically without workspace document extension checks.
+    crate::storage::temporary(&path, body.as_bytes())?
+        .persist(&path)
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub fn list_accounts(data_dir: &Path) -> Result<Vec<MailAccount>, String> {
@@ -230,17 +229,23 @@ pub fn save_account(
         created_at,
     };
 
+    let is_new = !map.contains_key(&id);
     if let Some(mut creds) = credentials {
         if creds.username.trim().is_empty() {
             creds.username = account.email.clone();
         }
         save_credentials(&id, &creds)?;
-    } else if !map.contains_key(&id) {
+    } else if is_new {
         return Err("新增邮箱账号必须提供授权码或密码".into());
     }
 
-    map.insert(id, account.clone());
-    write_accounts_map(data_dir, &map)?;
+    map.insert(id.clone(), account.clone());
+    if let Err(err) = write_accounts_map(data_dir, &map) {
+        if is_new {
+            let _ = delete_credentials(&id);
+        }
+        return Err(err);
+    }
     Ok(account)
 }
 

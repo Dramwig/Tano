@@ -113,7 +113,7 @@ fn connect_session(account: &MailAccount, creds: &MailCredentials) -> Result<Ima
             .unwrap_or(false);
     if should_send_id {
         let id_cmd = format!(
-            "ID (\"name\" \"Tano\" \"version\" \"{}\" \"vendor\" \"Tano\")",
+            "ID (\"name\" \"Tano\" \"version\" \"{}\" \"vendor\" \"Tano\" \"support-email\" \"support@tano.page\")",
             env!("CARGO_PKG_VERSION")
         );
         let _ = session.run_command_and_check_ok(&id_cmd);
