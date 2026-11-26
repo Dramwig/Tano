@@ -265,7 +265,7 @@ const { treeDocumentIcons, loadTreeDocumentIcon } = toRefs(treeMenus);
         :execute="store.interactWithPlugin"
       />
       <button
-        v-if="active && active.format !== 'code' && touchLayout && showOutline"
+        v-if="active && touchLayout && showOutline"
         type="button"
         class="icon-button"
         :aria-label="t('文档大纲')"
@@ -329,7 +329,7 @@ const { treeDocumentIcons, loadTreeDocumentIcon } = toRefs(treeMenus);
         @open-archive="openPlanArchive"
       />
       <div
-        v-if="active && active.format !== 'code' && documentSuggestions.get(active.id)?.mode && !editing.isManaging(active.id)"
+        v-if="active && documentSuggestions.get(active.id)?.mode && !editing.isManaging(active.id)"
         class="suggestion-mode-badge"
         role="status"
         :aria-label="t('建议模式已开启')"
@@ -347,7 +347,7 @@ const { treeDocumentIcons, loadTreeDocumentIcon } = toRefs(treeMenus);
       </div>
       <template v-if="active">
         <div
-          v-if="active.format !== 'code' && documentToolItems.some((item) => isVisible(item.id))"
+          v-if="documentToolItems.some((item) => isVisible(item.id))"
           class="document-tool-buttons"
         >
           <MarkdownRevealToggle

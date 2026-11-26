@@ -395,7 +395,6 @@ function showEmptyPaneFallback(activeId: string, tab?: DocumentTab) {
             v-else-if="workspace && pane.activeId.startsWith('attachment:')"
             status-managed
             @status="receiveAttachmentStatus(pane.id, $event)"
-            @edit-source="(file) => { store.focusPane(pane.id); void store.openFile(file); }"
             :read-only="!!workspace.readOnly || updateLock || busy"
             :controls-target="isAuxiliaryWindow ? undefined : `#attachment-controls-${pane.id}`"
             :file="tab?.attachment"
@@ -458,7 +457,7 @@ function showEmptyPaneFallback(activeId: string, tab?: DocumentTab) {
               !isAuxiliaryWindow &&
               pane.id === store.activePaneId &&
               (activeDocumentSidebarView ||
-                (active.format !== 'code' && showOutline && (!touchLayout || touchOutlineOpen)))
+                (showOutline && (!touchLayout || touchOutlineOpen)))
             "
           />
         </div>
