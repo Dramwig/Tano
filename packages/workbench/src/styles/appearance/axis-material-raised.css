@@ -1,14 +1,12 @@
 /* Raised card material (立体卡片, builtin:raised — loaded in @layer material).
-   Opaque surface-only material: sculpts every primary surface, card, tab, dialog and control as a
-   floating inner card cradled inside a whisper-soft recessed trough (outer casing rim + sunken groove
-   + directional top specular catch-light + downward contact shadow pooling into the groove), avoiding
-   stiff uniform wireframe borders.
+   Opaque surface-only material: adds crisp outer perimeter edges, directional top specular bevels,
+   physical 1px lower edge thickness, and grounded elevation shadows across primary sheets, cards,
+   tabs, popovers, dialogs, and controls — without adding extra outer frames or casing rings.
    Never alters --workbench-back*, --workbench-sidebar, palette colours, layout geometry, or component radii. */
 
 @media screen {
   :root[data-material='builtin:raised'] {
-    /* Light mode: pure sculpted bevel + physical 1px edge thickness + clean 4px recessed double-bezel tray
-       on standalone cards — zero wide blurry drop shadows in either light or dark mode.
+    /* Light mode: crisp sculpted bevel + physical 1px edge thickness + grounded elevation on floating surfaces.
        Derive --raised-edge from --line so the crisp rim never washes out against darker desks like 影灰. */
     --raised-edge: color-mix(in srgb, var(--text) 3.5%, var(--line));
     --raised-focus-edge: color-mix(in srgb, var(--text) 10%, var(--line));
@@ -16,38 +14,36 @@
     --raised-top-sheen: rgb(255 255 255 / 92%);
     --raised-underside: color-mix(in srgb, var(--text) 5.5%, transparent);
     --raised-ledge: color-mix(in srgb, var(--text) 5.5%, transparent);
-    /* Airy 4px recessed tray (~2.6% off --paper, matching light reference) + whisper outer casing hairline. */
-    --raised-groove: color-mix(in srgb, var(--text) 2.6%, var(--paper));
-    --raised-outer-rim: color-mix(in srgb, var(--line) 82%, var(--paper) 18%);
-    /* Hair-tight 1px contact seating only (no floating blur shadows). */
+    /* Hair-tight 1px contact seating for inline cards and sheets. */
     --raised-contact-shadow: color-mix(in srgb, var(--text) 3%, transparent);
     --raised-bevel:
       inset 0 1px 0 var(--raised-highlight),
       inset 1px 0 0 rgb(255 255 255 / 85%),
       inset 0 -1px 0 var(--raised-underside),
       inset 0 -3px 5px -3px color-mix(in srgb, var(--text) 3.5%, transparent);
-    /* Tactile 1px physical lower edge thickness + tight 1px seating for island/inset cards. */
+    /* Tactile 1px physical lower edge thickness + tight 1px seating for island/inset sheets and inline cards. */
     --raised-card-outer-shadow:
       0 1px 0 0 var(--raised-ledge),
       0 1px 1.5px 0 var(--raised-contact-shadow);
     --raised-card-shadow:
       var(--raised-bevel),
       var(--raised-card-outer-shadow);
-    /* Crisp 4px recessed double-bezel tray + tactile 1px lower edge lip for standalone cards, popovers, composers and document sheets. */
-    --raised-tray-shadow:
+    /* Grounded soft lift shadows for standalone document sheets, popovers, and dialogs (no extra outer bezel ring). */
+    --raised-document-shadow:
       var(--raised-bevel),
       0 1px 0 0 var(--raised-ledge),
-      0 1px 1.5px 0 var(--raised-contact-shadow),
-      0 0 0 4px var(--raised-groove),
-      0 0 0 5px var(--raised-outer-rim),
-      0 1px 0 5px color-mix(in srgb, var(--text) 2%, transparent);
+      0 2px 4px -1px color-mix(in srgb, var(--text) 4.5%, transparent),
+      0 10px 24px -14px color-mix(in srgb, var(--text) 10%, transparent);
+    --raised-popover-shadow:
+      var(--raised-bevel),
+      0 1px 0 0 var(--raised-ledge),
+      0 2px 6px -1px color-mix(in srgb, var(--text) 6%, transparent),
+      0 10px 24px -10px color-mix(in srgb, var(--text) 12%, transparent);
     --raised-dialog-shadow:
       var(--raised-bevel),
       0 1px 0 0 var(--raised-ledge),
-      0 1px 1.5px 0 var(--raised-contact-shadow),
-      0 0 0 4px var(--raised-groove),
-      0 0 0 5px var(--raised-outer-rim),
-      0 8px 24px -8px color-mix(in srgb, var(--text) 9%, transparent);
+      0 2px 6px -1px color-mix(in srgb, var(--text) 6%, transparent),
+      0 16px 40px -12px color-mix(in srgb, var(--text) 14%, transparent);
     --raised-control-shadow:
       inset 0 1px 0 var(--raised-highlight),
       inset 0 -1px 0 color-mix(in srgb, var(--text) 5%, transparent),
@@ -82,10 +78,10 @@
     --surface-dialog-border: var(--raised-edge);
     --surface-dialog-shadow: var(--raised-dialog-shadow);
     --surface-popover-border: var(--raised-edge);
-    --surface-popover-shadow: var(--raised-tray-shadow);
+    --surface-popover-shadow: var(--raised-popover-shadow);
     --surface-card-border: var(--raised-edge);
-    --surface-card-shadow: var(--raised-tray-shadow);
-    --surface-card-expanded-shadow: var(--raised-tray-shadow);
+    --surface-card-shadow: var(--raised-card-shadow);
+    --surface-card-expanded-shadow: var(--raised-popover-shadow);
     --surface-control-border: var(--raised-edge);
     --surface-control-shadow: var(--raised-control-shadow);
     --surface-focus-border: var(--raised-focus-edge);
@@ -93,22 +89,19 @@
     --surface-sheet-shadow: var(--raised-card-shadow);
     --surface-sheet-bevel: var(--raised-bevel);
     --surface-document-border: 1px solid var(--raised-edge);
-    --surface-document-shadow: var(--raised-tray-shadow);
+    --surface-document-shadow: var(--raised-document-shadow);
     --surface-slip-tab-border: 1px solid var(--raised-edge);
     --surface-slip-tab-shadow: var(--raised-tab-shadow);
   }
 
   :root[data-theme='dark'][data-material='builtin:raised'] {
-    /* Dark mode: quiet outer rim + crisp overhead specular inner bevel + clean 4px recessed trough
-       on standalone cards — zero wide blurry dark shadows. */
+    /* Dark mode: quiet outer rim + crisp overhead specular inner bevel + grounded elevation on floating surfaces. */
     --raised-edge: color-mix(in srgb, #ffffff 5.5%, var(--paper));
     --raised-focus-edge: color-mix(in srgb, #ffffff 15%, var(--paper));
     --raised-highlight: rgb(255 255 255 / 11%);
     --raised-top-sheen: rgb(255 255 255 / 3.5%);
     --raised-underside: rgb(0 0 0 / 42%);
     --raised-ledge: rgb(0 0 0 / 48%);
-    --raised-groove: color-mix(in srgb, var(--paper) 34%, #000000 66%);
-    --raised-outer-rim: color-mix(in srgb, #ffffff 6.5%, var(--sidebar));
     --raised-contact-shadow: rgb(0 0 0 / 32%);
     --raised-bevel:
       inset 0 1px 0 var(--raised-highlight),
@@ -120,20 +113,21 @@
     --raised-card-shadow:
       var(--raised-bevel),
       var(--raised-card-outer-shadow);
-    --raised-tray-shadow:
+    --raised-document-shadow:
       var(--raised-bevel),
       0 1px 0 0 var(--raised-ledge),
-      0 1px 1.5px 0 var(--raised-contact-shadow),
-      0 0 0 4px var(--raised-groove),
-      0 0 0 5px var(--raised-outer-rim),
-      0 1px 0 5px rgb(0 0 0 / 28%);
+      0 2px 6px -1px rgb(0 0 0 / 36%),
+      0 14px 32px -14px rgb(0 0 0 / 54%);
+    --raised-popover-shadow:
+      var(--raised-bevel),
+      0 1px 0 0 var(--raised-ledge),
+      0 2px 6px -1px rgb(0 0 0 / 38%),
+      0 12px 26px -10px rgb(0 0 0 / 54%);
     --raised-dialog-shadow:
       var(--raised-bevel),
       0 1px 0 0 var(--raised-ledge),
-      0 1px 1.5px 0 var(--raised-contact-shadow),
-      0 0 0 4px var(--raised-groove),
-      0 0 0 5px var(--raised-outer-rim),
-      0 10px 28px -8px rgb(0 0 0 / 48%);
+      0 2px 8px -1px rgb(0 0 0 / 42%),
+      0 18px 44px -14px rgb(0 0 0 / 62%);
     --raised-control-shadow:
       inset 0 1px 0 rgb(255 255 255 / 11%),
       inset 0 -1px 0 rgb(0 0 0 / 38%),

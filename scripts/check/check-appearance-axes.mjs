@@ -81,6 +81,48 @@ function hasLiteralNonZeroLength(value) {
   return matches.some((m) => parseFloat(m) !== 0);
 }
 
+/**
+ * Split a CSS value on top-level commas (outside function parentheses) and detect
+ * non-inset zero-blur box-shadow layers whose positive spread exceeds 1px — those
+ * paint extra solid outer frames/casings outside an element's border box.
+ */
+function hasSolidOuterSpreadFrame(value) {
+  const layers = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (ch === '(') depth++;
+    else if (ch === ')' && depth > 0) depth--;
+    else if (ch === ',' && depth === 0) {
+      layers.push(value.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  layers.push(value.slice(start).trim());
+
+  const lenRe = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:px)?$/i;
+  for (const layer of layers) {
+    if (!layer || /\binset\b/i.test(layer)) continue;
+    // Strip function calls (rgb(...), color-mix(...), var(...)) so only bare shadow lengths remain.
+    let stripped = '';
+    let fnDepth = 0;
+    for (let i = 0; i < layer.length; i++) {
+      const ch = layer[i];
+      if (ch === '(') fnDepth++;
+      else if (ch === ')' && fnDepth > 0) fnDepth--;
+      else if (fnDepth === 0) stripped += ch;
+    }
+    const lengths = stripped.split(/\s+/).filter((tok) => lenRe.test(tok));
+    if (lengths.length >= 4) {
+      const blur = parseFloat(lengths[2]);
+      const spread = parseFloat(lengths[3]);
+      if (blur === 0 && spread > 1) return true;
+    }
+  }
+  return false;
+}
+
 // 1. Verify styles.css cascade layer declaration and axis imports.
 const stylesEntryText = stripComments(fs.readFileSync(stylesEntry, 'utf8'));
 const expectedLayerDecl = '@layer base, components, palette, surface-roles, layout, shape, material;';
@@ -196,6 +238,9 @@ for (const file of appearanceFiles.filter((f) => f.startsWith('axis-material-'))
     }
     if (prop === 'border-radius' && value !== 'inherit' && hasLiteralNonZeroLength(value)) {
       failures.push(`${rel}: material CSS must not hardcode border-radius "${value}" on "${selector}"`);
+    }
+    if ((prop === 'box-shadow' || prop.endsWith('-shadow') || prop.endsWith('-drop')) && hasSolidOuterSpreadFrame(value)) {
+      failures.push(`${rel}: material CSS must not paint solid outer spread frames (>1px zero-blur spread) in "${prop}" on "${selector}"`);
     }
     if (!isBackdropMaterial) {
       if (workbenchLayerTokens.has(prop)) {

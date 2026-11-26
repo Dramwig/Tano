@@ -101,34 +101,26 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 [data-preview-structure='document'] .theme-preview-heading { width: 44%; align-self: center; height: 3px; margin-bottom: 2px; }
 [data-preview-structure='document'] .theme-preview-callout { display: none; }
 [data-preview-structure='document'] .theme-preview-paragraph-short { display: flex; }
-/* Raised card: clean flat surfaces with crisp 1px edge bevels and quiet double-bezel tray (see axis-material-raised.css). */
+/* Raised card: clean flat surfaces with crisp 1px edge bevels and grounded lift shadows (see axis-material-raised.css). */
 .theme-preview[data-preview-surface='raised'] .theme-preview-scene {
   --preview-raised-edge: color-mix(in srgb, var(--preview-text) 5%, var(--preview-line));
   --preview-raised-highlight: #ffffff;
   --preview-raised-underside: color-mix(in srgb, var(--preview-text) 4%, transparent);
-  --preview-raised-groove: color-mix(in srgb, var(--preview-sidebar) 92%, var(--preview-paper) 8%);
-  --preview-raised-outer: color-mix(in srgb, var(--preview-line) 85%, var(--preview-paper) 15%);
   --preview-raised-shadow:
     inset 0 1px 0 var(--preview-raised-highlight),
     inset 0 -1px 0 var(--preview-raised-underside),
-    0 1px 2px 0 color-mix(in srgb, var(--preview-text) 4.5%, transparent),
-    0 0 0 2px var(--preview-raised-groove),
-    0 0 0 2.5px var(--preview-raised-outer),
-    0 3px 6px -2px color-mix(in srgb, var(--preview-text) 5%, transparent);
+    0 1px 0 0 color-mix(in srgb, var(--preview-text) 5.5%, transparent),
+    0 2px 5px -1px color-mix(in srgb, var(--preview-text) 7%, transparent);
 }
 .theme-preview[data-preview-surface='raised'] .theme-preview-scene[data-preview-mode='dark'] {
   --preview-raised-edge: color-mix(in srgb, #ffffff 11%, var(--preview-paper));
   --preview-raised-highlight: rgb(255 255 255 / 15%);
   --preview-raised-underside: rgb(0 0 0 / 38%);
-  --preview-raised-groove: color-mix(in srgb, var(--preview-sidebar) 56%, #000000);
-  --preview-raised-outer: color-mix(in srgb, #ffffff 9%, var(--preview-sidebar));
   --preview-raised-shadow:
     inset 0 1px 0 var(--preview-raised-highlight),
     inset 0 -1px 0 var(--preview-raised-underside),
-    0 1px 2px 0 rgb(0 0 0 / 52%),
-    0 0 0 2px var(--preview-raised-groove),
-    0 0 0 2.5px var(--preview-raised-outer),
-    0 4px 8px -2px rgb(0 0 0 / 50%);
+    0 1px 0 0 rgb(0 0 0 / 48%),
+    0 3px 7px -2px rgb(0 0 0 / 50%);
 }
 .theme-preview[data-preview-surface='raised'] .theme-preview-window {
   border-color: var(--preview-raised-edge);
