@@ -337,7 +337,7 @@ it('shows only supported block conversions and hides insertion actions', async (
   await click(button('块级类型'));
   expect(labels()).toEqual(['引用', '提示块', '自定义块']);
   expect(errors).toEqual([]);
-});
+}, 20_000); // The first table insertion can load editor modules on a cold test worker.
 
 it('hides code conversions when a block contains an inline image', async () => {
   await mount('文字 ![图片](photo.png)\n');
