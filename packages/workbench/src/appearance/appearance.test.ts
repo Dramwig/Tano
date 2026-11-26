@@ -25,11 +25,11 @@ it('keeps shape independent of colors and layout, with partial presets leaving i
   controller.select({ workspaceId: 'one', kind: 'shape', id: 'builtin:crisp' });
   controller.select({ workspaceId: 'one', kind: 'preset', id: 'sample:partial' });
   expect(controller.state.value.active).toEqual({ color: 'sample:ink', icons: 'sample:ink', layout: 'builtin:islands', material: 'builtin:tano', shape: 'builtin:crisp' });
-  expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('0px');
+  expect(getComputedStyle(document.documentElement).getPropertyValue('--radius-card').trim()).toBe('0px');
   controller.select({ workspaceId: 'one', kind: 'color', id: 'builtin:tano' });
-  expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('0px');
+  expect(getComputedStyle(document.documentElement).getPropertyValue('--radius-card').trim()).toBe('0px');
   controller.select({ workspaceId: 'one', kind: 'shape', id: 'builtin:tano' });
-  expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe(''); controller.dispose();
+  expect(getComputedStyle(document.documentElement).getPropertyValue('--radius-card').trim()).toBe(''); controller.dispose();
 });
 it('keeps mode user-wide while isolating workspace slots and accounts, including startup and reload', () => {
   const installed = [{ manifest, enabled: true }];
@@ -85,7 +85,7 @@ it('uses only explicitly configured presets from the injected catalog without in
   expect(controller.state.value.active.shape).toBe('builtin:tano');
   controller.select({ workspaceId: 'one', kind: 'preset', id: 'builtin:custom-set' });
   expect(controller.state.value.active.shape).toBe('builtin:angular');
-  expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('0px');
+  expect(getComputedStyle(document.documentElement).getPropertyValue('--radius-card').trim()).toBe('0px');
   expect(controller.state.value.presets[0]?.structure).toBe('islands');
   controller.dispose();
 });
@@ -349,14 +349,14 @@ it('keeps color and icons independent, restores fallback on disable/uninstall, a
   expect(registry.resolve({ path: 'x.md' }).id).toBe('note');
   expect(registry.resolve({ path: 'x.pdf' }).id).toBe('pdf');
   controller.select({ workspaceId: 'one', kind: 'color', id: 'sample:ink' });
-  applyTheme('light'); expect(document.documentElement.style.getPropertyValue('--paper')).toBe('#fff');
-  applyTheme('dark'); expect(document.documentElement.style.getPropertyValue('--paper')).toBe('#123');
-  expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('');
+  applyTheme('light'); expect(getComputedStyle(document.documentElement).getPropertyValue('--paper').trim()).toBe('#fff');
+  applyTheme('dark'); expect(getComputedStyle(document.documentElement).getPropertyValue('--paper').trim()).toBe('#123');
+  expect(getComputedStyle(document.documentElement).getPropertyValue('--radius-card').trim()).toBe('');
   for (const installed of [[{ manifest, enabled: false }], []]) {
     controller.sync('one', installed);
     expect(controller.state.value.active).toEqual({ color: 'builtin:tano', icons: 'builtin:tano', layout: 'builtin:tano', material: 'builtin:tano', shape: 'builtin:tano' });
     expect(controller.state.value.selected.color).toBe('sample:ink');
-    expect(document.documentElement.style.getPropertyValue('--paper')).toBe('');
+    expect(getComputedStyle(document.documentElement).getPropertyValue('--paper').trim()).toBe('');
     controller.sync('one', [{ manifest, enabled: true }]);
     expect(controller.state.value.active.color).toBe('sample:ink');
   }

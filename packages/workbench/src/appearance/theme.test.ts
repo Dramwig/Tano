@@ -19,19 +19,40 @@ it('ignores legacy shape fonts while preserving component styles and editor font
   } });
   for (const mode of ['light', 'dark'] as const) {
     applyTheme(mode);
+    const computed = getComputedStyle(document.documentElement);
     for (const key of ['font-ui', 'font-prose', 'font-mono']) {
-      expect(document.documentElement.style.getPropertyValue(`--${key}`)).toBe('');
+      expect(computed.getPropertyValue(`--${key}`).trim()).toBe('');
       expect(resolvedTheme().shape.tokens).not.toHaveProperty(key);
     }
-    expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('2px');
-    expect(document.documentElement.style.getPropertyValue('--space-panel')).toBe('18px');
-    expect(document.documentElement.style.getPropertyValue('--overlay-shadow')).toBe('none');
+    expect(computed.getPropertyValue('--radius-card').trim()).toBe('2px');
+    expect(computed.getPropertyValue('--space-panel').trim()).toBe('18px');
+    expect(computed.getPropertyValue('--overlay-shadow').trim()).toBe('none');
     expect(visualFontFamily('system', '')).toBe(font);
     expect(visualFontFamily('custom', '')).toBe(font);
     expect(visualFontFamily('handwritten', '')).toContain('KaiTi');
   }
   applyAppearance();
-  expect(document.documentElement.style.getPropertyValue('--radius-card')).toBe('');
+  expect(getComputedStyle(document.documentElement).getPropertyValue('--radius-card').trim()).toBe('');
+});
+
+it('writes theme tokens in a stylesheet ordered before overlay styles so overlays can override non-default themes', () => {
+  const overlay = document.createElement('style');
+  overlay.id = 'tano-workbench-overlay-style';
+  overlay.dataset.tanoOverlayStyle = '1';
+  overlay.textContent = 'html:root[data-theme="light"] { --paper: #faf6ef; }';
+  document.head.appendChild(overlay);
+  try {
+    applyAppearance({ id: 'sample:ink', light: { paper: '#112233', accent: '#445566' }, dark: { paper: '#101010' } }, undefined, undefined, 'light');
+    const themeStyle = document.getElementById('tano-theme-tokens');
+    expect(themeStyle).not.toBeNull();
+    expect(themeStyle!.compareDocumentPosition(overlay) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.documentElement.style.getPropertyValue('--paper')).toBe('');
+    const computed = getComputedStyle(document.documentElement);
+    expect(computed.getPropertyValue('--paper').trim()).toBe('#faf6ef');
+    expect(computed.getPropertyValue('--accent').trim()).toBe('#445566');
+  } finally {
+    overlay.remove();
+  }
 });
 
 it.each(['light', 'dark'] as const)('keeps a %s-only theme fixed through preference and system changes, then restores the preference', mode => {
