@@ -15,8 +15,7 @@
   "nativeCommands": [
     "git.status",
     "git.diff",
-    "git.log",
-    "sync.open"
+    "git.log"
   ],
   "commands": [
     {
