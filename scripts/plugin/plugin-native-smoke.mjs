@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import { buildPlugin } from './plugin-build.mjs';
-import { acceptTaskInsights } from '../../tests/fixtures/task-insights-acceptance.mjs';
+import { acceptTaskInsights, openPluginCenter } from '../../tests/fixtures/task-insights-acceptance.mjs';
 
 if (process.platform !== 'win32') throw new Error('This acceptance test requires Windows and WebView2.');
 if (!process.env.npm_execpath) throw new Error('Run npm run test:plugins:native from the repository.');
@@ -18,13 +18,6 @@ const target = join(root, 'apps/client/src-tauri/target');
 const cargoArgs = ['build', '--release', '--locked', '--features', 'tauri/custom-protocol', '--manifest-path', 'apps/client/src-tauri/Cargo.toml'];
 // The desktop shell creates its own hidden main window during startup.
 const config = { identifier: 'app.tano.plugin-smoke' };
-async function openPluginCenter(page) {
-  await page.getByRole('button', { name: /^切换上下文：/ }).click();
-  await page.getByRole('button', { name: '更多操作', exact: true }).click();
-  await page.getByRole('menuitem', { name: /命令中心/ }).click();
-  await page.getByRole('combobox', { name: '搜索命令' }).fill('打开插件中心');
-  await page.getByRole('option').filter({ hasText: '打开插件中心' }).click();
-}
 async function run(command, args, options = {}) {
   const child = spawn(command, args, { cwd: root, windowsHide: true, stdio: 'inherit', ...options });
   const [code] = await once(child, 'exit');
@@ -87,7 +80,13 @@ try {
   await page.waitForFunction(() => document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.has('workspace'));
   const errors = []; page.on('pageerror', error => { errors.push(String(error)); console.log('WebView page error:', String(error)); });
   page.on('console', message => { if (message.type() === 'error') console.log('WebView console:', message.text()); });
-  const open = path => page.evaluate(path => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').openWorkspace(path), path);
+  const open = path => expect.poll(() => page.evaluate(async path => {
+    const store = document.querySelector('#app')?.__vue_app__?.config.globalProperties.$pinia?._s.get('workspace');
+    if (!store || store.busy) return false;
+    const normalize = value => value.replaceAll('\\', '/').replace(/^\/\/\?\//, '').toLowerCase();
+    if (normalize(store.workspace?.path ?? '') !== normalize(path)) await store.openWorkspace(path);
+    return normalize(store.workspace?.path ?? '') === normalize(path);
+  }, path), { timeout: 30_000 }).toBe(true);
   await open(workspace);
   const identity = await page.evaluate(() => document.querySelector('#app').__vue_app__.config.globalProperties.$pinia._s.get('workspace').workspace?.id);
   if (!identity) throw new Error('The native workspace did not open.');
