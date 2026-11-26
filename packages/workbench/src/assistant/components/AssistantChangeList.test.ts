@@ -199,3 +199,72 @@ it('delegates custom plugin proposal cards, undo hooks, and follow-up events to 
   undoBtn.click();
   expect(undo).toHaveBeenCalledWith(proposals[0]);
 });
+
+it('renders and undoes first-class kind="extension" proposals via stateless runtime.assistantExtension without invoking runtime.extensions()', async () => {
+  const CustomCard = markRaw(
+    defineComponent({
+      props: { proposal: { type: Object, required: true }, busy: Boolean },
+      setup(props) {
+        return () => h('div', { class: 'first-class-ext-card' }, `EXT:${props.proposal.extensionAction?.namespace}:${props.proposal.extensionAction?.action}`);
+      },
+    }),
+  );
+  const lazyExtensionsSpy = vi.fn(() => createLocalExtensions());
+
+  pinia = createPinia();
+  setActivePinia(pinia);
+  configureWorkbench(pinia, {
+    adapter: { mode: 'web' } as WorkspaceAdapter,
+    native: false,
+    mobile: false,
+    assistantExtension: {
+      listTools: () => [],
+      executeTool: async () => undefined,
+      canUndoProposal: (proposal) => Boolean(proposal.applied?.undoSnapshot),
+      proposalCard: (proposal) =>
+        proposal.kind === 'extension'
+          ? {
+              component: CustomCard,
+              kindLabel: '工作台微调',
+              applyLabel: '应用工作台微调',
+              defaultOpen: true,
+              hideDefaultDiff: true,
+            }
+          : undefined,
+    },
+    extensions: lazyExtensionsSpy,
+  });
+
+  const proposals = reactive<AssistantProposal[]>([
+    {
+      id: 'ext-first-class',
+      runId: 'run',
+      workspaceId: 'workspace',
+      kind: 'extension',
+      path: '工作台微调 · 全局',
+      base: '',
+      content: '{"scope":"user","patch":{}}',
+      reason: '第一公民扩展提案',
+      status: 'applied',
+      applied: { before: '', after: '{}', hash: 'apply_overlay', fileId: 'tano.overlay', undoSnapshot: '{"scope":"user","previous":null}' },
+      extensionAction: {
+        namespace: 'tano.overlay',
+        action: 'apply_overlay',
+        label: '应用工作台微调',
+        effect: 'write',
+        payload: { scope: 'user', patch: {} },
+      },
+    },
+  ]);
+  const undo = vi.fn();
+  root = document.createElement('div');
+  document.body.append(root);
+  app = createApp(() => h(AssistantChangeList, { proposals, busy: false, onUndo: undo })).use(pinia);
+  app.mount(root);
+  await nextTick();
+
+  expect(lazyExtensionsSpy).not.toHaveBeenCalled();
+  expect(root.querySelector('.first-class-ext-card')?.textContent).toBe('EXT:tano.overlay:apply_overlay');
+  root.querySelector<HTMLButtonElement>('.change-undo-action')!.click();
+  expect(undo).toHaveBeenCalledWith(proposals[0]);
+});

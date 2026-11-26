@@ -139,7 +139,7 @@ export interface WorkbenchAssistantExtension {
   applyProposal?(
     proposal: import('@tano/protocol').AssistantProposal,
     parsedArgs: Record<string, unknown>,
-  ): Promise<{ before?: string; after: string; hash: string; fileId: string } | undefined>;
+  ): Promise<{ before?: string; after: string; hash: string; fileId: string; undoSnapshot?: string } | undefined>;
   canUndoProposal?(proposal: import('@tano/protocol').AssistantProposal): boolean;
   undoProposal?(proposal: import('@tano/protocol').AssistantProposal): Promise<boolean>;
   proposalCard?(
@@ -171,8 +171,6 @@ export interface WorkbenchExtensions {
   objectDetails?: Component;
   commentAuthor?: () => CommentAuthor;
   settingsPages?: SettingsPage[];
-  /** Optional cloud backend configuration; system owns the common entry point. */
-  sync?: { readonly enabled: boolean; open(): void; disconnect(): Promise<void> };
   historyView?: Component;
   readonly historyEnabled?: boolean;
   refresh(): Promise<unknown>;
@@ -195,6 +193,10 @@ export interface WorkbenchRuntime {
   accountImports?: ImportAccountHost;
   native: boolean;
   mobile: boolean;
+  /** Optional stateless overlay hook available before workspace store initialization. */
+  overlay?: WorkbenchOverlayExtension;
+  /** Optional stateless assistant extension hook available before workspace store initialization. */
+  assistantExtension?: WorkbenchAssistantExtension;
   extensions?: () => WorkbenchExtensions;
 }
 
@@ -203,6 +205,10 @@ export interface WorkbenchRuntime {
 export const CLOUD_EXTENSION_API_VERSION = 1 as const;
 export interface CloudExtension {
   readonly apiVersion: typeof CLOUD_EXTENSION_API_VERSION;
+  /** Optional stateless overlay hook resolved without instantiating workspace-bound extensions. */
+  readonly overlay?: WorkbenchOverlayExtension;
+  /** Optional stateless assistant extension hook resolved without instantiating workspace-bound extensions. */
+  readonly assistant?: WorkbenchAssistantExtension;
   createWorkbenchExtensions(pinia: Pinia): WorkbenchExtensions;
 }
 
@@ -216,15 +222,23 @@ export function configureWorkbench(pinia: Pinia, runtime: WorkbenchRuntime) {
 }
 export function configureWorkbenchWithCloudExtension(
   pinia: Pinia,
-  runtime: Omit<WorkbenchRuntime, 'extensions'>,
+  runtime: Omit<WorkbenchRuntime, 'extensions' | 'overlay' | 'assistantExtension'>,
   cloud: CloudExtension,
 ) {
   if (cloud.apiVersion !== CLOUD_EXTENSION_API_VERSION)
     throw new Error(`不支持的云扩展接口版本：${cloud.apiVersion}`);
   return configureWorkbench(pinia, {
     ...runtime,
+    ...(cloud.overlay ? { overlay: cloud.overlay } : {}),
+    ...(cloud.assistant ? { assistantExtension: cloud.assistant } : {}),
     extensions: () => cloud.createWorkbenchExtensions(pinia),
   });
+}
+export function resolveOverlayExtension(runtime: WorkbenchRuntime): WorkbenchOverlayExtension | undefined {
+  return runtime.overlay ?? runtime.extensions?.().overlay;
+}
+export function resolveAssistantExtension(runtime: WorkbenchRuntime): WorkbenchAssistantExtension | undefined {
+  return runtime.assistantExtension ?? runtime.extensions?.().assistant;
 }
 export function useWorkbenchRuntime(): WorkbenchRuntime {
   const pinia = getActivePinia();

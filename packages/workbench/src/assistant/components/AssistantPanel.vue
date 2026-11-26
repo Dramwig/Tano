@@ -21,7 +21,7 @@ import { clipboardAssistantFiles } from '../attachments';
 import { assistantToolLabel, assistantAnswerText } from '../results';
 import type { AssistantDisplayMode } from '../store';
 import { useWorkspaceStore } from '../../stores/workspace';
-import { useWorkbenchRuntime, type WorkbenchAssistantStarter } from '../../runtime';
+import { resolveAssistantExtension, useWorkbenchRuntime, type WorkbenchAssistantStarter } from '../../runtime';
 import { summarizePluginAssistantCapabilities, type ActivePluginContextProvider } from '../../plugins/assistant-bridge';
 import {
   applyMentionSelection,
@@ -44,7 +44,7 @@ import type { ShortcutBinding } from '../../shell/shortcuts';
 const assistant = useAssistantStore();
 const workspace = useWorkspaceStore();
 const runtime = useWorkbenchRuntime();
-const assistantExtension = computed(() => runtime.extensions?.().assistant);
+const assistantExtension = computed(() => resolveAssistantExtension(runtime));
 const props = defineProps<{ compact?: boolean; fullscreenTarget?: string | HTMLElement; navigationVisible?: boolean; toggleShortcut?: ShortcutBinding }>();
 const emit = defineEmits<{ openReference: [identity: ReferenceIdentity]; revealSelection: [source: AssistantSource]; openSettings: []; closed: []; showNavigation: [] }>();
 function afterPanelLeave() {

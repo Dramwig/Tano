@@ -12,7 +12,7 @@ import type { AssistantActivity, AssistantConnection, AssistantQuotaResult, Assi
 import type { AssistantExecutionResult } from './execution';
 import { useWorkspaceStore } from '../stores/workspace';
 import { recordHelpCompleted } from '../help/help-checklist';
-import { useWorkbenchRuntime } from '../runtime';
+import { resolveAssistantExtension, useWorkbenchRuntime } from '../runtime';
 import { demoAssistantTransport, nativeAssistantTransport } from './transport';
 import { runAssistant, AssistantWaitingError } from './engine';
 import { AssistantRunError } from './completion';
@@ -486,7 +486,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
       target.updatedAt = now; prompt.value = '';
       await persist(target);
       if (epoch === generation) { attachments.value = []; pluginContextKeys.value = []; }
-      const assistantExtension = runtime.extensions?.().assistant;
+      const assistantExtension = resolveAssistantExtension(runtime);
       const extensionTools = assistantExtension
         ? assistantExtension.listTools({
             workspaceReadOnly: !!workspace.workspace?.readOnly,
@@ -798,6 +798,39 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
     const originalStatus = proposal.status;
     let submitting = false;
     try {
+      if (proposal.kind === 'extension') {
+        const extAction = proposal.extensionAction;
+        if (!extAction) throw new Error('扩展操作元数据缺失');
+        if (!apply) {
+          proposal.preview = {
+            before: '',
+            after: proposal.content,
+            diskHash: null,
+            path: proposal.path,
+          };
+          proposal.status = 'ready';
+          await persist(target);
+          return;
+        }
+        const assistantExtension = resolveAssistantExtension(runtime);
+        if (!assistantExtension?.applyProposal) throw new Error('当前宿主未注册该扩展操作处理器');
+        proposal.status = 'applying';
+        await persist(target);
+        submitting = true;
+        const extApplied = await assistantExtension.applyProposal(proposal, extAction.payload);
+        if (!extApplied) throw new Error('当前宿主不支持执行此扩展操作');
+        proposal.applied = {
+          before: extApplied.before ?? '',
+          after: extApplied.after,
+          hash: extApplied.hash,
+          fileId: extApplied.fileId,
+          ...(extApplied.undoSnapshot !== undefined ? { undoSnapshot: extApplied.undoSnapshot } : {}),
+        };
+        proposal.status = 'applied';
+        proposal.error = undefined;
+        await persist(target);
+        return;
+      }
       if (proposal.kind === 'plugin') {
         const action = proposal.pluginAction;
         if (!action) throw new Error('插件操作元数据缺失');
@@ -813,7 +846,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
           return;
         }
         const parsedArgs = JSON.parse(proposal.content) as Record<string, unknown>;
-        const assistantExtension = runtime.extensions?.().assistant;
+        const assistantExtension = resolveAssistantExtension(runtime);
         if (assistantExtension?.applyProposal) {
           proposal.status = 'applying';
           await persist(target);
@@ -825,6 +858,7 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
               after: extApplied.after,
               hash: extApplied.hash,
               fileId: extApplied.fileId,
+              ...(extApplied.undoSnapshot !== undefined ? { undoSnapshot: extApplied.undoSnapshot } : {}),
             };
             proposal.status = 'applied';
             proposal.error = undefined;
@@ -945,8 +979,8 @@ export function createAssistantState(inline = false, background?: BackgroundAssi
   }
   async function undo(proposal: AssistantProposal) {
     if (!proposal.applied || applying.value || busy.value) return;
-    if (proposal.kind === 'plugin') {
-      const undoExt = runtime.extensions?.().assistant?.undoProposal;
+    if (proposal.kind === 'extension' || proposal.kind === 'plugin') {
+      const undoExt = resolveAssistantExtension(runtime)?.undoProposal;
       if (!undoExt) return;
       applying.value = true;
       error.value = '';

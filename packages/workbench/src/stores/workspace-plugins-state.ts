@@ -61,7 +61,7 @@ import {
   pluginWorkbenchViews,
   type PluginInteraction,
 } from '../plugins/workbench';
-import type { WorkbenchOverlaySnapshot, WorkbenchRuntime } from '../runtime';
+import { resolveOverlayExtension, type WorkbenchOverlaySnapshot, type WorkbenchRuntime } from '../runtime';
 import { mergeObject, saveObject, type ObjectRecord } from '../objects/workspace-objects';
 import { WorkspacePluginRuntime } from '../plugins/workspace-plugin-runtime';
 import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../plugins/workspace-plugins';
@@ -197,7 +197,7 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
 
   const installedPluginWorkspace = ref('');
   const personalCodePluginPolicy = ref<WorkspacePersonalPluginPolicy>('allow');
-  const overlayExtension = () => runtime.extensions?.().overlay;
+  const overlayExtension = () => resolveOverlayExtension(runtime);
   const overlaySnapshot = computed<WorkbenchOverlaySnapshot>(
     () => overlayExtension()?.snapshot ?? { safeMode: false },
   );
@@ -491,10 +491,10 @@ export function createWorkspacePluginsState(deps: WorkspacePluginsStateDeps) {
   );
 
   watch(
-    () => overlaySnapshot.value.safeMode,
-    (safeMode) => {
-      if (workspace.value) {
-        pluginExecutor.sync(workspace.value, installedPlugins.value, safeMode);
+    () => (workspace.value ? ([workspace.value.id, overlaySnapshot.value.safeMode] as const) : null),
+    (current, previous) => {
+      if (current && previous && current[0] === previous[0] && current[1] !== previous[1] && workspace.value) {
+        pluginExecutor.sync(workspace.value, installedPlugins.value, current[1]);
       }
     },
   );

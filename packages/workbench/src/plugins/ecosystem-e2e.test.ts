@@ -445,4 +445,41 @@ describe('Combined Phase 0-4 Plugin Ecosystem End-to-End Integration', () => {
       workspace.$dispose();
     }
   });
+
+  it('does not invoke runtime.extensions() re-entrantly during useWorkspaceStore() setup', () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    let extensionsCalls = 0;
+    configureWorkbench(pinia, {
+      adapter: new DemoAdapter({ files: {} }),
+      native: false,
+      mobile: false,
+      extensions: () => {
+        extensionsCalls++;
+        const store = useWorkspaceStore(pinia);
+        // Host extensions (e.g. cloud sync/collaboration) expect the workspace store to be fully initialized.
+        expect(Array.isArray(store.activities)).toBe(true);
+        expect(Object.keys(store.windowLayouts)).toContain('main');
+        return {
+          ...createLocalExtensions(),
+          overlay: {
+            get snapshot() {
+              return { safeMode: false };
+            },
+            setSafeMode() {},
+          },
+        };
+      },
+    });
+    const workspace = useWorkspaceStore(pinia);
+    try {
+      expect(extensionsCalls).toBe(0);
+      expect(Object.keys(workspace.windowLayouts)).toContain('main');
+      expect(workspace.overlaySnapshot.safeMode).toBe(false);
+      expect(extensionsCalls).toBe(1);
+    } finally {
+      workspace.dispose();
+      workspace.$dispose();
+    }
+  });
 });
