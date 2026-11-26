@@ -11,7 +11,6 @@ import { CALENDAR_TAB_ID } from '../../plans/calendar';
 import { mobile } from '../../platform/platform';
 import { PLUGINS_TAB_ID } from '../../plugins/workspace-plugins';
 import { SETTINGS_TAB_ID } from '../../settings/settings-tab';
-import { native } from '../../workspace/adapter';
 import { layoutPanes } from '../pane-layout';
 import { isEmptyPaneFallback } from '../pane-registry';
 import { useWindowContext } from '../../windows/context';
@@ -67,6 +66,7 @@ if (!shell || !prefs || !documents || !treeMenus || !modals) {
 }
 
 const {
+  native,
   workspace,
   startupPending,
   filesPending,

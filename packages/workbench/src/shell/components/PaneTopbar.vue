@@ -21,7 +21,6 @@ import { mobile } from '../../platform/platform';
 import { pluginPreviewStatus, pluginViewHeader } from '../../plugins/view-header';
 import { PLUGINS_TAB_ID } from '../../plugins/workspace-plugins';
 import type { DocumentTab, OpenDocument } from '../../stores/workspace-types';
-import { native } from '../../workspace/adapter';
 import { shortcutAriaLabel, shortcutKeys } from '../shortcuts';
 import {
   workbenchDocumentsKey,
@@ -52,6 +51,7 @@ const treeMenus = inject(workbenchTreeMenusKey);
 if (!shell || !prefs || !documents || !treeMenus) throw new Error('Workbench context is required');
 
 const {
+  native,
   workspace,
   filesPending,
   sidebar,

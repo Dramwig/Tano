@@ -11,7 +11,6 @@ import { mobile } from '../../platform/platform';
 import PluginExplorer from '../../plugins/components/PluginExplorer.vue';
 import PluginView from '../../plugins/components/PluginView.vue';
 import { isOverlaySidebarNavHidden } from '../../plugins/overlay-mapping';
-import { native } from '../../workspace/adapter';
 import WorkspacePickerMenu from '../../workspace/components/WorkspacePickerMenu.vue';
 import { vScrollFade } from '../scroll-fade';
 import {
@@ -51,6 +50,7 @@ if (!shell || !prefs || !documents || !treeMenus || !modals) {
 }
 
 const {
+  native,
   workspace,
   compactPanes,
   isAuxiliaryWindow,

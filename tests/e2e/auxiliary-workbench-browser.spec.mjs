@@ -19,8 +19,21 @@ async function prepare(page) {
   await page.evaluate(async () => {
     let component = document.querySelector('.workspace-layout').__vueParentComponent;
     while (component && !component.type.__file?.endsWith('/App.vue')) component = component.parent;
-    const key = Reflect.ownKeys(component.provides).find(key => key.description === 'tano-workbench');
-    window.workbench = component.provides[key];
+    const contexts = Reflect.ownKeys(component.provides)
+      .filter(key => key.description?.startsWith('tano-workbench-'))
+      .map(key => component.provides[key]);
+    const owners = new Map(contexts.flatMap(context =>
+      Object.keys(context).map(name => [name, context]),
+    ));
+    window.workbench = new Proxy({}, {
+      get: (_target, name) => owners.get(name)?.[name],
+      set(_target, name, value) {
+        const owner = owners.get(name);
+        if (!owner) throw new Error('Unknown workbench field ' + String(name));
+        owner[name] = value;
+        return true;
+      },
+    });
     window.workbench.native = true;
     window.workbench.tabsEnabled = true;
     await window.workbench.store.create('Main.md', false, 'Main document\n');
@@ -85,7 +98,8 @@ test('opening assistant history renders one fullscreen panel in the tab owner', 
   await history.click();
   await expect(mainPanel).toHaveCount(1);
   await page.evaluate(() => {
-    const { store, ASSISTANT_TAB_ID } = window.workbench;
+    const { store } = window.workbench;
+    const ASSISTANT_TAB_ID = 'view:assistant';
     store.moveTabToWindow(ASSISTANT_TAB_ID, 'first', {
       paneId: store.windowLayouts.first.activePaneId, side: 'center',
     });
