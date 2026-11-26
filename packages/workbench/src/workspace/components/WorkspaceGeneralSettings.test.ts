@@ -68,13 +68,13 @@ it('keeps the name draft and its original base value when external settings chan
   root.querySelector<HTMLFormElement>('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
   expect(change).toHaveBeenCalledWith('ws', { key: 'name', value: '我的名称', previous: '' });
 });
-it('uses stable IDs for the home page, and clearly disables unavailable capabilities', async () => {
+it('uses stable IDs for the home page and omits unimplemented placeholder switches', async () => {
   const { change } = mount();
   const select = root.querySelector<HTMLSelectElement>('[aria-label="默认打开页面"]')!;
   select.value = 'a00001'; select.dispatchEvent(new Event('change'));
   expect(change).toHaveBeenCalledWith('ws', { key: 'homePageId', value: 'a00001', previous: '' });
-  for (const label of ['保存并显示页面浏览统计', '在人物资料中显示近期活动', '人物悬浮卡片'])
-    expect(root.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!.disabled).toBe(true);
+  for (const label of ['保存并显示页面浏览统计', '在人物资料中显示近期活动', '人物悬浮卡片', '人物目录'])
+    expect(root.querySelector(`[aria-label="${label}"]`)).toBeNull();
 });
 it('rebases a retained name draft only after the user explicitly reloads the latest settings', async () => {
   const { settings, change, error } = mount();

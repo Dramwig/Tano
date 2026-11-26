@@ -165,17 +165,6 @@
   padding: 30px;
   background: var(--paper);
 }
-.welcome-mark img {
-  height: 64px;
-  width: 64px;
-  filter: drop-shadow(0 12px 17px #0f0f0f20);
-}
-.eyebrow {
-  font-size: 12px;
-  letter-spacing: 3px;
-  color: var(--muted);
-  margin: 29px 0 11px;
-}
 .welcome h1 {
   font-family: var(--font-ui);
   font-size: 32px;
@@ -184,32 +173,11 @@
   letter-spacing: 2px;
   margin: 12px 0;
 }
-.welcome h1 .welcome-latin {
-  font-size: 1.1em;
-  line-height: 1;
-  letter-spacing: 0.02em;
-}
 .welcome p {
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 2.3;
   margin: 7px 0 29px;
-}
-.welcome-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-  width: max-content;
-  max-width: 100%;
-}
-.welcome-actions > button {
-  flex: 0 0 auto;
-}
-.welcome-actions .secondary-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 .primary-button {
   display: inline-flex;

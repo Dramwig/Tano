@@ -8,6 +8,7 @@ import { canonicalPluginJson, checkPluginCompatibility, comparePluginVersions, t
 import { useWorkspaceStore } from '../../stores/workspace';
 import PluginDialog from './PluginDialog.vue';
 import PluginChangeSummary from './PluginChangeSummary.vue';
+import { pluginPermissionLabels as labels } from '../plugin-permissions';
 
 const store = useWorkspaceStore();
 const catalog = ref<PluginReleaseCatalog>();
@@ -47,7 +48,6 @@ const downgrading = computed(() => selected.value && installed.value && compareP
 const selectedPublisher = computed(() => catalog.value?.publishers.find(item => item.id === selected.value?.publisher));
 const permissions = computed(() => selected.value?.manifest.manifestVersion === 2 ? selected.value.manifest.permissions : []);
 const addedPermissions = computed(() => permissions.value.filter(permission => installed.value?.manifest.manifestVersion !== 2 || !installed.value.manifest.permissions.includes(permission)));
-const labels: Record<string, string> = { get 'documents.read'() { return t('读取与打开文档'); }, get 'documents.write'() { return t('创建与修改文档'); }, get 'objects.read'() { return t('读取对象'); }, get 'objects.write'() { return t('创建与修改对象'); }, get 'relations.read'() { return t('读取关系'); }, get 'relations.write'() { return t('修改关系'); }, get storage() { return t('保存插件本机状态'); }, get network() { return t('访问指定网络来源'); }, get connections() { return t('使用单独授权的服务凭据'); }, get native() { return t('调用指定本机能力'); }, get ui() { return t('运行自定义界面'); } };
 function publisher(release: PluginCatalogRelease) { return catalog.value?.publishers.find(item => item.id === release.publisher)?.name ?? release.publisher; }
 function details(release: PluginCatalogRelease) { selectedId.value = release.manifest.id; selectedHash.value = release.integrity; installScope.value = 'workspace'; error.value = ''; status.value = ''; }
 async function refresh() {
@@ -122,8 +122,8 @@ onScopeDispose(() => controller.abort());
       <p v-if="selected.status === 'withdrawn'" role="status">{{ t('此版本已撤回：') }}{{ selected.reason }}{{ t('。已安装内容不会自动删除。') }}</p>
       <pre class="catalog-notes">{{ selected.notes || t('此版本未提供更新说明。') }}</pre>
       <PluginChangeSummary v-if="!unchanged" :before="installed?.manifest" :after="selected.manifest" :workspace="store.workspace?.name" />
-      <p>{{ t('所需权限：') }}{{ permissions.map(permission => labels[permission]).join('、') || t('无代码权限') }}</p>
-      <p v-if="installed && addedPermissions.length">{{ t('新增权限：') }}{{ addedPermissions.map(permission => labels[permission]).join('、') }}</p>
+      <p>{{ t('所需权限：') }}{{ permissions.map(permission => labels[permission] ?? permission).join('、') || t('无代码权限') }}</p>
+      <p v-if="installed && addedPermissions.length">{{ t('新增权限：') }}{{ addedPermissions.map(permission => labels[permission] ?? permission).join('、') }}</p>
       <template v-if="selected.manifest.manifestVersion === 2">
         <p v-if="selected.manifest.networkOrigins.length">{{ t('网络来源：') }}{{ selected.manifest.networkOrigins.join('、') }}</p>
         <p v-if="selected.manifest.nativeCommands.length">{{ t('本机能力：') }}{{ selected.manifest.nativeCommands.join('、') }}</p>

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { uiLocale, t } from '../../i18n/i18n';
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
-import { canonicalPluginJson, parsePluginAutomationJob, type PluginAutomationJob, type PluginAutomationRun, type PluginPermission } from '@tano/protocol';
+import { canonicalPluginJson, parsePluginAutomationJob, type PluginAutomationJob, type PluginAutomationRun } from '@tano/protocol';
 import { useWorkbenchRuntime } from '../../runtime';
 import { useWorkspaceStore } from '../../stores/workspace';
 import { AutomationSubmissions } from '../automation-submissions';
+import { pluginPermissionLabels as permissions } from '../plugin-permissions';
 import { assistantHash } from '../../assistant/hash';
 import PluginAutomationWebhook from './PluginAutomationWebhook.vue';
 
@@ -19,7 +20,6 @@ const plugins = computed(() => store.installedPlugins.filter(item => item.scope 
 const installation = computed(() => plugins.value.find(item => item.manifest.id === pluginId.value));
 const manifest = computed(() => installation.value?.manifest.manifestVersion === 2 ? installation.value.manifest : undefined);
 const canSave = computed(() => !!(approved.value && manifest.value?.automations?.some(item => item.id === automationId.value) && label.value.trim() && installation.value?.rule?.integrity));
-const permissions: Partial<Record<PluginPermission, string>> = { get 'documents.read'() { return t('读取文档'); }, get 'documents.write'() { return t('创建与修改文档'); }, get 'objects.read'() { return t('读取对象'); }, get 'objects.write'() { return t('创建与修改对象'); }, get 'relations.read'() { return t('读取关系'); }, get 'relations.write'() { return t('修改关系'); }, get network() { return t('访问指定网络来源'); }, get connections() { return t('使用单独授权的服务凭据'); } };
 const statuses: Record<PluginAutomationRun['status'], string> = { get queued() { return t('等待执行'); }, get running() { return t('执行中'); }, get succeeded() { return t('已完成'); }, get failed() { return t('失败'); }, get cancelled() { return t('已停止'); }, get uncertain() { return t('结果不确定'); }, get expired() { return t('已过期'); } };
 const date = (value: string | null) => value ? new Date(value).toLocaleString(uiLocale.value) : '—';
 const format = (value: unknown) => JSON.stringify(value, null, 2);

@@ -470,7 +470,7 @@ export function slashCommands(options: {
           item.external.execute();
           return;
         }
-        if (options.readonly() || !commandEnabled(item.command, options.levels())) {
+        if (options.readonly() || !commandEnabled(item.command, options.levels(), options.features?.())) {
           close();
           return;
         }
@@ -545,7 +545,7 @@ export function slashCommands(options: {
           if (
             formState?.doc !== view.state.doc ||
             !formState.selection.eq(view.state.selection) ||
-            !commandEnabled(formItem.command, options.levels())
+            !commandEnabled(formItem.command, options.levels(), options.features?.())
           )
             close();
           return;

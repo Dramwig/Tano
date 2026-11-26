@@ -30,23 +30,6 @@
 .recent-spaces button:hover {
   background: var(--hover);
 }
-.recent-spaces-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-right: 4px;
-}
-.recent-spaces .recent-open-button {
-  justify-content: center;
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-}
-.recent-spaces .recent-open-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 .recent-spaces .recent-workspace-details {
   display: grid;
   gap: 4px;
