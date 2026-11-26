@@ -88,9 +88,11 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 /* Inset content under a top bar that sits directly on the desk. */
 [data-preview-structure='islands'] .theme-preview-toolbar { border-bottom: 0; background: var(--preview-sidebar); }
 [data-preview-structure='islands'] .theme-preview-workspace { gap: 5px; padding: 0 5px 5px; background: var(--preview-sidebar); }
-[data-preview-structure='islands'] .theme-preview-sidebar { padding: 6px 4px; border: 0; background: transparent; }
-[data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar { border-radius: 4px; background: var(--preview-paper); }
+[data-preview-structure='islands'][data-preview-flat-sidebar] .theme-preview-workspace { gap: 0; padding: 0; }
+[data-preview-structure='islands'] .theme-preview-sidebar { border: 0; background: transparent; }
+[data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar { padding: 6px 4px; border-radius: 4px; background: var(--preview-paper); }
 [data-preview-structure='islands'] .theme-preview-main { padding: 7px 9px; border-radius: 4px; }
+[data-preview-structure='islands'][data-preview-flat-sidebar] .theme-preview-main { margin: 0 5px 5px 0; }
 [data-preview-structure='islands'] .theme-preview-document { gap: 6px; }
 [data-preview-structure='islands'] .theme-preview-nav:last-child { display: none; }
 /* Paper: a single soft sheet on the desk with a centred title. */

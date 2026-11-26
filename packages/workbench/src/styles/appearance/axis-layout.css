@@ -17,6 +17,12 @@
     padding: 0 var(--island-gap) var(--island-gap);
     gap: var(--island-gap);
   }
+  /* Inset layout: the sidebar is not a card and keeps continuous edge-to-edge geometry;
+     only the main content column is inset from the window edges. */
+  :root[data-layout-theme='builtin:inset']:not(.compact-layout) .app-shell {
+    padding: 0;
+    gap: 0;
+  }
   /* Match the first bar of the main column: the 36px pane top bar on desktop pointers (see WorkspacePanes), or the tab strip. */
   @media (pointer: fine) and (min-width: 701px) {
     :root[data-layout='islands'] .app-shell { --island-top: 36px; }
@@ -25,8 +31,8 @@
     --island-top: var(--workbench-tabbar-height);
   }
 
-  /* The sidebar controls sit on the desk. Card islands add a front sheet behind them. */
-  :root[data-layout='islands'] .app-shell > .sidebar { padding: 0 8px; }
+  /* Card islands give the sidebar its own front sheet and card spacing; inset layout leaves the sidebar flush like continuous. */
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset']) .app-shell > .sidebar { padding: 0 8px; }
   :root[data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-surface {
     display: block;
     inset: var(--island-top) 0 0;
@@ -37,15 +43,13 @@
     border-radius: var(--radius-card);
     box-shadow: var(--surface-sheet-shadow);
   }
-  :root[data-layout='islands'] .sidebar > * { min-width: 0; }
-  :root[data-layout='islands'] .sidebar > .sidebar-resize-handle { right: calc(var(--island-gap) * -.5 - 5px); }
-  :root[data-layout='islands'] .sidebar-header { height: var(--island-top); padding-inline: 4px; }
-  :root[data-layout='islands'] .sidebar-header + * { margin-top: 6px; }
-  :root[data-layout='islands'] .sidebar-bottom {
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar > * { min-width: 0; }
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar > .sidebar-resize-handle { right: calc(var(--island-gap) * -.5 - 5px); }
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-header { height: var(--island-top); padding-inline: 4px; }
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-header + * { margin-top: 6px; }
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-bottom {
     margin: auto -8px 0;
     padding: 7px 8px;
-  }
-  :root[data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-bottom {
     border-top: 1px solid var(--surface-hairline);
     border-radius: 0 0 var(--radius-card) var(--radius-card);
   }
@@ -60,6 +64,19 @@
      gap between sidebar, cards and window edge is exactly one --island-gap wide. */
   :root[data-layout='islands'] .main-column:has(.workspace-panes-multiple) {
     margin: 0 calc(var(--island-gap) / -2) calc(var(--island-gap) / -2);
+  }
+  /* Inset layout applies the window-edge inset directly to the main column so the flat sidebar stays flush. */
+  :root[data-layout-theme='builtin:inset']:not(.compact-layout) .main-column:not(.workspace-card) {
+    margin: 0 calc(var(--island-gap) - 1px) calc(var(--island-gap) - 2px) -1px;
+  }
+  :root[data-layout-theme='builtin:inset']:not(.compact-layout) .app-shell.sidebar-hidden > .main-column:not(.workspace-card) {
+    margin-left: calc(var(--island-gap) - 1px);
+  }
+  :root[data-layout-theme='builtin:inset']:not(.compact-layout) .main-column:has(.workspace-panes-multiple) {
+    margin: 0 calc(var(--island-gap) / 2) calc(var(--island-gap) / 2) calc(var(--island-gap) / -2);
+  }
+  :root[data-layout-theme='builtin:inset']:not(.compact-layout) .app-shell.sidebar-hidden > .main-column:has(.workspace-panes-multiple) {
+    margin-left: calc(var(--island-gap) / 2);
   }
   /* The desk gap already separates split cards: no divider hairline and no tab-strip corner patch. */
   :root[data-layout='islands'] .pane-divider::before { display: none; }
@@ -96,6 +113,12 @@
   }
   /* The column card starts below the desk row, level with the sidebar card. */
   :root[data-layout='islands'] .main-column.workspace-card { margin-top: var(--island-top); }
+  :root[data-layout-theme='builtin:inset']:not(.compact-layout) .main-column.workspace-card {
+    margin: var(--island-top) var(--island-gap) var(--island-gap) 0;
+  }
+  :root[data-layout-theme='builtin:inset']:not(.compact-layout) .app-shell.sidebar-hidden > .main-column.workspace-card {
+    margin-left: var(--island-gap);
+  }
 
   /* Settings repeat the workbench: navigation sits on the desk and the page is one card beside it.
      The rows inside stay flat, so there is never a card inside a card. A settings tab already lives

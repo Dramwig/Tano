@@ -795,13 +795,22 @@ test('document layout delegates radii to shape and paper tooth strictly to paper
   await expect(docSheet).toHaveCSS('border-top-left-radius', '2px');
 });
 
-test('inset layout keeps the island content bounds and puts the sidebar on the desk', async ({ page }) => {
+test('inset layout keeps the continuous sidebar geometry and insets only the content card', async ({ page }) => {
   await prepare(page);
   await page.evaluate(() => window.workbench.openSettingsTab('appearance'));
   const layout = page.getByRole('combobox', { name: '布局风格', exact: true });
   const sidebar = page.locator('.app-shell > .sidebar');
+  const sidebarHeader = sidebar.locator('.sidebar-header');
+  const sidebarBottom = sidebar.locator('.sidebar-bottom');
   const sidebarSurface = sidebar.locator('.sidebar-surface');
   const card = page.locator('.workspace-page-content.workspace-card:visible');
+
+  await layout.selectOption('builtin:tano');
+  const continuousSidebar = await sidebar.boundingBox();
+  const continuousHeader = await sidebarHeader.boundingBox();
+  const continuousBottom = await sidebarBottom.boundingBox();
+  const continuousPane = await page.locator('.workspace-pane-surface:visible').first().boundingBox();
+
   await layout.selectOption('builtin:islands');
   await expect(sidebarSurface).toBeVisible();
   await expect(card).toHaveCSS('border-top-left-radius', '10px');
@@ -812,7 +821,25 @@ test('inset layout keeps the island content bounds and puts the sidebar on the d
   await expect(sidebar).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(sidebarSurface).toBeHidden();
   await expect(card).toHaveCSS('border-top-left-radius', '10px');
-  expect(await card.boundingBox()).toEqual(islandBounds);
+  expect(await sidebar.boundingBox()).toEqual(continuousSidebar);
+  expect(await sidebarHeader.boundingBox()).toEqual(continuousHeader);
+  expect(await sidebarBottom.boundingBox()).toEqual(continuousBottom);
+  const insetBounds = await card.boundingBox();
+  expect(insetBounds.x).toBe(continuousPane.x);
+  expect(insetBounds.y).toBe(islandBounds.y);
+  expect(insetBounds.x + insetBounds.width).toBe(islandBounds.x + islandBounds.width);
+  expect(insetBounds.y + insetBounds.height).toBe(islandBounds.y + islandBounds.height);
+
+  // Hiding the sidebar restores the left window-edge inset on the content card.
+  await page.evaluate(() => { window.workbench.sidebar = false; });
+  await expect(sidebar).toBeHidden();
+  const hiddenBounds = await card.boundingBox();
+  const viewport = page.viewportSize();
+  expect(hiddenBounds.x).toBe(viewport.width - (hiddenBounds.x + hiddenBounds.width));
+  expect(hiddenBounds.y + hiddenBounds.height).toBe(islandBounds.y + islandBounds.height);
+  await page.evaluate(() => { window.workbench.sidebar = true; });
+  await expect(sidebar).toBeVisible();
+
   const preview = page.locator('.theme-preset-quick-row [aria-pressed="true"] .theme-preview');
   await expect(preview).toHaveAttribute('data-preview-structure', 'islands');
   await expect(preview.locator('.theme-preview-sidebar').first()).toHaveCSS('border-right-width', '0px');
