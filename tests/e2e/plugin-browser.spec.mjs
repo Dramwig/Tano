@@ -9,7 +9,7 @@ import { startPluginWatch } from '../../scripts/plugin/plugin-watch.mjs';
 import { buildPlugin } from '../../scripts/plugin/plugin-build.mjs';
 import { createPlugin } from '../../scripts/plugin/plugin-create.mjs';
 import { preparePluginRelease, buildPluginCatalog } from '../../scripts/plugin/plugin-catalog.mjs';
-import { acceptTaskInsights, selectWorkspaceSidebarTab } from '../fixtures/task-insights-acceptance.mjs';
+import { acceptTaskInsights, openPluginImport, selectWorkspaceSidebarTab } from '../fixtures/task-insights-acceptance.mjs';
 
 const origin = process.env.TANO_PLUGIN_TEST_URL ?? 'http://127.0.0.1:43845';
 const moduleUrl = `/@fs/${resolve('packages/workbench/src/plugins').replaceAll('\\', '/')}`;
@@ -38,7 +38,7 @@ for (const template of ['vue', 'react']) test(`runs a newly generated ${template
       await store.create('000-template-first.md', false, '# Template original\n');
     });
     await openPluginCenter(page);
-    await page.getByRole('button', { name: '导入插件', exact: true }).click();
+    await openPluginImport(page);
     await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
     await page.getByRole('button', { name: '检查清单' }).click();
     await page.getByRole('button', { name: '安装此插件', exact: true }).click();
@@ -388,7 +388,7 @@ test('watches source edits through developer mode, keeps the last build on compi
     watcher = await startPluginWatch(directory, { origin });
     await page.goto(origin);
     await openPluginCenter(page);
-    await page.getByRole('button', { name: '导入插件', exact: true }).click();
+    await openPluginImport(page);
     await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(built.canonical);
     await page.getByRole('button', { name: '检查清单' }).click();
     await page.getByRole('button', { name: '安装此插件', exact: true }).click();
@@ -457,7 +457,7 @@ test('upgrades, authorizes, inspects logs and rolls back a plugin through its ma
     source: `console.warn('构建 ${version} 已启动'); await tano.views.render('main', {type: 'text', text: '当前构建 ${version}'});` });
   await openPluginCenter(page);
   const install = async version => {
-    await page.getByRole('button', { name: '导入插件', exact: true }).click();
+    await openPluginImport(page);
     await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(JSON.stringify(pkg(version)));
     await page.getByRole('button', { name: '检查清单' }).click();
     await page.getByRole('button', { name: /^(安装此插件|更新并启用插件)$/ }).click();
@@ -557,7 +557,7 @@ test('packs and runs the Vue kanban, persists drag and keyboard moves, and tears
   const errors = []; page.on('pageerror', error => errors.push(error.stack ?? String(error)));
   await page.goto(origin);
   await openPluginCenter(page);
-  await page.getByRole('button', { name: '导入插件', exact: true }).click();
+  await openPluginImport(page);
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(content);
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件' }).click();
@@ -638,7 +638,7 @@ test('runs the SDK in a CSP sandbox and blocks ambient network, cookies and pare
 test('installs, authorizes and runs a plugin through the plugin center', async ({ page }) => {
   await page.goto(origin);
   await openPluginCenter(page);
-  await page.getByRole('button', { name: '导入插件', exact: true }).click();
+  await openPluginImport(page);
   await page.getByRole('button', { name: '载入文档总览示例' }).click();
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件' }).click();
@@ -676,7 +676,7 @@ test('round-trips form values and document writes through the real worker SDK', 
       ] });
     ` };
   await openPluginCenter(page);
-  await page.getByRole('button', { name: '导入插件', exact: true }).click();
+  await openPluginImport(page);
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(JSON.stringify(pkg));
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件' }).click();
@@ -710,7 +710,7 @@ test('uses plugin pages without desktop tabs, sidebar, settings, menus, palette 
       tano.views.onAction('preferences', ({ values }) => tano.notify('已保存示例偏好：' + values.title));
     ` };
   await openPluginCenter(page);
-  await page.getByRole('button', { name: '导入插件', exact: true }).click();
+  await openPluginImport(page);
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(JSON.stringify(pkg));
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件' }).click();

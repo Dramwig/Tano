@@ -10,6 +10,16 @@ export async function openPluginCenter(page) {
   await sidebar.getByRole('button', { name: '插件中心…', exact: true }).click();
 }
 
+export async function openPluginImport(page) {
+  const center = page.locator('.plugin-center:not(.plugin-center-sidebar)');
+  const developer = center.getByRole('button', { name: '开发者', exact: true });
+  const enable = center.getByRole('button', { name: '开启开发者模式以导入或开发插件', exact: true });
+  await developer.or(enable).waitFor({ state: 'visible' });
+  if (await enable.isVisible()) await enable.click();
+  else await developer.click();
+  await center.getByRole('button', { name: '导入插件', exact: true }).click();
+}
+
 /** Reused unchanged by the browser demo and the production WebView2/native adapter. */
 export async function acceptTaskInsights(page, expect, canonical, screenshotPath) {
   await page.evaluate(async () => {
@@ -19,7 +29,7 @@ export async function acceptTaskInsights(page, expect, canonical, screenshotPath
     await store.createObject({ type: 'event', name: '统计验收 普通事件', description: '', archived: false, properties: { checkable: false } });
   });
   await openPluginCenter(page);
-  await page.getByRole('button', { name: '导入插件', exact: true }).click();
+  await openPluginImport(page);
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件', exact: true }).click();

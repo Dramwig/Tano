@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
 import { buildPlugin } from './plugin-build.mjs';
-import { acceptTaskInsights, openPluginCenter } from '../../tests/fixtures/task-insights-acceptance.mjs';
+import { acceptTaskInsights, openPluginImport, openPluginCenter } from '../../tests/fixtures/task-insights-acceptance.mjs';
 
 if (process.platform !== 'win32') throw new Error('This acceptance test requires Windows and WebView2.');
 if (!process.env.npm_execpath) throw new Error('Run npm run test:plugins:native from the repository.');
@@ -95,7 +95,7 @@ try {
   console.log('React/Chart.js native acceptance passed: pagination, canvas, filters, events and cleanup.');
   const { canonical, integrity } = await buildPlugin(join(root, 'tests/fixtures/native-query-plugin'));
   await openPluginCenter(page);
-  await page.getByRole('button', { name: '导入插件', exact: true }).click();
+  await openPluginImport(page);
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(canonical);
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件', exact: true }).click();
@@ -118,7 +118,7 @@ try {
   expect(await readFile(join(workspace, '.git/index'))).toEqual(indexBefore);
   await openPluginCenter(page);
   const importer = await buildPlugin(join(root, 'examples/plugins/github-importer'));
-  await page.getByRole('button', { name: '导入插件', exact: true }).click();
+  await openPluginImport(page);
   await page.getByRole('textbox', { name: '插件 JSON 清单' }).fill(importer.canonical);
   await page.getByRole('button', { name: '检查清单' }).click();
   await page.getByRole('button', { name: '安装此插件', exact: true }).click();
