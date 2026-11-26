@@ -14,12 +14,22 @@ import {
   type PluginAssistantToolDefinition,
   type PluginJson,
 } from '@tano/protocol';
+import {
+  PLUGIN_UNTRUSTED_END,
+  PLUGIN_UNTRUSTED_START,
+  sanitizePluginBoundaryText,
+  wrapUntrustedPluginData,
+} from '@tano/protocol/untrusted-data';
 import { AssistantStream } from '../assistant/engine';
 import type { PluginRuntimeState } from './host';
 import type { InstalledObjectPlugin } from './workspace-plugins';
 
-export const PLUGIN_UNTRUSTED_START = '[UNTRUSTED_PLUGIN_DATA';
-export const PLUGIN_UNTRUSTED_END = '[/UNTRUSTED_PLUGIN_DATA]';
+export {
+  PLUGIN_UNTRUSTED_END,
+  PLUGIN_UNTRUSTED_START,
+  sanitizePluginBoundaryText,
+  wrapUntrustedPluginData,
+};
 
 export interface ActivePluginAssistantEntry {
   installation: InstalledObjectPlugin;
@@ -49,21 +59,6 @@ export interface PluginAssistantContextBlock {
   title: string;
   content: string;
   metadata?: PluginJson;
-}
-
-/** Escape any spoofed boundary tokens so plugin output cannot break out of the untrusted block. */
-export function sanitizePluginBoundaryText(value: string): string {
-  return value
-    .replaceAll(PLUGIN_UNTRUSTED_START, '[ESCAPED_UNTRUSTED_PLUGIN_DATA')
-    .replaceAll(PLUGIN_UNTRUSTED_END, '[/ESCAPED_UNTRUSTED_PLUGIN_DATA]');
-}
-
-/** Wrap plugin-supplied data in explicit untrusted markers before sending to an LLM. */
-export function wrapUntrustedPluginData(pluginId: string, source: string, payload: unknown): string {
-  const safePluginId = pluginId.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const safeSource = source.replace(/[^a-zA-Z0-9._:-]/g, '_');
-  const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
-  return `${PLUGIN_UNTRUSTED_START} plugin="${safePluginId}" source="${safeSource}"]\n${sanitizePluginBoundaryText(body)}\n${PLUGIN_UNTRUSTED_END}`;
 }
 
 export function activeAssistantPlugins(
