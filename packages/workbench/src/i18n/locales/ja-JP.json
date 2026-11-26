@@ -4005,6 +4005,7 @@
   "Microsoft 应用 Client ID": "Microsoft アプリ Client ID",
   "邮箱地址（可选，用于登录提示）": "メールアドレス（任意・サインイン時のヒント）",
   "Microsoft 应用 Client ID（可选）": "Microsoft アプリ Client ID（任意）",
+  "留空使用默认应用": "空欄で既定のアプリを使用",
   "Microsoft 租户（默认 common）": "Microsoft テナント（既定: common）",
   "访问令牌仅保存在本机系统凭据库": "アクセストークンはこの端末の OS 資格情報ストアのみに保存されます",
   "取消授权": "認証をキャンセル",

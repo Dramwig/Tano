@@ -81,6 +81,7 @@ const oauthConfigured = computed(() => !!currentPreset.value?.oauthConfigured);
 
 async function pickProvider(presetId: string) {
   reauthAccountId.value = '';
+  email.value = '';
   oauthClientId.value = '';
   oauthTenant.value = '';
   applyPreset(presetId);
@@ -451,16 +452,6 @@ function formatBytes(bytes: number): string {
                   placeholder="00000000-0000-0000-0000-000000000000"
                 />
               </label>
-              <label class="mail-field">
-                <span>{{ t('邮箱地址（可选，用于登录提示）') }}</span>
-                <input
-                  ref="emailInput"
-                  v-model="email"
-                  type="email"
-                  autocomplete="email"
-                  placeholder="name@outlook.com"
-                />
-              </label>
             </template>
 
             <template v-else>
@@ -507,9 +498,23 @@ function formatBytes(bytes: number): string {
                   <input v-model="displayName" type="text" />
                 </label>
                 <template v-if="isOAuth">
+                  <label class="mail-field mail-form-full">
+                    <span>{{ t('邮箱地址（可选，用于登录提示）') }}</span>
+                    <input
+                      v-model="email"
+                      type="text"
+                      autocomplete="email"
+                      placeholder="name@outlook.com"
+                    />
+                  </label>
                   <label v-if="oauthConfigured" class="mail-field">
                     <span>{{ t('Microsoft 应用 Client ID（可选）') }}</span>
-                    <input v-model="oauthClientId" type="text" autocomplete="off" />
+                    <input
+                      v-model="oauthClientId"
+                      type="text"
+                      autocomplete="off"
+                      :placeholder="t('留空使用默认应用')"
+                    />
                   </label>
                   <label class="mail-field" :class="{ 'mail-form-full': !oauthConfigured }">
                     <span>{{ t('Microsoft 租户（默认 common）') }}</span>

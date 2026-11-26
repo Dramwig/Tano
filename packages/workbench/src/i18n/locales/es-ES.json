@@ -4005,6 +4005,7 @@
   "Microsoft 应用 Client ID": "Client ID de la aplicación de Microsoft",
   "邮箱地址（可选，用于登录提示）": "Dirección de correo (opcional, sugerencia de inicio de sesión)",
   "Microsoft 应用 Client ID（可选）": "Client ID de la aplicación de Microsoft (opcional)",
+  "留空使用默认应用": "Dejar vacío para usar la app predeterminada",
   "Microsoft 租户（默认 common）": "Inquilino de Microsoft (predeterminado: common)",
   "访问令牌仅保存在本机系统凭据库": "Los tokens de acceso se guardan solo en el almacén de credenciales del sistema",
   "取消授权": "Cancelar autorización",

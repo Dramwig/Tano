@@ -4005,6 +4005,7 @@
   "Microsoft 应用 Client ID": "Microsoft-App-Client-ID",
   "邮箱地址（可选，用于登录提示）": "E-Mail-Adresse (optionaler Anmeldehinweis)",
   "Microsoft 应用 Client ID（可选）": "Microsoft-App-Client-ID (optional)",
+  "留空使用默认应用": "Leer lassen für Standard-App",
   "Microsoft 租户（默认 common）": "Microsoft-Mandant (Standard: common)",
   "访问令牌仅保存在本机系统凭据库": "Zugriffstoken werden nur im lokalen System-Schlüsselbund gespeichert",
   "取消授权": "Autorisierung abbrechen",

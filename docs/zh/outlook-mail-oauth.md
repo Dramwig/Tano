@@ -10,6 +10,8 @@
 2. 在「身份验证 → 添加平台」中选择 **Mobile and desktop applications**，注册 `http://localhost`，在高级设置中将 **Allow public client flows** 设为 **Yes**。桌面端监听 IPv4 回环上的动态端口，授权时使用 `http://localhost:{port}/`。公共客户端无需创建 Client Secret。[Microsoft 回调地址说明](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url)
 3. 在「API 权限」加入委托权限。Microsoft Graph 分组只保留 OIDC 权限 `openid`、`profile`、`email` 和 `offline_access`，移除默认 `User.Read`。在「我的组织使用的 API」中选 **Office 365 Exchange Online**，加入 `IMAP.AccessAsUser.All` 和 `SMTP.Send`。授权请求使用 `https://outlook.office.com/IMAP.AccessAsUser.All` 和 `https://outlook.office.com/SMTP.Send`。[OIDC 权限](https://learn.microsoft.com/en-us/entra/identity-platform/scopes-oidc) · [Exchange OAuth 权限](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth)
 
+如果新目录在 API 选择器中找不到 Exchange Online，在应用的 **Microsoft Graph 应用清单**中保留已有的 OIDC 权限，并在 `requiredResourceAccess` 中追加 Exchange Online 条目。资源 ID 是 `00000002-0000-0ff1-ce00-000000000000`。两项 `resourceAccess` 均为 `type: "Scope"`，IMAP 的 ID 是 `195adc35-e27b-454b-a7ed-1ecdffa1c09f`，SMTP 的 ID 是 `76faac2a-0f20-42f1-928a-50de5b9dbe52`。保存后回到「API 权限」，确认两项都显示在 **Office 365 Exchange Online** 分组下。[Microsoft 应用清单参考](https://learn.microsoft.com/en-us/entra/identity-platform/reference-microsoft-graph-app-manifest#requiredresourceaccess-attribute)
+
 ## 本机联调与构建
 
 将 `mail-oauth.json` 保存在对应应用数据目录。Windows 本地版用 `%APPDATA%/app.tano.local/`，官方直下载版用 `%APPDATA%/app.tano.desktop/`，Microsoft Store 版使用自身的 `app.tano.desktop.store` 应用数据目录。配置文件留在本机的应用数据目录，令牌由系统凭据库管理。

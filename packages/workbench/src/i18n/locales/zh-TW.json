@@ -4005,6 +4005,7 @@
   "Microsoft 应用 Client ID": "Microsoft 應用程式 Client ID",
   "邮箱地址（可选，用于登录提示）": "電子郵件地址（選填，用於登入提示）",
   "Microsoft 应用 Client ID（可选）": "Microsoft 應用程式 Client ID（選填）",
+  "留空使用默认应用": "留空使用預設應用程式",
   "Microsoft 租户（默认 common）": "Microsoft 租戶（預設 common）",
   "访问令牌仅保存在本机系统凭据库": "存取權杖僅儲存在本機系統憑證庫",
   "取消授权": "取消授權",
