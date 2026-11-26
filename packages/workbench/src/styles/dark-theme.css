@@ -88,16 +88,16 @@
   box-shadow: var(--overlay-shadow);
 }
 :root[data-theme='dark'] :is(
-  .modal, .settings-dialog, .object-panel, .import-dialog, .plan-detail-panel,
+  .modal, .settings-dialog, .object-detail-panel, .import-dialog, .plan-detail-panel,
   .plan-connections, .assistant-connection-dialog, .assistant-panel-floating,
-  .plugin-dialog, .new-tab-picker, .personal-plan-dialog, .document-history-dialog,
+  .plugin-dialog, .new-tab-picker, .document-history-dialog,
   .selection-todo-dialog
 ) {
   border-color: var(--line-strong);
   box-shadow: var(--dialog-shadow);
 }
 :root[data-theme='dark'] :is(
-  .modal-backdrop, .object-panel-backdrop, .plan-detail-backdrop,
+  .modal-backdrop, .object-detail-backdrop, .plan-detail-backdrop,
   .plan-connections-backdrop, .selection-todo-backdrop, .new-tab-backdrop
 ) {
   background: #00000066;

@@ -18,7 +18,7 @@ type Surface = {
 const surfaces = new WeakMap<HTMLElement, Surface>();
 const owners = new WeakMap<object, WeakMap<Node, Map<string, Surface>>>();
 const active = new Set<Surface>();
-const backdropSelector = '.modal-backdrop, .data-modal-backdrop, .object-panel-backdrop, .file-metadata-backdrop, .personal-plan-backdrop, .plan-connections-backdrop, .plan-detail-backdrop, .selection-todo-backdrop, .new-tab-backdrop';
+const backdropSelector = '.modal-backdrop, .data-modal-backdrop, .object-detail-backdrop, .file-metadata-backdrop, .plan-connections-backdrop, .plan-detail-backdrop, .selection-todo-backdrop, .new-tab-backdrop';
 let reduced: MediaQueryList | undefined;
 
 function enabled(root: HTMLElement) {

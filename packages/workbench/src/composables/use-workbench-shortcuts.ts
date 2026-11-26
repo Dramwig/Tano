@@ -69,7 +69,8 @@ export interface WorkbenchShortcutsDeps {
   commandPaletteOpened: Ref<boolean>;
   importPanel: Ref<boolean>;
   agentPanel: Ref<boolean>;
-  objectPanel: Ref<boolean>;
+  objectDetail: Ref<unknown>;
+  planArchiveOpen: Ref<boolean>;
   recyclePanel: Ref<boolean>;
   historyPanel: Ref<boolean>;
   historyPage: Ref<'versions' | 'updates'>;
@@ -92,7 +93,7 @@ export interface WorkbenchShortcutsDeps {
   selectedEntries: Ref<FileEntry[]>;
   showModal: (kind: 'newTab' | 'search' | 'delete' | 'saveAs', target?: FileEntry) => void;
   createNewDocument: () => Promise<void>;
-  createNewEntry: (kind: 'document' | 'folder', parent?: string) => Promise<void>;
+  createNewEntry: (kind: 'document' | 'folder' | 'table', parent?: string) => Promise<void>;
   detachTab: (id: string) => Promise<void>;
   openImport: () => void;
   openTemplateLibrary: () => void;
@@ -110,7 +111,6 @@ export interface WorkbenchShortcutsDeps {
   toggleWorkspaceMenu: () => void;
   selectModule: (id: string) => void;
   openCalendar: (date?: Date) => void;
-  openSystemSync: (event?: Event) => void;
   openSettings: (page?: SettingsPageId) => void;
   closeFileContextMenu: (restoreFocus?: boolean) => void;
   closeDirectoryContextMenu: () => void;
@@ -168,7 +168,8 @@ export function useWorkbenchShortcuts(deps: WorkbenchShortcutsDeps) {
     commandPaletteOpened,
     importPanel,
     agentPanel,
-    objectPanel,
+    objectDetail,
+    planArchiveOpen,
     recyclePanel,
     historyPanel,
     historyPage,
@@ -209,7 +210,6 @@ export function useWorkbenchShortcuts(deps: WorkbenchShortcutsDeps) {
     toggleWorkspaceMenu,
     selectModule,
     openCalendar,
-    openSystemSync,
     openSettings,
     closeFileContextMenu,
     closeDirectoryContextMenu,
@@ -329,6 +329,15 @@ export function useWorkbenchShortcuts(deps: WorkbenchShortcutsDeps) {
         },
         available: writableWorkspace,
         run: () => createNewEntry('folder'),
+      },
+      {
+        id: 'workbench.table',
+        category: t('文档'),
+        get label() {
+          return t('新建数据表');
+        },
+        available: writableWorkspace,
+        run: () => createNewEntry('table'),
       },
       {
         id: 'workbench.import',
@@ -566,15 +575,6 @@ export function useWorkbenchShortcuts(deps: WorkbenchShortcutsDeps) {
         available: store.workspaceSettings.showGraph,
         run: () => store.openGraphTab(),
       },
-      // Dev-only prototype; the native command is compiled out of release builds.
-      {
-        id: 'workbench.git',
-        category: t('工作区'),
-        label: 'Git 与同步',
-        keywords: 'Git 状态 差异 提交 历史 同步',
-        available: native && !mobile && !!workspace.value && !store.isWeb,
-        run: () => openSystemSync(),
-      },
       {
         id: 'workbench.plugins',
         category: t('工作区'),
@@ -602,7 +602,7 @@ export function useWorkbenchShortcuts(deps: WorkbenchShortcutsDeps) {
         get label() {
           return t('文档版本历史');
         },
-        available: hasDocument && !!extensions.historyEnabled,
+        available: hasDocument && !!extensions.historyEnabled && !!extensions.historyView,
         run: () => {
           historyPage.value = 'versions';
           historyPanel.value = true;
@@ -903,7 +903,7 @@ export function useWorkbenchShortcuts(deps: WorkbenchShortcutsDeps) {
     }
     const layer = [
       agentPanel,
-      objectPanel,
+      planArchiveOpen,
       recyclePanel,
       historyPanel,
       referenceGraphOpened,
@@ -948,18 +948,22 @@ export function useWorkbenchShortcuts(deps: WorkbenchShortcutsDeps) {
                               ? () => {
                                   selectedDiff.value = undefined;
                                 }
-                              : selectionTodo.value
+                              : objectDetail.value
                                 ? () => {
-                                    selectionTodo.value = undefined;
+                                    objectDetail.value = undefined;
                                   }
-                                : layer
+                                : selectionTodo.value
                                   ? () => {
-                                      layer.value = false;
+                                      selectionTodo.value = undefined;
                                     }
-                                  : compactPanes.value && sidebar.value
+                                  : layer
                                     ? () => {
-                                        sidebar.value = false;
+                                        layer.value = false;
                                       }
+                                    : compactPanes.value && sidebar.value
+                                      ? () => {
+                                          sidebar.value = false;
+                                        }
                                     : assistant.opened
                                       ? () => {
                                           assistant.opened = false;

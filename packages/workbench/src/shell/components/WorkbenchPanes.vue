@@ -64,7 +64,6 @@ import {
   RelationGraph,
   SourceEditor,
   TemplateLibrary,
-  WorkspaceViewTab,
 } from '../workbench-async-components';
 import { workbenchContextKey } from '../workbench-context';
 import AssistantLauncher from '../../assistant/components/AssistantLauncher.vue';
@@ -167,7 +166,6 @@ const {
   touchLayout,
   showOutline,
   touchOutlineOpen,
-  panel,
   attachments,
   isTableTab,
   calendarToolItems,
@@ -179,7 +177,7 @@ const {
   calendarModeOptions,
   calendarMode,
   selectCalendarMode,
-  managePlanEvents,
+  openPlanArchive,
   documentSuggestions,
   editing,
   suggestionModeBusy,
@@ -231,8 +229,6 @@ const {
   tableFileId,
   openAssistant,
   parentPath,
-  openWorkspaceViewSourceFile,
-  openWorkspaceViewSourceObject,
   calendarScope,
   plans,
   showCalendarDay,
@@ -241,7 +237,7 @@ const {
   openAssistantPage,
   viewActions,
   SETTINGS_TAB_ID,
-  showObjects,
+  createPluginObject,
   selectedVisualFontFamily,
   visualFontSize,
   setPaneSearch,
@@ -660,7 +656,6 @@ function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRender
                 :load-document-icon="loadTreeDocumentIcon"
                 :path="tab?.path"
                 :directory="!!tab?.directory"
-                :workspace-view="tab?.workspaceView?.view"
                 :demo-label="store.isDemo ? workspaceStatusLabel : undefined"
                 :read-only="workspace?.readOnly"
                 @open="(file) => { store.focusPane(pane.id); openEntry(file); }"
@@ -704,7 +699,7 @@ function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRender
                   :runtime="store.pluginRuntime.find(item => item.id === tab.pluginView?.pluginId)" :execute="store.interactWithPlugin" />
                 <button v-if="active && touchLayout && showOutline" type="button" class="icon-button"
                   :aria-label="t('文档大纲')" :aria-expanded="touchOutlineOpen"
-                  @click="panel = 'outline'; touchOutlineOpen = !touchOutlineOpen">
+                  @click="touchOutlineOpen = !touchOutlineOpen">
                   <List :size="18" />
                 </button>
                 <button
@@ -832,10 +827,10 @@ function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRender
                     v-if="isVisible('calendar-events')"
                     type="button"
                     class="calendar-topbar-events"
-                    :data-tooltip="t('查看和管理事件')"
-                    @click="managePlanEvents"
+                    :data-tooltip="t('查看和恢复已归档事项')"
+                    @click="openPlanArchive"
                   >
-                    <CalendarDays :size="15" />{{ t('管理事件') }}
+                    <Archive :size="15" />{{ t('已归档') }}
                   </button>
                 </div>
                 <div v-if="active && documentSuggestions.get(active.id)?.mode && !editing.isManaging(active.id)"
@@ -985,6 +980,7 @@ function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRender
                       </button>
                       <div class="menu-divider" role="separator" />
                       <button
+                        v-if="extensions.historyEnabled && extensions.historyView"
                         @click="
                           menu = false;
                           historyPage = 'versions';
@@ -1074,14 +1070,6 @@ function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRender
               :document-icons="treeDocumentIcons" :load-document-icon="loadTreeDocumentIcon"
               @open="(file) => { store.focusPane(pane.id); void openEntry(file); }"
               @up="() => { store.focusPane(pane.id); void openBreadcrumbDirectory(parentPath(tab.directory!.path)); }" />
-            <WorkspaceViewTab
-              v-if="workspace && pane.activeId.startsWith('workspace-view:')"
-              :key="`${workspace.id}:${pane.activeId}`"
-              :tab-id="pane.activeId"
-              @open-file="(file) => { store.focusPane(pane.id); void openWorkspaceViewSourceFile(file); }"
-              @edit-document-properties="async (file) => { store.focusPane(pane.id); await openWorkspaceViewSourceFile(file); showDocumentProperties = true; setPaneSource(file.id, false); }"
-              @open-object="(identity) => { store.focusPane(pane.id); openWorkspaceViewSourceObject(identity); }"
-            />
             <CalendarView
               v-if="workspace && pane.activeId === CALENDAR_TAB_ID"
               :loading="calendarScope === 'workspace' && store.workspaceLoading.objects"
@@ -1122,7 +1110,7 @@ function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRender
                 <p v-else-if="workspace.readOnly" class="tool-level-notice">
                   {{ t('此工作区为只读，无法修改对象和关系。') }}
                 </p>
-                <PluginInstaller @objects="showObjects()">
+                <PluginInstaller @create-object="createPluginObject">
                   <template v-if="extensions.regions['plugin-forge']" #forge="{ canPublish, openPublishing }">
                     <component
                       :is="extensions.regions['plugin-forge']"
@@ -1490,9 +1478,7 @@ function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRender
                 pane.activeId !== SETTINGS_TAB_ID &&
                 (!mailEnabled || pane.activeId !== MAIL_TAB_ID) &&
                 !isTableTab(pane.activeId) &&
-                !pane.activeId.startsWith('workspace-view:') &&
                 !pane.activeId.startsWith('plugin:') &&
-                !tab?.workspaceView &&
                 !tab?.directory &&
                 !tab?.pluginView &&
                 !extensionViews.find((view) => view.id === pane.activeId)
@@ -1527,41 +1513,32 @@ function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRender
                 !(assistant.opened && assistant.displayMode === 'sidebar') &&
                 !isAuxiliaryWindow &&
                 pane.id === store.activePaneId &&
-                (activeDocumentSidebarView || panel !== 'outline' || (showOutline && (!touchLayout || touchOutlineOpen)))
+                (activeDocumentSidebarView || (showOutline && (!touchLayout || touchOutlineOpen)))
               "
               v-outline-motion
               class="inspector"
-              :style="!activeDocumentSidebarView && panel === 'outline' ? outlinePosition : undefined"
+              :style="!activeDocumentSidebarView ? outlinePosition : undefined"
               :class="{
-                'inspector-outline': !activeDocumentSidebarView && panel === 'outline',
-                'inspector-outline-left': !activeDocumentSidebarView && panel === 'outline' && outlineOnLeft,
+                'inspector-outline': !activeDocumentSidebarView,
+                'inspector-outline-left': !activeDocumentSidebarView && outlineOnLeft,
                 'inspector-hover-outline':
-                  !activeDocumentSidebarView && panel === 'outline' && !touchLayout && hoverOutline && !outlinePinned,
-                'inspector-activity': !!activeDocumentSidebarView || panel === 'activity',
+                  !activeDocumentSidebarView && !touchLayout && hoverOutline && !outlinePinned,
+                'inspector-activity': !!activeDocumentSidebarView,
               }"
               :aria-label="
                 activeDocumentSidebarView
                   ? `${activeDocumentSidebarView.pluginName} · ${activeDocumentSidebarView.label}`
-                  : panel === 'outline'
-                    ? t('文档目录')
-                    : t('文档动态')
+                  : t('文档目录')
               "
               @contextmenu="openOutlineContextMenu"
               @pointerleave="releaseOutlinePointerFocus"
             >
               <div class="inspector-surface">
-                <div v-if="activeDocumentSidebarView || panel === 'activity' || documentSidebarViews.length" class="inspector-tabs">
+                <div v-if="activeDocumentSidebarView || documentSidebarViews.length" class="inspector-tabs">
                   <button
-                    :class="{ active: !activeDocumentSidebarView && panel === 'outline' }"
-                    @click="store.activeDocumentPluginSidebar = ''; panel = 'outline'"
-                  ><List :size="14" />{{ t('大纲') }}</button
-                  ><button
-                    v-if="panel === 'activity' || activeDocumentSidebarView"
-                    :class="{ active: !activeDocumentSidebarView && panel === 'activity' }"
-                    @click="store.activeDocumentPluginSidebar = ''; panel = 'activity'"
-                  >
-                    <History :size="14" />{{ t('动态') }}
-                  </button>
+                    :class="{ active: !activeDocumentSidebarView }"
+                    @click="store.activeDocumentPluginSidebar = ''"
+                  ><List :size="14" />{{ t('大纲') }}</button>
                   <button
                     v-for="docView in documentSidebarViews"
                     :key="docView.key"
@@ -1581,7 +1558,7 @@ function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRender
                   compact
                 />
                 <template v-else>
-                <div v-if="panel === 'outline'" class="outline-controls">
+                <div class="outline-controls">
                   <span>{{ t('文档大纲') }}</span>
                   <button v-if="touchLayout" type="button" class="outline-control" :aria-label="t('关闭文档大纲')"
                     @click="touchOutlineOpen = false"><X :size="18" /></button>
@@ -1620,7 +1597,7 @@ function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRender
                     <Pin :size="15" :fill="outlinePinned ? 'currentColor' : 'none'" />
                   </button>
                 </div>
-                <div v-if="panel === 'outline' && outlineSearchOpen" class="outline-search">
+                <div v-if="outlineSearchOpen" class="outline-search">
                   <Search :size="14" aria-hidden="true" />
                   <input
                     :ref="(el) => { context.outlineSearchInput = (el as HTMLInputElement | null) ?? undefined; }"
@@ -1633,54 +1610,7 @@ function editorPluginCodeBlockRenderers(fileId: string): ExternalCodeBlockRender
                     @keydown.esc.stop.prevent="toggleOutlineSearch"
                   />
                 </div>
-<DocumentOutline v-if="panel === 'outline'" :items="visibleOutline" :has-headings="!!outline.length" :active-index="activeHeading" @select="jumpToHeading($event, true)" />
-                <div v-else class="activity-list">
-                  <p class="activity-explainer">{{ t('这个会话中的文件变化。外部编辑者身份暂不可识别。') }}</p>
-                  <button v-if="localNative" class="secondary-button" @click="agentPanel = true">
-                    <Bot :size="14" />{{ t('工作区指引与 MCP 活动') }}
-                  </button>
-                  <div v-for="item in activities" :key="item.id" class="activity-item">
-                    <span class="activity-icon" :class="item.kind"
-                      ><component
-                        :is="
-                          item.kind === 'conflict'
-                            ? AlertTriangle
-                            : item.kind === 'external'
-                              ? RefreshCw
-                              : item.kind === 'save'
-                                ? Check
-                                : FileText
-                        "
-                        :size="13"
-                    /></span>
-                    <div>
-                      <strong>{{ item.label }}</strong>
-                      <p>{{ item.detail }}</p>
-                      <button
-                        v-if="item.change"
-                        class="activity-diff-button"
-                        @click="selectedDiff = { title: item.detail, ...item.change }"
-                      >
-                        {{ t('查看差异') }}
-                      </button>
-                      <time>{{
-                        new Date(item.time).toLocaleTimeString(uiLocale, {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      }}</time>
-                    </div>
-                  </div>
-                </div>
-                <div v-if="panel === 'activity'" class="inspector-footer">
-                  <span class="live-dot" />{{
-                    store.isDemo
-                      ? t('浏览器本地存储')
-                      : store.isWeb
-                        ? t('定期检查服务器修改')
-                        : t('正在监听工作文件夹')
-                  }}
-                </div>
+                <DocumentOutline :items="visibleOutline" :has-headings="!!outline.length" :active-index="activeHeading" @select="jumpToHeading($event, true)" />
                 </template>
               </div>
             </aside>

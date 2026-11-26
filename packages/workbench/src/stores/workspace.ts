@@ -21,7 +21,7 @@ import {
 } from '@tano/protocol';
 import { createWorkspaceAssistantBridge } from '../assistant/workspace-bridge';
 import { createDataTableController } from '../data-tables/data-table-controller';
-import { isTableTab, TABLES_TAB_ID, tableFileId, tableTabId } from '../data-tables/data-tables';
+import { isTableTab, tableFileId, tableTabId } from '../data-tables/data-tables';
 import { GRAPH_TAB_ID } from '../documents/document-graph';
 import { useDocumentIndex } from '../documents/document-index';
 import { createDocumentSession, documentDirty as dirty, type OpenDocument } from '../documents/document-session';
@@ -46,7 +46,6 @@ import {
 import { WorkspaceLifecycle } from '../workspace/workspace-lifecycle';
 import { PLUGINS_TAB_ID, type InstalledObjectPlugin } from '../plugins/workspace-plugins';
 import { readStartupWorkspace, rememberStartupWorkspace } from '../workspace/workspace-startup';
-import type { WorkspaceViewRecord } from '../workspace/workspace-views';
 import { addWorkspaceWelcome, workspaceWelcomePath } from '../workspace/workspace-welcome';
 import { createWorkspaceFileOps } from './workspace-file-ops';
 import { createWorkspaceKnowledge } from './workspace-knowledge';
@@ -64,7 +63,6 @@ export interface DocumentTab {
   plugins: boolean;
   calendar: boolean;
   view?: WorkbenchViewTab;
-  workspaceView?: WorkspaceViewRecord;
   directory?: { path: string; name: string; missing: boolean };
   pluginView?: PluginWorkbenchView;
   pluginDetail?: PluginManifest;
@@ -118,7 +116,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     tables: false,
     plugins: false,
     objects: false,
-    views: false,
     relations: false,
     capabilities: false,
   });
@@ -251,7 +248,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     report,
   });
 
-  // 2. Knowledge (objects, relations, workspace views/databases, metadata, templates, repeats, references)
+  // 2. Knowledge (objects, relations, metadata, templates, repeats, references)
   const knowledge = createWorkspaceKnowledge({
     adapter,
     workspace,
@@ -266,7 +263,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     loadWorkspacePart,
     refreshPlugins: (current) => plugins.refreshPlugins(current),
     disposePluginExecutor: () => plugins.pluginExecutor.dispose(),
-    openWorkspaceView: (id, options) => openWorkspaceView(id, options),
   });
 
   // 3. Plugins state (plugin runtime, host/executor/developer, pluginCall, OAuth/connections/packages)
@@ -305,7 +301,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     documents,
     documentIndex,
     dataTables,
-    workspaceViews: knowledge.workspaceViews,
     installedPlugins,
     pluginViews: plugins.pluginViews,
     activePluginSidebar,
@@ -846,11 +841,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       ...new Set([
         ...requested.filter(
           (id) =>
-            id !== TABLES_TAB_ID &&
-            (planned.has(id) ||
-              tabsLayout.isUtilityTab(id) ||
-              tabsLayout.isWorkspaceViewTab(id) ||
-              id.startsWith('plugin:')),
+            planned.has(id) ||
+            tabsLayout.isUtilityTab(id) ||
+            id.startsWith('plugin:'),
         ),
         ...planned,
       ]),
@@ -922,7 +915,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     ]);
     // Resolve legacy table identities only after table records are available.
     for (const id of saved.tabs ?? [])
-      if (isTableTab(id) && id !== TABLES_TAB_ID)
+      if (isTableTab(id))
         remapped.set(id, tableTabId(dataTableFileId(tableFileId(id))));
     const byId = new Map(documents.value.map((doc) => [doc.id, doc]));
     documents.value = pendingDocs
@@ -932,8 +925,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       ?.map((id) => remapped.get(id) ?? id)
       .filter(
         (id) =>
-          id !== TABLES_TAB_ID &&
-          (tabsLayout.isUtilityTab(id) || documents.value.some((doc) => doc.id === id)),
+          tabsLayout.isUtilityTab(id) || documents.value.some((doc) => doc.id === id),
       );
     tabIds.value = [...new Set([...(restored ?? []), ...documents.value.map((doc) => doc.id)])];
     const currentActive = remapped.get(activeId.value) ?? activeId.value;
@@ -1370,14 +1362,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (path && !entry) return;
     await openPageTab(path ? `directory:${entry!.id}` : 'directory:/', options);
   }
-  async function openWorkspaceView(
-    id: string,
-    options?: { newTab?: boolean; historyIndex?: number },
-  ) {
-    if (!knowledge.workspaceViews.value.some((record) => record.view.id === id))
-      throw new Error('工作区视图已不存在，请刷新后重试');
-    await openPageTab(tabsLayout.workspaceViewTabId(id), options);
-  }
   async function openPluginDetail(
     pluginId: string,
     options?: { newTab?: boolean; historyIndex?: number },
@@ -1705,7 +1689,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     relations: knowledge.relations,
     relationError: knowledge.relationError,
     relationDefinitions: knowledge.relationDefinitions,
-    relationIndex: knowledge.relationIndex,
     createRelation: knowledge.createRelation,
     removeRelation: knowledge.removeRelation,
     setRelationSource: knowledge.setRelationSource,
@@ -1735,12 +1718,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     fileRegistry,
     readFileMetadata: knowledge.readFileMetadata,
     updateFileMetadata: knowledge.updateFileMetadata,
-    createFileDatabase: knowledge.createFileDatabase,
-    saveFileDatabase: knowledge.saveFileDatabase,
-    createObjectDatabase: knowledge.createObjectDatabase,
     deleteObject: knowledge.deleteObject,
-    workspaceViews: knowledge.workspaceViews,
-    workspaceViewErrors: knowledge.workspaceViewErrors,
     displayPath,
     fileMutationPending: fileMutations.pending,
     documents,
@@ -1781,7 +1759,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openFilesInNewTabsAt,
     createBlankTab: tabsLayout.createBlankTab,
     openGraphTab,
-    openWorkspaceView,
     openPluginsTab,
     openPluginDetail,
     openCalendarTab: tabsLayout.openCalendarTab,

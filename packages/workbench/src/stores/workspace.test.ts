@@ -145,7 +145,7 @@ describe('assistant proposal coordination', () => {
     return { id: crypto.randomUUID(), runId: 'run', workspaceId: 'test', kind: 'edit' as const,
       fileId: 'note-id', path: 'note.md', base: 'A\nB\nC\n', content, reason: 'test', status: 'ready' as const };
   }
-  it.each(['event', 'task', 'project', 'experiment', 'person'])('reviews workspace %s records only after acceptance and capability checks', async type => {
+  it.each(['event', 'task', 'person'])('reviews workspace %s records only after acceptance and capability checks', async type => {
     store.capabilities.features.objectReferences = true;
     const object = { version: 1, id: 'e00001', type, name: '审阅', description: '', archived: false, properties: type === 'event' ? { checkable: true, completed: false } : { status: '待处理' } };
     const suggested = { id: crypto.randomUUID(), runId: 'run', workspaceId: 'test', kind: 'object' as const,
@@ -613,34 +613,6 @@ describe('workspace file reconciliation', () => {
     expect(store.activeId).toBe(CALENDAR_TAB_ID);
     await store.close(CALENDAR_TAB_ID);
     expect(store.tabs.some(tab => tab.calendar)).toBe(false);
-  });
-  it('loads portable workspace views and keeps their source IDs separate from documents', async () => {
-    backend.files.set('source.md', { id: 'a1b2c3', content: 'Source' });
-    backend.files.set('.tano/views/research.tano.json', {
-      id: 'view-file',
-      content: JSON.stringify({
-        version: 1,
-        layer: 'view',
-        workspaceId: 'test',
-        id: 'research',
-        name: 'Research',
-        kind: 'files',
-        sources: [{ layer: 'file', fileId: 'a1b2c3' }],
-      }),
-    });
-    await store.refresh();
-    expect(store.workspaceViews).toHaveLength(1);
-    await store.openWorkspaceView('research');
-    expect(store.activeId).toBe('workspace-view:research');
-    expect(store.active).toBeUndefined();
-    expect(store.tabs.find(tab => tab.workspaceView)?.workspaceView?.view.name).toBe('Research');
-    await vi.waitFor(() => expect(backend.session?.tabs).toContain('workspace-view:research'));
-    await store.dispose();
-    setActivePinia(configureWorkbench(createPinia(), { adapter: backend, native: false, mobile: false }));
-    store = useWorkspaceStore();
-    await store.initialize();
-    expect(store.activeId).toBe('workspace-view:research');
-    expect(store.tabs.find(tab => tab.workspaceView)?.workspaceView?.view.name).toBe('Research');
   });
   it('keeps extension views separate from file contents and restores registered singleton tabs', async () => {
     const filesBefore = structuredClone([...backend.files]);

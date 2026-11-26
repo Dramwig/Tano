@@ -7,7 +7,6 @@ import {
   Bot,
   Bug,
   CalendarDays,
-  Database,
   ExternalLink,
   FilePlus2,
   GitFork,
@@ -346,7 +345,6 @@ async function onTabKeydown(event: KeyboardEvent) {
           <span v-else-if="!doc.blank && documentIcons[doc.id]" class="desktop-tab-icon desktop-tab-document-icon" aria-hidden="true">
             <WorkspaceIcon :icon="documentIcons[doc.id]" :size="15" />
           </span>
-          <Database v-else-if="doc.workspaceView?.view.database" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <FilePlus2 v-else-if="doc.blank" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
           <ResourceIcon v-else :path="doc.path" class="desktop-tab-icon" :size="15" />
           <span class="desktop-tab-label">{{ tabLabel(doc) }}</span>
@@ -487,7 +485,6 @@ async function onTabKeydown(event: KeyboardEvent) {
       <span v-else-if="documentIcons[dragPreview.id]" class="desktop-tab-icon desktop-tab-document-icon">
         <WorkspaceIcon :icon="documentIcons[dragPreview.id]" :size="15" />
       </span>
-      <Database v-else-if="paneTabs.find(tab => tab.id === dragPreview?.id)?.workspaceView?.view.database" class="desktop-tab-icon" :size="15" :stroke-width="1.6" />
       <ResourceIcon v-else :path="dragPreview.path" :kind="paneTabs.find(tab => tab.id === dragPreview?.id)?.directory ? 'directory' : 'file'" class="desktop-tab-icon" :size="15" />
       <span class="desktop-tab-label">{{ paneTabs.find(tab => tab.id === dragPreview?.id) ? tabLabel(paneTabs.find(tab => tab.id === dragPreview?.id)!) : title(dragPreview.path) }}</span>
       <span v-if="dragPreview.dirty" class="desktop-tab-dirty" />

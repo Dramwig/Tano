@@ -50,7 +50,7 @@
     "./components/DesktopWindow.vue": "./src/shell/components/DesktopWindow.vue",
     "./components/LoadingSkeleton.vue": "./src/shell/components/LoadingSkeleton.vue",
     "./components/ModalBackdrop.vue": "./src/shell/components/ModalBackdrop.vue",
-    "./components/ObjectPanel.vue": "./src/objects/components/ObjectPanel.vue",
+    "./components/ObjectDetailModal.vue": "./src/objects/components/ObjectDetailModal.vue",
     "./components/OpenWorkspaceIcon.vue": "./src/shell/components/OpenWorkspaceIcon.vue",
     "./components/PlanDetailPanel.vue": "./src/plans/components/PlanDetailPanel.vue",
     "./components/PluginDetailPage.vue": "./src/plugins/components/PluginDetailPage.vue",
@@ -74,7 +74,6 @@
     "./workspace-objects.ts": "./src/objects/workspace-objects.ts",
     "./workspace-relations.ts": "./src/objects/workspace-relations.ts",
     "./workspace-settings.ts": "./src/workspace/workspace-settings.ts",
-    "./workspace-sync.ts": "./src/workspace/workspace-sync.ts",
     "./workspace-welcome.ts": "./src/workspace/workspace-welcome.ts",
     "./*": "./src/*"
   },

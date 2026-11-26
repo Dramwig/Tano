@@ -43,7 +43,12 @@ export const AssistantPanel = defineAsyncComponent(
 export const DiffDialog = defineAsyncComponent(() => import('../documents/components/DiffDialog.vue'));
 export const MobileRecycle = defineAsyncComponent(() => import('./components/MobileRecycle.vue'));
 export const SettingsPanel = defineAsyncComponent(() => import('../settings/components/SettingsPanel.vue'));
-export const ObjectPanel = defineAsyncComponent(() => import('../objects/components/ObjectPanel.vue'));
+export const ObjectDetailModal = defineAsyncComponent(
+  () => import('../objects/components/ObjectDetailModal.vue'),
+);
+export const PlanArchiveDialog = defineAsyncComponent(
+  () => import('../plans/components/PlanArchiveDialog.vue'),
+);
 export const PlanDetailPanel = defineAsyncComponent(
   () => import('../plans/components/PlanDetailPanel.vue'),
 );
@@ -69,10 +74,6 @@ export const SidebarMail = loadingComponent(
 export const DataTablePage = loadingComponent(
   () => import('../data-tables/components/DataTablePage.vue'),
   'spreadsheet',
-);
-export const WorkspaceViewTab = loadingComponent(
-  () => import('./components/WorkspaceViewTab.vue'),
-  'document',
 );
 export const PluginInstaller = defineAsyncComponent(
   () => import('../plugins/components/PluginInstaller.vue'),

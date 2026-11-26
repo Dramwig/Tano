@@ -7,11 +7,11 @@ import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t } from '../../i18n/i18n';
 import LoadingSkeleton from './LoadingSkeleton.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue';
-import { Check, ChevronRight, Database, Table2 } from 'lucide-vue-next';
+import { Check, ChevronRight } from 'lucide-vue-next';
 import WorkspaceIcon from '../../workspace/components/WorkspaceIcon.vue';
 import ResourceIcon from '../../files/components/ResourceIcon.vue';
 import { indexFolderHomes, type FolderHomeFileName } from '../../files/folder-home';
-import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry, type WorkspaceViewDefinition } from '@tano/protocol';
+import { basename, isMarkdown, isDataTableFilePath, isWorkspaceInternalPath, parentPath, type FileEntry } from '@tano/protocol';
 import { butterflyPerchDirective, useButterflyController, type ButterflyPerch } from '../../assistant/butterfly-vue';
 import DocumentFileIcon from '../../documents/components/DocumentFileIcon.vue';
 
@@ -30,7 +30,6 @@ const props = defineProps<{
   loadDocumentIcon?: (file: FileEntry, signal: AbortSignal) => Promise<string>;
   path?: string;
   directory?: boolean;
-  workspaceView?: WorkspaceViewDefinition;
   pages?: { id: string; label: string; icon?: Component; current?: boolean; disabled?: boolean }[];
   demoLabel?: string | null;
   readOnly?: boolean;
@@ -47,13 +46,13 @@ const position = ref({ left: '0px', top: '0px' });
 let trigger: HTMLButtonElement | undefined;
 const currentFile = computed(() => props.entries.find(entry => entry.kind === 'file' && entry.path === props.path));
 const homes = computed(() => indexFolderHomes(props.entries, props.folderHomeFileName));
-const logicalPath = computed(() => props.workspaceView ? props.workspaceView.database?.directory ?? '' : props.path ?? '');
+const logicalPath = computed(() => props.path ?? '');
 const parts = computed(() => {
   const names = logicalPath.value.split('/').filter(Boolean);
-  if (!props.directory && !props.workspaceView && props.path && homes.value.get(parentPath(props.path))?.path === props.path) names.pop();
+  if (!props.directory && props.path && homes.value.get(parentPath(props.path))?.path === props.path) names.pop();
   return names.map((name, index, all) => {
     const path = all.slice(0, index + 1).join('/');
-    return { name, path, current: !props.workspaceView && index === all.length - 1, directory: !!props.directory || !!props.workspaceView || index < all.length - 1 || homes.value.has(path), home: homes.value.get(path) };
+    return { name, path, current: index === all.length - 1, directory: !!props.directory || index < all.length - 1 || homes.value.has(path), home: homes.value.get(path) };
   });
 });
 function activatePart(part: typeof parts.value[number]) {
@@ -155,7 +154,7 @@ function outside(event: Event) {
 function onScroll(event: Event) {
   if (!menu.value?.contains(event.target as Node)) placeMenu();
 }
-watch(() => [props.workspaceId, props.path, props.workspaceView?.id, logicalPath.value], () => close());
+watch(() => [props.workspaceId, props.path, logicalPath.value], () => close());
 watch(children, async () => {
   if (!opened.value) return;
   if (folder.value && !props.entries.some(entry => entry.kind === 'directory' && entry.path === folder.value)) {
@@ -237,13 +236,6 @@ onBeforeUnmount(() => {
         @keydown.up.prevent.stop="show($event, part.path, part.path)" @keydown.esc.stop.prevent="close(true)">
         <ChevronRight :size="12" aria-hidden="true" />
       </button>
-    </template>
-    <template v-if="workspaceView">
-      <ChevronRight v-if="!parts.length && pages?.length" :size="12" class="breadcrumb-separator" aria-hidden="true" />
-      <span class="breadcrumb-trigger breadcrumb-current" aria-current="page" :title="workspaceView.name" v-butterfly-perch="perch">
-        <component :is="workspaceView.database || workspaceView.objectDatabase ? Database : Table2" :size="14" aria-hidden="true" />
-        <span>{{ workspaceView.name }}</span>
-      </span>
     </template>
     <slot name="status" />
   </nav>

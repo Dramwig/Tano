@@ -29,7 +29,6 @@ import {
   safeRemoteImage,
   type FileEntry,
   type ReferenceIdentity,
-  type ReferenceTarget,
 } from '@tano/protocol';
 import { native } from '../workspace/adapter';
 import { agentInboxKey, useAgentInboxController } from '../assistant/agent-controller';
@@ -88,7 +87,6 @@ import {
 import { retainWorkbenchSession } from './workbench-session';
 import type { ObjectRecord } from '../objects/workspace-objects';
 import { PLUGINS_TAB_ID } from '../plugins/workspace-plugins';
-import { createWorkspaceSync, syncEvent } from '../workspace/workspace-sync';
 
 export interface WorkbenchProps {
   initialWorkspace?: string;
@@ -215,7 +213,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
   const importRecords = ref<ImportRecord[]>([]);
   const agentPanel = ref(false);
   const recyclePanel = ref(false);
-  const systemSyncPanel = ref(false);
   const templateLibraryOpen = ref(false);
   const templatePaneId = ref('');
   const templateSource = ref('');
@@ -537,7 +534,7 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     {
       id: 'calendar-events',
       get label() {
-        return t('管理事件');
+        return t('已归档事项');
       },
     },
   ];
@@ -632,16 +629,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
   assistant.setManaged((id) => editing.isManaging(id));
   inlineRunner.setManaged((id) => editing.isManaging(id));
 
-  const workspaceSync = createWorkspaceSync(store, extensions);
-  function openSystemSync(event?: Event) {
-    const id = (event as CustomEvent | undefined)?.detail?.workspaceId;
-    if (!native || mobile || !store.workspace || store.isWeb || (id && id !== store.workspace.id))
-      return;
-    workspaceMenu.value = false;
-    systemSyncPanel.value = true;
-    void workspaceSync.action('status');
-  }
-  let syncTimer: ReturnType<typeof setInterval> | undefined;
   let reminderTimer: ReturnType<typeof setInterval> | undefined;
   const reminderScheduler = new LocalReminderScheduler({
     onRemind: (item) => {
@@ -657,26 +644,11 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     reminderScheduler.check(records, now.getTime());
   }
   onMounted(() => {
-    window.addEventListener(syncEvent, openSystemSync);
-    if (native && !mobile)
-      syncTimer = setInterval(() => {
-        void workspaceSync.tick();
-      }, 30_000);
     reminderTimer = setInterval(checkPlanReminders, 60_000);
   });
   onBeforeUnmount(() => {
-    window.removeEventListener(syncEvent, openSystemSync);
-    clearInterval(syncTimer);
     clearInterval(reminderTimer);
-    workspaceSync.reset();
   });
-  watch(
-    () => store.workspace?.id,
-    () => {
-      systemSyncPanel.value = false;
-      workspaceSync.reset();
-    },
-  );
 
   const updates = useUpdatesStore();
   const updateLock = computed(() => ['downloading', 'installing'].includes(updates.state.phase));
@@ -740,7 +712,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     activeWindow,
     editing,
     extensions,
-    workspaceSync,
     attachments,
     localNative,
     compactPanes,
@@ -835,7 +806,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     selectContext,
     openEntry: (file, newTab) => openEntry(file, newTab),
     openImport,
-    showFileObject,
     createNewEntry: (kind, parent) => modals.createNewEntry(kind, parent),
     removeDocument: (target) => modals.removeDocument(target),
     removeDocuments: (entries) => modals.removeDocuments(entries),
@@ -873,37 +843,24 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     markInitialPageRouteSuperseded: history.markInitialPageRouteSuperseded,
   });
 
-  // Objects, plans & asset import
-  const objectPanel = ref(false);
-  // Keep drafts across close/reopen, but don't load the panel until it is first requested.
-  const objectPanelMounted = ref(false);
-  watch(
-    objectPanel,
-    (open) => {
-      if (open) objectPanelMounted.value = true;
-    },
-    { flush: 'sync' },
-  );
-  const selectedObjectId = ref<string>();
-  const selectedResourceIdentity = shallowRef<ReferenceIdentity>();
-  const selectedPersonal = ref(false);
+  // Objects & plans
+  const objectDetail = shallowRef<{ record?: ObjectRecord; initialType?: string }>();
+  const planArchiveOpen = ref(false);
   const planDetail = shallowRef<ObjectRecord>();
-  const assetInput = ref<HTMLInputElement>();
-  const assetImportBusy = ref(false);
 
-  function showObjects(id?: string) {
-    selectedPersonal.value = false;
-    selectedResourceIdentity.value = undefined;
-    selectedObjectId.value = id;
-    objectPanel.value = true;
+  function openObjectDetail(record: ObjectRecord) {
+    planDetail.value = undefined;
+    objectDetail.value = { record };
+    workspaceMenu.value = false;
+    if (compactPanes.value) sidebar.value = false;
+  }
+  function createPluginObject(initialType: string) {
+    planDetail.value = undefined;
+    objectDetail.value = { initialType };
     workspaceMenu.value = false;
   }
-  function showFileObject(identity: ReferenceIdentity) {
-    if (!['document', 'asset'].includes(identity.type)) return;
-    selectedPersonal.value = false;
-    selectedObjectId.value = undefined;
-    selectedResourceIdentity.value = identity;
-    objectPanel.value = true;
+  function openPlanArchive() {
+    planArchiveOpen.value = true;
     workspaceMenu.value = false;
   }
   function showPlanEvent(key: string) {
@@ -927,14 +884,10 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
       store.report(t('事项已不存在，请刷新计划后重试'));
       return;
     }
-    objectPanel.value = false;
+    objectDetail.value = undefined;
     if (record.source?.scope === 'workspace') selectContext('workspace');
     planDetail.value = record;
     if (compactPanes.value) sidebar.value = false;
-  }
-  function managePlanEvents() {
-    showObjects();
-    selectedPersonal.value = plans.view === 'personal';
   }
   async function openBreadcrumbDirectory(path: string, newTab = false) {
     const home = tree.folderHomes.value.get(path);
@@ -951,8 +904,9 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     const handler = fileHandlers.resolve(file.path);
     if (isObjectPath(file.path)) {
       const record = store.objects.find((item) => item.path === file.path);
-      if (record) showObjects(record.object.id);
-      else store.report(t('对象文件不可用，请在工作区对象面板检查格式或重复 ID'));
+      if (!record) store.report(t('对象文件不可用，请检查格式或是否存在重复 ID'));
+      else if (isPlanObject(record.object)) showPlanEvent(record.object.id);
+      else openObjectDetail(record);
       return;
     }
     if (handler.preview === 'markdown' || handler.preview === 'table') {
@@ -973,38 +927,38 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
   async function openReference(identity: ReferenceIdentity) {
     const result = resolveReference(store.referenceTargets, identity);
     if (!result.target) {
+      if (result.error === 'unregistered') {
+        const legacy = store.objects.find(
+          (item) => item.object.type === identity.type && item.object.id === identity.id,
+        );
+        if (legacy) {
+          openObjectDetail(legacy);
+          return;
+        }
+      }
       store.report(t('当前工作区中引用目标不可用，请检查对象是否被移除或 ID 是否重复'));
       return;
     }
-    if (identity.type !== 'document') {
-      if (isPlanObjectType(identity.type)) showPlanEvent(identity.id);
-      else if (['document', 'asset'].includes(identity.type)) showFileObject(identity);
-      else showObjects(identity.id);
+    if (identity.type === 'document' || identity.type === 'asset') {
+      const file = workspace.value?.files.find(
+        (file) => file.id === identity.id && file.path === result.target!.path,
+      ) ?? workspace.value?.files.find((file) => file.id === identity.id);
+      if (file) await openEntry(file);
       return;
     }
-    const file = workspace.value?.files.find((file) => file.id === identity.id);
-    if (file) await openEntry(file);
-  }
-  async function openObjectResource(identity: ReferenceIdentity) {
-    const result = resolveReference(store.referenceTargets, identity);
-    if (!result.target || !['document', 'asset'].includes(identity.type)) return;
-    const file = workspace.value?.files.find(
-      (file) => file.id === identity.id && file.path === result.target!.path,
+    if (isPlanObjectType(identity.type)) {
+      showPlanEvent(identity.id);
+      return;
+    }
+    const record = store.objects.find(
+      (item) => item.object.type === identity.type && item.object.id === identity.id,
     );
-    if (!file) return;
-    if (identity.type === 'document') objectPanel.value = false;
-    await openEntry(file);
+    if (record) openObjectDetail(record);
   }
   async function openObjectReference(identity: ReferenceIdentity) {
-    if (identity.type === 'document') objectPanel.value = false;
+    if (identity.type === 'document' || identity.type === 'asset' || isPlanObjectType(identity.type))
+      objectDetail.value = undefined;
     await openReference(identity);
-  }
-  async function openWorkspaceViewSourceFile(file: FileEntry) {
-    if (isMarkdown(file.path) || isDataTableFilePath(file.path)) await openEntry(file);
-    else store.openAttachmentInNewTab(file);
-  }
-  function openWorkspaceViewSourceObject(identity: ReferenceIdentity) {
-    void openObjectReference(identity);
   }
   async function openPlanReference(identity: ReferenceIdentity) {
     const current = planDetail.value;
@@ -1021,40 +975,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     await openReference(identity);
     if (docSource && identity.type === 'document' && identity.id === docSource.fileId)
       await docs.revealAssistantSelection(docSource);
-  }
-  async function importObjectAssets(event: Event) {
-    const inputEl = event.target as HTMLInputElement;
-    const files = Array.from(inputEl.files ?? []);
-    inputEl.value = '';
-    const selectedWorkspace = workspace.value;
-    if (
-      !attachments ||
-      !selectedWorkspace ||
-      selectedWorkspace.readOnly ||
-      !store.capabilities.features.objectReferences ||
-      assetImportBusy.value
-    )
-      return;
-    assetImportBusy.value = true;
-    try {
-      for (const file of files) {
-        if (workspace.value?.id !== selectedWorkspace.id)
-          throw new Error(t('工作区已切换，已导入的资产保留在原工作区'));
-        await attachments.importAttachment(selectedWorkspace.id, '', file, false);
-      }
-    } catch (error) {
-      store.report(error);
-    } finally {
-      if (workspace.value?.id === selectedWorkspace.id) await store.refresh();
-      assetImportBusy.value = false;
-    }
-  }
-  function assetPreview(target: ReferenceTarget) {
-    return attachments &&
-      target.type === 'asset' &&
-      ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(target.mime ?? '')
-      ? attachments.imageUrl(workspace.value, '', relativeWorkspaceReference('', target.path))
-      : null;
   }
 
   // Settings window / tab / modal
@@ -1255,7 +1175,8 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     commandPaletteOpened,
     importPanel,
     agentPanel,
-    objectPanel,
+    objectDetail,
+    planArchiveOpen,
     recyclePanel,
     historyPanel,
     historyPage,
@@ -1296,7 +1217,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     toggleWorkspaceMenu,
     selectModule,
     openCalendar: calendar.openCalendar,
-    openSystemSync,
     openSettings,
     closeFileContextMenu: tree.closeFileContextMenu,
     closeDirectoryContextMenu: tree.closeDirectoryContextMenu,
@@ -1421,7 +1341,8 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
         importPanel.value ||
         templateLibraryOpen.value ||
         agentPanel.value ||
-        objectPanel.value ||
+        objectDetail.value ||
+        planArchiveOpen.value ||
         selectedDiff.value ||
         inlineAssist.selectionTodo.value ||
         recyclePanel.value ||
@@ -1587,7 +1508,7 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     fileDragStart: tree.fileDragStart,
     finishTreeRename: tree.finishTreeRename,
     noteCount,
-    showObjects,
+    createPluginObject,
     sidebarCalendarDate: calendar.sidebarCalendarDate,
     openCalendar: calendar.openCalendar,
     showPlanEvent,
@@ -1627,7 +1548,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     extensions,
     extensionActions,
     commandPaletteOpened,
-    openSystemSync,
     openImport,
     openTemplateLibrary,
     openSettings,
@@ -1683,7 +1603,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     touchLayout,
     showOutline: outlineCtrl.showOutline,
     touchOutlineOpen: outlineCtrl.touchOutlineOpen,
-    panel: outlineCtrl.panel,
     isTableTab,
     calendarToolItems,
     calendarPeriod: calendar.calendarPeriod,
@@ -1694,7 +1613,7 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     calendarModeOptions: calendar.calendarModeOptions,
     calendarMode: calendar.calendarMode,
     selectCalendarMode: calendar.selectCalendarMode,
-    managePlanEvents,
+    openPlanArchive,
     documentSuggestions,
     editing,
     suggestionModeBusy,
@@ -1744,8 +1663,6 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     tableFileId,
     openAssistant: inlineAssist.openAssistant,
     parentPath,
-    openWorkspaceViewSourceFile,
-    openWorkspaceViewSourceObject,
     calendarScope: calendar.calendarScope,
     plans,
     showCalendarDay: calendar.showCalendarDay,
@@ -1841,25 +1758,14 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
     toggleOutlineSide: outlineCtrl.toggleOutlineSide,
     importPanel,
     importRecords,
-    systemSyncPanel,
-    workspaceSync,
     active,
-    importObjectAssets,
-    objectPanelMounted,
-    objectPanel,
-    selectedObjectId,
-    selectedResourceIdentity,
-    selectedPersonal,
-    assetImportBusy,
-    assetPreview,
-    openObjectResource,
+    objectDetail,
+    planArchiveOpen,
     openObjectReference,
-    assetInput,
     planDetail,
     openPlanReference,
     selectionTodo: inlineAssist.selectionTodo,
     workbenchCommands,
-    settingsWorkspace,
     openingSettingsWindow,
     openSettingsTab,
     openSettingsInNewWindow,

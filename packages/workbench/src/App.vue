@@ -2,7 +2,6 @@
 import { provide, proxyRefs, ref, shallowReactive, toRefs } from 'vue';
 import {
   ArrowDownToLine,
-  Blocks,
   Bot,
   CalendarDays,
   Check,
@@ -16,7 +15,6 @@ import {
   House,
   Mail,
   PanelLeftOpen,
-  RefreshCw,
   Search,
   SquarePen,
   Trash2,
@@ -139,7 +137,6 @@ const {
   fileDragStart,
   finishTreeRename,
   noteCount,
-  showObjects,
   sidebarCalendarDate,
   openCalendar,
   showPlanEvent,
@@ -151,7 +148,6 @@ const {
   extensions,
   extensionActions,
   commandPaletteOpened,
-  openSystemSync,
   openImport,
   openTemplateLibrary,
   openSettings,
@@ -687,13 +683,6 @@ function runPluginCommandById(commandId: string) {
                   :actions="extensionActions"
                 />
                 <button
-                  v-if="workspace && native && !mobile && !store.isWeb"
-                  role="menuitem"
-                  @click="openSystemSync()"
-                >
-                  <RefreshCw :size="16" />{{ t('Git 与同步') }}
-                </button>
-                <button
                   v-if="workspace"
                   role="menuitem"
                   :disabled="workspace.readOnly || busy"
@@ -711,9 +700,6 @@ function runPluginCommandById(commandId: string) {
                   "
                 >
                   <Files :size="16" />{{ t('文档模板') }}
-                </button>
-                <button role="menuitem" @click="showObjects()">
-                  <Blocks :size="16" />{{ t('工作区对象') }}
                 </button>
                 <button role="menuitem" @click="openSettings('about')">
                   <CircleHelp :size="16" />{{ t('关于 Tano / 同页')

@@ -35,7 +35,6 @@ import { resolveWikiLink } from '../objects/wiki-links';
 import type { WindowContext } from '../windows/context';
 import type { DocumentComments, MarkdownEditor, SourceEditor } from '../shell/workbench-async-components';
 import type PageSearch from '../shell/components/PageSearch.vue';
-import type { createWorkspaceSync } from '../workspace/workspace-sync';
 import { pageLockPreferenceKey, readPreference } from './use-workbench-preferences';
 
 export interface DocumentActionsDeps {
@@ -43,7 +42,6 @@ export interface DocumentActionsDeps {
   activeWindow: Ref<WindowContext>;
   editing: WorkbenchExtensions['editing'];
   extensions: WorkbenchExtensions;
-  workspaceSync: ReturnType<typeof createWorkspaceSync>;
   attachments: AttachmentService | undefined;
   localNative: boolean;
   compactPanes: Ref<boolean>;
@@ -75,7 +73,6 @@ export function useDocumentActions(deps: DocumentActionsDeps) {
     activeWindow,
     editing,
     extensions,
-    workspaceSync,
     attachments,
     localNative,
     compactPanes,
@@ -499,15 +496,7 @@ export function useDocumentActions(deps: DocumentActionsDeps) {
       (doc.id === store.active?.id
         ? pageLocked.value
         : readPreference(pageLockPreferenceKey(workspace.value?.id ?? '', doc.id), false));
-    let sync: DocumentSyncStatus | undefined = extensions.documentStatus?.(doc.id);
-    if (!sync && workspaceSync.state.value.backend === 'git') {
-      if (workspaceSync.state.value.conflicts.includes(doc.path))
-        sync = { kind: 'error', detail: t('当前文章存在 Git 同步冲突。') };
-      else if (workspaceSync.error.value)
-        sync = { kind: 'error', detail: workspaceSync.error.value };
-      else if (workspaceSync.operation.value === 'run')
-        sync = { kind: 'syncing', detail: t('工作区正在进行 Git 同步。') };
-    }
+    const sync: DocumentSyncStatus | undefined = extensions.documentStatus?.(doc.id);
     return documentStatusItems({
       document: doc,
       locked,

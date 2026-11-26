@@ -153,14 +153,6 @@ export const usePlanStore = defineStore('plans', () => {
     if (!id) throw new Error('工作区已关闭');
     return workspace.updateObject(record, value, id);
   }
-  const panel = computed(() => ({
-    id: personalId.value,
-    records: personal.value,
-    errors: [...errors.value, ...(loadError.value ? [loadError.value] : [])],
-    writable: personalWritable.value,
-    createObject: createPersonal,
-    updateObject: updatePersonal,
-  }));
   const onFocus = () => {
     if (!requiresDesktopRestart.value) void refreshPersonal();
   };
@@ -193,7 +185,6 @@ export const usePlanStore = defineStore('plans', () => {
     workspaceId,
     personalWritable,
     workspaceWritable,
-    panel,
     refreshPersonal,
     canEdit,
     create,

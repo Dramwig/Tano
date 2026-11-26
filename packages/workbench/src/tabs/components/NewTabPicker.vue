@@ -21,7 +21,7 @@ import type { FileEntry } from '@tano/protocol';
 import { useWorkspaceStore } from '../../stores/workspace';
 import { tableFileId } from '../../data-tables/data-tables';
 
-const emit = defineEmits<{ close: []; 'new-document': [] }>();
+const emit = defineEmits<{ close: []; 'new-document': []; 'new-table': [] }>();
 const store = useWorkspaceStore();
 const query = ref('');
 const input = ref<HTMLInputElement>();
@@ -53,7 +53,12 @@ const matches = computed(() => {
 });
 type Choice = { id: string; label: string; group: string; file?: FileEntry };
 const choices = computed<Choice[]>(() => [
-  ...(!store.workspace?.readOnly ? [{ id: 'create', get label() { return t('新建文档'); }, group: '' }] : []),
+  ...(!store.workspace?.readOnly
+    ? [
+        { id: 'create', get label() { return t('新建文档'); }, group: '' },
+        { id: 'create-table', get label() { return t('新建数据表'); }, group: '' },
+      ]
+    : []),
   ...matches.value.slice(0, 60).map((file) => ({
     id: `file-${file.id}`,
     label: title(file.path),
@@ -82,7 +87,8 @@ onBeforeUnmount(() => {
 async function choose(choice: Choice) {
   if (opening.value || store.busy) return;
   if (!choice.file) {
-    emit('new-document');
+    if (choice.id === 'create-table') emit('new-table');
+    else emit('new-document');
     return;
   }
   opening.value = true;
@@ -189,7 +195,7 @@ async function onSearchKeydown(event: KeyboardEvent) {
             >
               <component
                 :is="
-                  choice.file && isDataTableFilePath(choice.file.path)
+                  choice.id === 'create-table' || (choice.file && isDataTableFilePath(choice.file.path))
                     ? Table2
                     : choice.file
                       ? FileText

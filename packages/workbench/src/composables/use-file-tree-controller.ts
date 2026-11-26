@@ -10,7 +10,6 @@ import {
   validatePath,
   type FileEntry,
   type RecentWorkspace,
-  type ReferenceIdentity,
   type WorkspaceAdapter,
 } from '@tano/protocol';
 import { openWorkspaceEntry, workspaceEntryPath, type AttachmentService } from '../files/attachments';
@@ -50,8 +49,7 @@ export interface FileTreeControllerDeps {
   selectContext: (context: 'home' | 'workspace') => void;
   openEntry: (file: FileEntry, newTab?: boolean) => Promise<void>;
   openImport: () => void;
-  showFileObject: (identity: ReferenceIdentity) => void;
-  createNewEntry: (kind: 'document' | 'folder', parent?: string) => Promise<void>;
+  createNewEntry: (kind: 'document' | 'folder' | 'table', parent?: string) => Promise<void>;
   removeDocument: (target?: FileEntry) => Promise<void>;
   removeDocuments: (entries: FileEntry[]) => Promise<void>;
 }
@@ -76,7 +74,6 @@ export function useFileTreeController(deps: FileTreeControllerDeps) {
     selectContext,
     openEntry,
     openImport,
-    showFileObject,
     createNewEntry,
     removeDocument,
     removeDocuments,
@@ -713,7 +710,7 @@ export function useFileTreeController(deps: FileTreeControllerDeps) {
   }
 
   async function directoryContextAction(
-    action: 'document' | 'folder' | 'import' | 'duplicate' | 'copy' | 'rename' | 'delete',
+    action: 'document' | 'folder' | 'table' | 'import' | 'duplicate' | 'copy' | 'rename' | 'delete',
   ) {
     const parent = directoryContextMenu.value?.parent ?? '';
     const target = parent
@@ -793,6 +790,7 @@ export function useFileTreeController(deps: FileTreeControllerDeps) {
       | 'open-markdown-source'
       | 'document'
       | 'folder'
+      | 'table'
       | 'rename'
       | 'delete'
       | 'copy'
@@ -846,14 +844,6 @@ export function useFileTreeController(deps: FileTreeControllerDeps) {
     }
     if (action === 'open-markdown-source') {
       await store.openFile(file, { rawSource: true });
-      return;
-    }
-    if (action === 'object') {
-      if (file.kind === 'file' && !isWorkspaceInternalPath(file.path))
-        showFileObject({
-          type: isMarkdown(file.path) ? 'document' : 'asset',
-          id: file.id,
-        });
       return;
     }
     if (action === 'metadata' && workspace.value) {
@@ -932,7 +922,7 @@ export function useFileTreeController(deps: FileTreeControllerDeps) {
       await removeDocument(file);
       return;
     }
-    if (action === 'document' || action === 'folder') {
+    if (action === 'document' || action === 'folder' || action === 'table') {
       await createNewEntry(action, file.path);
       return;
     }

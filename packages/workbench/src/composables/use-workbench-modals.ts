@@ -266,7 +266,7 @@ export function useWorkbenchModals(deps: WorkbenchModalsDeps) {
     await removeDocuments(entries);
   }
 
-  async function createNewEntry(kind: 'document' | 'folder', parent = '') {
+  async function createNewEntry(kind: 'document' | 'folder' | 'table', parent = '') {
     if (store.busy || workspace.value?.readOnly || updateLock.value) return;
     markInitialPageRouteSuperseded();
     menu.value = false;
@@ -277,6 +277,11 @@ export function useWorkbenchModals(deps: WorkbenchModalsDeps) {
     try {
       if (kind === 'folder') {
         await store.createUntitledFolder(parent);
+        return;
+      }
+      if (kind === 'table') {
+        await store.createDataTable('blank', parent);
+        if (compactPanes.value) sidebar.value = false;
         return;
       }
       await store.createUntitledDocument(parent);
