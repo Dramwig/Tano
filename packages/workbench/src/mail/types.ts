@@ -4,12 +4,15 @@ export const MAIL_TAB_ID = 'view:mail';
 
 export type TlsMode = 'tls' | 'starttls';
 export type AppendSentPolicy = 'auto' | 'never' | 'always';
+export type MailAuthKind = 'password' | 'oauth2-microsoft';
 export type MailFilter = 'all' | 'unread' | 'flagged' | 'calendar' | 'attachments';
 export type RsvpResponseStatus = 'ACCEPTED' | 'TENTATIVE' | 'DECLINED';
 
 export interface MailPreset {
   id: string;
   name: string;
+  authKind?: MailAuthKind;
+  oauthConfigured?: boolean;
   imapHost: string;
   imapPort: number;
   imapTls: TlsMode;
@@ -27,6 +30,9 @@ export interface MailAccount {
   label: string;
   email: string;
   displayName: string;
+  authKind?: MailAuthKind;
+  oauthClientId?: string | null;
+  oauthTenant?: string | null;
   imapHost: string;
   imapPort: number;
   imapTls: TlsMode;
@@ -44,6 +50,9 @@ export interface MailAccountInput {
   label: string;
   email: string;
   displayName: string;
+  authKind?: MailAuthKind;
+  oauthClientId?: string | null;
+  oauthTenant?: string | null;
   imapHost: string;
   imapPort: number;
   imapTls: TlsMode;
@@ -57,6 +66,22 @@ export interface MailAccountInput {
 export interface MailCredentials {
   username: string;
   password: string;
+}
+
+export interface MailOAuthInput {
+  id?: string;
+  provider: string;
+  label?: string;
+  email?: string;
+  displayName?: string;
+  oauthClientId?: string | null;
+  oauthTenant?: string | null;
+  imapHost?: string;
+  imapPort?: number;
+  imapTls?: TlsMode;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpTls?: TlsMode;
 }
 
 export interface MailTestResult {

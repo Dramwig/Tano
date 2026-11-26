@@ -34,3 +34,4 @@ export * from './entry-drag';
 export * from './appearance';
 export * from './features';
 export * from './plugin-archive';
+export * from './remote-workspace';

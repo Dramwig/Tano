@@ -2,4 +2,5 @@
 @import './blocks.css';
 @import './prose.css';
 @import './source-editor.css';
+@import './code-editor.css';
 @import './math-mermaid-frontmatter.css';

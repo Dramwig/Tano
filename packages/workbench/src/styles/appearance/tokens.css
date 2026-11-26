@@ -18,8 +18,10 @@
   --overlay-shadow: 0 8px 28px #00000018, 0 2px 8px #00000010;
   --dialog-shadow: 0 24px 80px #00000026, 0 4px 16px #00000014;
 
-  /* Semantic surface-role slots (owned by Material; consumed by surface-roles and Layout). */
-  --surface-hairline: color-mix(in srgb, var(--line) 85%, var(--text) 6%);
+  /* Semantic surface-role slots (owned by Material; consumed by surface-roles and Layout).
+     The flat material baseline leaves primary sheets, document sheets and slip tabs cleanly
+     borderless and shadowless; raised, paper and glass materials supply edge/shadow treatments. */
+  --surface-hairline: var(--line);
   --surface-dialog-border: var(--line-strong);
   --surface-dialog-shadow: var(--dialog-shadow);
   --surface-popover-border: var(--line-strong);
@@ -31,14 +33,14 @@
   --surface-control-shadow: none;
   --surface-focus-border: color-mix(in srgb, var(--green) 65%, var(--line-strong));
   --surface-sheet-border: 0px solid transparent;
-  --surface-sheet-shadow: 0 0 0 1px var(--surface-hairline), 0 1px 2px #0000000f;
+  --surface-sheet-shadow: none;
   --surface-sheet-bevel: none;
   --surface-sheet-texture: none;
   --surface-sheet-texture-size: auto;
-  --surface-document-border: var(--surface-hairline);
-  --surface-document-shadow: 0 1px 2px #0000000d, 0 12px 32px -16px #0000002e;
+  --surface-document-border: 0px solid transparent;
+  --surface-document-shadow: none;
   --surface-slip-tab-border: 0px solid transparent;
-  --surface-slip-tab-shadow: 0 0 0 1px var(--surface-hairline), 0 1px 2px #00000012;
+  --surface-slip-tab-shadow: none;
 }
 
 /* Color contract bindings for semantic editor marks (dark-theme.css overrides in @layer palette). */

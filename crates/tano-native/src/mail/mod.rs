@@ -4,6 +4,7 @@ pub mod accounts;
 pub mod commands;
 pub mod imap_client;
 pub mod mime;
+pub mod oauth;
 pub mod smtp_client;
 pub mod store;
 pub mod types;
@@ -12,12 +13,22 @@ pub use commands::MailState;
 
 #[cfg(test)]
 mod tests {
+    use super::imap_client::Xoauth2Authenticator;
     use super::mime::{decode_modified_utf7, parse_rfc822_body, sanitize_email_html};
+    use super::oauth::{
+        build_authorize_url, build_pkce_pair, parse_id_token_claims, resolve_microsoft_config,
+        token_needs_refresh, validate_client_id, validate_loopback_redirect_uri, validate_tenant,
+        MicrosoftOAuthConfig,
+    };
     use super::store::{FolderUpsert, HeaderUpsert, MailStore};
     use super::types::{
-        mail_presets, validate_email_address, validate_host_and_port, MailAddress, MailDraft,
+        mail_presets, mail_presets_with_oauth, validate_email_address, validate_host_and_port,
+        AppendSentPolicy, MailAddress, MailAuthKind, MailCredentials, MailDraft, TlsMode,
         FLAG_FLAGGED, FLAG_SEEN,
     };
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use imap::Authenticator;
+    use sha2::{Digest, Sha256};
     use std::collections::HashMap;
     use tempfile::tempdir;
 
@@ -219,12 +230,116 @@ mod tests {
             .delete_account_data(account_id)
             .expect("cascade delete");
         assert!(store.list_folders(Some(account_id)).unwrap().is_empty());
-        assert!(mail_presets()
-            .iter()
-            .any(|p| p.id == "qq" && p.imap_port == 993));
-        assert!(mail_presets()
+        let presets = mail_presets();
+        assert_eq!(presets.len(), 8);
+        assert!(presets.iter().any(|p| p.id == "qq" && p.imap_port == 993));
+        assert!(presets
             .iter()
             .any(|p| p.id == "netease-163" && p.send_imap_id));
-        assert!(mail_presets().iter().any(|p| p.id == "gmail"));
+        assert!(presets.iter().any(|p| {
+            p.id == "outlook"
+                && p.auth_kind == MailAuthKind::Oauth2Microsoft
+                && p.imap_host == "outlook.office365.com"
+                && p.smtp_host == "smtp.office365.com"
+                && p.smtp_port == 587
+                && p.smtp_tls == TlsMode::Starttls
+                && p.append_sent == AppendSentPolicy::Never
+                && !p.oauth_configured
+        }));
+        assert!(mail_presets_with_oauth(true)
+            .iter()
+            .any(|p| p.id == "outlook" && p.oauth_configured));
+        assert!(presets.iter().any(|p| p.id == "gmail"));
+        assert!(presets
+            .iter()
+            .any(|p| p.id == "yahoo" && p.imap_host == "imap.mail.yahoo.com"));
+    }
+
+    #[test]
+    fn outlook_xoauth2_and_pkce_helpers_behave_safely() {
+        // 1. XOAUTH2 SASL string and error-challenge empty acknowledgement
+        let auth = Xoauth2Authenticator::new("alice@outlook.com", "tok_123");
+        assert_eq!(
+            auth.process(&[]),
+            "user=alice@outlook.com\x01auth=Bearer tok_123\x01\x01"
+        );
+        assert_eq!(auth.process(b"{\"status\":\"401\"}"), "");
+
+        // 2. PKCE S256 verifier / challenge pair
+        let (verifier, challenge) = build_pkce_pair();
+        assert_eq!(verifier.len(), 64);
+        assert_eq!(
+            challenge,
+            URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+        );
+
+        // 3. Validation rules for client_id, tenant, loopback redirect URI
+        assert!(validate_client_id("12345678-1234-1234-1234-123456789abc").is_ok());
+        assert!(validate_client_id("bad/id").is_err());
+        assert_eq!(validate_tenant("").unwrap(), "common");
+        assert_eq!(validate_tenant("consumers").unwrap(), "consumers");
+        assert!(validate_tenant("../evil").is_err());
+        assert!(validate_loopback_redirect_uri("http://localhost").is_ok());
+        assert!(validate_loopback_redirect_uri("http://127.0.0.1:43845/callback").is_ok());
+        assert!(validate_loopback_redirect_uri("https://evil.example/cb").is_err());
+        assert!(validate_loopback_redirect_uri("http://localhost:8080/cb?x=1").is_err());
+
+        // 4. Authorize URL structure
+        let cfg = MicrosoftOAuthConfig {
+            client_id: "test-client-id".into(),
+            tenant: "common".into(),
+            redirect_uri: "http://localhost".into(),
+        };
+        let url = build_authorize_url(
+            &cfg,
+            "http://localhost:54321/",
+            "state-xyz",
+            &challenge,
+            Some("alice@outlook.com"),
+        )
+        .expect("authorize url");
+        assert!(url.starts_with("https://login.microsoftonline.com/common/oauth2/v2.0/authorize?"));
+        assert!(url.contains("code_challenge_method=S256"));
+        assert!(url.contains("IMAP.AccessAsUser.All"));
+        assert!(url.contains("SMTP.Send"));
+        assert!(url.contains("login_hint=alice%40outlook.com"));
+
+        // 5. ID token JWT payload claim parsing
+        let payload = URL_SAFE_NO_PAD
+            .encode(r#"{"preferred_username":"alice@outlook.com","name":"Alice Wang"}"#);
+        let claims = parse_id_token_claims(&format!("header.{payload}.sig"));
+        assert_eq!(claims.email.as_deref(), Some("alice@outlook.com"));
+        assert_eq!(claims.display_name.as_deref(), Some("Alice Wang"));
+        assert_eq!(parse_id_token_claims("not-a-jwt").email, None);
+
+        // 6. Token refresh skew check
+        let fresh = MailCredentials {
+            username: "alice@outlook.com".into(),
+            access_token: Some("tok".into()),
+            expires_at: Some(2_000),
+            ..MailCredentials::default()
+        };
+        assert!(!token_needs_refresh(&fresh, 1_500));
+        assert!(token_needs_refresh(&fresh, 1_900));
+        assert!(token_needs_refresh(&MailCredentials::default(), 1_500));
+
+        // 7. Config file resolution + explicit override
+        let dir = tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("mail-oauth.json"),
+            r#"{"outlook":{"clientId":"file-client-123","tenant":"consumers"}}"#,
+        )
+        .expect("write mail-oauth.json");
+        let resolved = resolve_microsoft_config(Some(dir.path()), None, None).expect("resolved");
+        assert_eq!(resolved.client_id, "file-client-123");
+        assert_eq!(resolved.tenant, "consumers");
+        let overridden = resolve_microsoft_config(
+            Some(dir.path()),
+            Some("ui-client-456"),
+            Some("organizations"),
+        )
+        .expect("overridden");
+        assert_eq!(overridden.client_id, "ui-client-456");
+        assert_eq!(overridden.tenant, "organizations");
     }
 }

@@ -128,8 +128,11 @@ it('validates pasted image formats and size before decoding', async () => {
   const { change } = mount();
   const { decode } = mockImage();
   await pasteImage(new File(['<svg/>'], 'clipboard.svg', { type: 'image/svg+xml' }));
-  expect(root.querySelector('[role="alert"]')?.textContent).toContain('不超过 2 MB');
+  const hint = () => document.querySelector('.workspace-icon-picker-upload-hint')?.textContent;
+  expect(hint()).toBe('仅支持 PNG、JPG、WebP 或 GIF 图片');
+  document.querySelector('.workspace-icon-picker')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await nextTick();
   await pasteImage(new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'large.png', { type: 'image/png' }));
+  expect(hint()).toBe('图片不能超过 2 MB（当前 2.1 MB）');
   expect(decode).not.toHaveBeenCalled(); expect(change).not.toHaveBeenCalled();
 });
 
@@ -140,7 +143,7 @@ it('keeps the upload panel open after opening or canceling file selection and al
   root.querySelector<HTMLButtonElement>('[aria-label="选择工作区图标"]')!.click(); await nextTick();
   document.querySelector<HTMLButtonElement>('[data-tab="upload"]')!.click(); await nextTick();
   const panel = document.querySelector('.workspace-icon-picker')!;
-  const button = [...panel.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '选择图片')!;
+  const button = [...panel.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === '点击选择图片，或拖拽到这里')!;
   button.click(); await nextTick();
   expect(choose).toHaveBeenCalledOnce();
   expect(document.querySelector('.workspace-icon-picker')).toBe(panel);

@@ -3,15 +3,15 @@
 //! (preserving native SPF/DKIM alignment and avoiding any cloud relay burden).
 
 use super::types::{
-    is_blocked_ip, validate_email_address, MailAccount, MailCredentials, MailSendRequest, TlsMode,
-    MAX_ATTACHMENT_BYTES,
+    is_blocked_ip, validate_email_address, MailAccount, MailAuthKind, MailCredentials,
+    MailSendRequest, TlsMode, MAX_ATTACHMENT_BYTES,
 };
 use base64::Engine;
 use lettre::message::{
     header::{ContentType, HeaderName, HeaderValue},
     Attachment, Mailbox, MultiPart, SinglePart,
 };
-use lettre::transport::smtp::authentication::Credentials;
+use lettre::transport::smtp::authentication::{Credentials, Mechanism};
 use lettre::transport::smtp::client::{Tls, TlsParameters};
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use std::net::ToSocketAddrs;
@@ -50,13 +50,27 @@ fn build_transport(
     } else {
         creds.username.clone()
     };
-    let transport = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&account.smtp_host)
+    let mut builder = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&account.smtp_host)
         .port(account.smtp_port)
         .tls(tls)
-        .credentials(Credentials::new(username, creds.password.clone()))
-        .timeout(Some(Duration::from_secs(20)))
-        .build();
-    Ok(transport)
+        .timeout(Some(Duration::from_secs(20)));
+    builder = match account.auth_kind {
+        MailAuthKind::Password => {
+            builder.credentials(Credentials::new(username, creds.password.clone()))
+        }
+        MailAuthKind::Oauth2Microsoft => {
+            let access_token = creds
+                .access_token
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| "缺少 Outlook 访问令牌，请重新登录授权".to_string())?;
+            builder
+                .credentials(Credentials::new(username, access_token.to_string()))
+                .authentication(vec![Mechanism::Xoauth2])
+        }
+    };
+    Ok(builder.build())
 }
 
 pub async fn test_smtp(account: &MailAccount, creds: &MailCredentials) -> Result<(), String> {

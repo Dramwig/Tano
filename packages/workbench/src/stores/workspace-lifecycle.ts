@@ -2,6 +2,7 @@ import type { Ref } from 'vue';
 import {
   basename,
   isMarkdown,
+  isRemoteWorkspacePath,
   isWorkspaceInternalPath,
   type FileRegistry,
   type FileSnapshot,
@@ -10,6 +11,7 @@ import {
   type WorkspaceAdapter,
   type WorkspaceSession,
 } from '@tano/protocol';
+import { isFeatureEnabled } from '../features';
 import type { createWorkspaceAssistantBridge } from '../assistant/workspace-bridge';
 import type { createDataTableController } from '../data-tables/data-table-controller';
 import type { OpenDocument } from '../documents/document-session';
@@ -130,19 +132,25 @@ export function createWorkspaceLifecycle(deps: WorkspaceLifecycleDeps) {
       await openWorkspace(requestedWorkspace);
     } else if (adapter.recent && (await refreshWorkspaces())) {
       const savedId = readStartupWorkspace();
+      const candidates = isFeatureEnabled('sshRemoteWorkspace')
+        ? recent.value
+        : recent.value.filter((item) => !isRemoteWorkspacePath(item.path) && item.remote?.kind !== 'ssh');
       const previous =
         savedId === undefined
-          ? recent.value.reduce<RecentWorkspace | undefined>(
+          ? candidates.reduce<RecentWorkspace | undefined>(
               (latest, item) => (!latest || item.openedAt > latest.openedAt ? item : latest),
               undefined,
             )
-          : recent.value.find((item) => item.id === savedId);
+          : candidates.find((item) => item.id === savedId);
       if (previous) await openWorkspace(previous.path);
       else if (savedId) rememberStartupWorkspace(null);
     }
   }
 
   async function openWorkspace(path?: string, newName?: string) {
+    if (path && isRemoteWorkspacePath(path) && !isFeatureEnabled('sshRemoteWorkspace')) {
+      throw new Error('SSH 远端工作区功能在当前版本未启用');
+    }
     if (busy.value) return;
     busy.value = true;
     let switching = false;

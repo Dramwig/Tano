@@ -6,15 +6,47 @@
 use super::mime::{decode_modified_utf7, make_snippet, parse_header_addresses, parse_references};
 use super::store::{FolderUpsert, HeaderUpsert};
 use super::types::{
-    is_blocked_ip, MailAccount, MailCredentials, TlsMode, FLAG_ANSWERED, FLAG_DRAFT, FLAG_FLAGGED,
-    FLAG_SEEN, INITIAL_SYNC_LIMIT,
+    is_blocked_ip, MailAccount, MailAuthKind, MailCredentials, TlsMode, FLAG_ANSWERED, FLAG_DRAFT,
+    FLAG_FLAGGED, FLAG_SEEN, INITIAL_SYNC_LIMIT,
 };
 use imap::types::Flag;
 use imap_proto::{BodyStructure, ContentDisposition, NameAttribute};
 use mail_parser::{MessageParser, MimeHeaders};
 use std::net::ToSocketAddrs;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 type ImapSession = imap::Session<imap::Connection>;
+
+pub(crate) struct Xoauth2Authenticator {
+    user: String,
+    access_token: String,
+    responded: AtomicBool,
+}
+
+impl Xoauth2Authenticator {
+    pub(crate) fn new(user: impl Into<String>, access_token: impl Into<String>) -> Self {
+        Self {
+            user: user.into(),
+            access_token: access_token.into(),
+            responded: AtomicBool::new(false),
+        }
+    }
+}
+
+impl imap::Authenticator for Xoauth2Authenticator {
+    type Response = String;
+
+    fn process(&self, _challenge: &[u8]) -> Self::Response {
+        if self.responded.swap(true, Ordering::SeqCst) {
+            // Acknowledge server error challenge with empty line so IMAP terminates cleanly.
+            return String::new();
+        }
+        format!(
+            "user={}\x01auth=Bearer {}\x01\x01",
+            self.user, self.access_token
+        )
+    }
+}
 
 fn verify_resolved_host(host: &str, port: u16) -> Result<(), String> {
     let addrs = (host, port)
@@ -47,14 +79,31 @@ fn connect_session(account: &MailAccount, creds: &MailCredentials) -> Result<Ima
     } else {
         creds.username.as_str()
     };
-    let mut session = client
-        .login(username, &creds.password)
-        .map_err(|(err, _)| {
-            format!(
-                "IMAP 登录失败，请检查邮箱账号或授权码（{}）",
-                summarize_imap_error(&err)
-            )
-        })?;
+    let mut session = match account.auth_kind {
+        MailAuthKind::Password => client
+            .login(username, &creds.password)
+            .map_err(|(err, _)| {
+                format!(
+                    "IMAP 登录失败，请检查邮箱账号或授权码（{}）",
+                    summarize_imap_error(&err)
+                )
+            })?,
+        MailAuthKind::Oauth2Microsoft => {
+            let access_token = creds
+                .access_token
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| "缺少 Outlook 访问令牌，请重新登录授权".to_string())?;
+            let auth = Xoauth2Authenticator::new(username, access_token);
+            client.authenticate("XOAUTH2", &auth).map_err(|(err, _)| {
+                format!(
+                    "IMAP OAuth 认证失败，请确认账号已开启 IMAP 或重新登录授权（{}）",
+                    summarize_imap_error(&err)
+                )
+            })?
+        }
+    };
 
     // NetEase 163/126/Yeah reject SELECT with "Unsafe Login" unless RFC 2971 ID is sent.
     let should_send_id = account.send_imap_id
@@ -562,7 +611,7 @@ fn detect_special_use(
     let lower = leaf.to_ascii_lowercase();
     if matches!(
         lower.as_str(),
-        "sent" | "sent messages" | "sent mail" | "已发送"
+        "sent" | "sent messages" | "sent mail" | "sent items" | "已发送"
     ) {
         return Some("sent".into());
     }
@@ -575,7 +624,7 @@ fn detect_special_use(
     ) {
         return Some("trash".into());
     }
-    if matches!(lower.as_str(), "junk" | "spam" | "垃圾邮件") {
+    if matches!(lower.as_str(), "junk" | "junk email" | "spam" | "垃圾邮件") {
         return Some("junk".into());
     }
     if matches!(lower.as_str(), "archive" | "归档") {

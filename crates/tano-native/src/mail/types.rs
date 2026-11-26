@@ -34,11 +34,23 @@ impl Default for AppendSentPolicy {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MailAuthKind {
+    #[default]
+    Password,
+    Oauth2Microsoft,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MailPreset {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub auth_kind: MailAuthKind,
+    #[serde(default)]
+    pub oauth_configured: bool,
     pub imap_host: String,
     pub imap_port: u16,
     pub imap_tls: TlsMode,
@@ -58,6 +70,12 @@ pub struct MailAccount {
     pub label: String,
     pub email: String,
     pub display_name: String,
+    #[serde(default)]
+    pub auth_kind: MailAuthKind,
+    #[serde(default)]
+    pub oauth_client_id: Option<String>,
+    #[serde(default)]
+    pub oauth_tenant: Option<String>,
     pub imap_host: String,
     pub imap_port: u16,
     pub imap_tls: TlsMode,
@@ -81,6 +99,12 @@ pub struct MailAccountInput {
     pub email: String,
     #[serde(default)]
     pub display_name: String,
+    #[serde(default)]
+    pub auth_kind: MailAuthKind,
+    #[serde(default)]
+    pub oauth_client_id: Option<String>,
+    #[serde(default)]
+    pub oauth_tenant: Option<String>,
     pub imap_host: String,
     pub imap_port: u16,
     pub imap_tls: TlsMode,
@@ -102,6 +126,41 @@ pub struct MailCredentials {
     pub username: String,
     #[serde(default)]
     pub password: String,
+    #[serde(default)]
+    pub access_token: Option<String>,
+    #[serde(default)]
+    pub refresh_token: Option<String>,
+    #[serde(default)]
+    pub expires_at: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MailOAuthInput {
+    pub id: Option<String>,
+    pub provider: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub oauth_client_id: Option<String>,
+    #[serde(default)]
+    pub oauth_tenant: Option<String>,
+    #[serde(default)]
+    pub imap_host: String,
+    #[serde(default)]
+    pub imap_port: u16,
+    #[serde(default)]
+    pub imap_tls: Option<TlsMode>,
+    #[serde(default)]
+    pub smtp_host: String,
+    #[serde(default)]
+    pub smtp_port: u16,
+    #[serde(default)]
+    pub smtp_tls: Option<TlsMode>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -290,10 +349,16 @@ pub struct MailDraft {
 }
 
 pub fn mail_presets() -> Vec<MailPreset> {
+    mail_presets_with_oauth(false)
+}
+
+pub fn mail_presets_with_oauth(outlook_oauth_configured: bool) -> Vec<MailPreset> {
     vec![
         MailPreset {
             id: "qq".into(),
             name: "QQ 邮箱".into(),
+            auth_kind: MailAuthKind::Password,
+            oauth_configured: false,
             imap_host: "imap.qq.com".into(),
             imap_port: 993,
             imap_tls: TlsMode::Tls,
@@ -302,11 +367,13 @@ pub fn mail_presets() -> Vec<MailPreset> {
             smtp_tls: TlsMode::Tls,
             append_sent: AppendSentPolicy::Never,
             send_imap_id: false,
-            auth_hint: "请在 QQ 邮箱网页版「设置 → 账号 → POP3/IMAP/SMTP」开启 IMAP/SMTP，并填入 16 位授权码（非 QQ 密码）。".into(),
+            auth_hint: "支持 @qq.com 与 @foxmail.com。请在 QQ 邮箱网页版「设置 → 账号 → POP3/IMAP/SMTP」开启 IMAP/SMTP，并填入 16 位授权码（非 QQ 密码）。".into(),
         },
         MailPreset {
             id: "netease-163".into(),
             name: "网易 163 邮箱".into(),
+            auth_kind: MailAuthKind::Password,
+            oauth_configured: false,
             imap_host: "imap.163.com".into(),
             imap_port: 993,
             imap_tls: TlsMode::Tls,
@@ -320,6 +387,8 @@ pub fn mail_presets() -> Vec<MailPreset> {
         MailPreset {
             id: "netease-126".into(),
             name: "网易 126 邮箱".into(),
+            auth_kind: MailAuthKind::Password,
+            oauth_configured: false,
             imap_host: "imap.126.com".into(),
             imap_port: 993,
             imap_tls: TlsMode::Tls,
@@ -331,8 +400,25 @@ pub fn mail_presets() -> Vec<MailPreset> {
             auth_hint: "请在 126 邮箱「设置 → POP3/SMTP/IMAP」开启 IMAP/SMTP 服务，并填入客户端授权密码。".into(),
         },
         MailPreset {
+            id: "outlook".into(),
+            name: "Outlook".into(),
+            auth_kind: MailAuthKind::Oauth2Microsoft,
+            oauth_configured: outlook_oauth_configured,
+            imap_host: "outlook.office365.com".into(),
+            imap_port: 993,
+            imap_tls: TlsMode::Tls,
+            smtp_host: "smtp.office365.com".into(),
+            smtp_port: 587,
+            smtp_tls: TlsMode::Starttls,
+            append_sent: AppendSentPolicy::Never,
+            send_imap_id: false,
+            auth_hint: "支持个人 Outlook / Hotmail / Live 与 Microsoft 365 账号，将通过系统浏览器完成 Microsoft OAuth 2.0（PKCE）安全授权。".into(),
+        },
+        MailPreset {
             id: "gmail".into(),
             name: "Gmail".into(),
+            auth_kind: MailAuthKind::Password,
+            oauth_configured: false,
             imap_host: "imap.gmail.com".into(),
             imap_port: 993,
             imap_tls: TlsMode::Tls,
@@ -346,6 +432,8 @@ pub fn mail_presets() -> Vec<MailPreset> {
         MailPreset {
             id: "icloud".into(),
             name: "iCloud 邮件".into(),
+            auth_kind: MailAuthKind::Password,
+            oauth_configured: false,
             imap_host: "imap.mail.me.com".into(),
             imap_port: 993,
             imap_tls: TlsMode::Tls,
@@ -357,34 +445,25 @@ pub fn mail_presets() -> Vec<MailPreset> {
             auth_hint: "请使用 Apple 账号与在 account.apple.com 生成的 App 专用密码。".into(),
         },
         MailPreset {
-            id: "tencent-exmail".into(),
-            name: "腾讯企业邮".into(),
-            imap_host: "imap.exmail.qq.com".into(),
+            id: "yahoo".into(),
+            name: "Yahoo 邮箱".into(),
+            auth_kind: MailAuthKind::Password,
+            oauth_configured: false,
+            imap_host: "imap.mail.yahoo.com".into(),
             imap_port: 993,
             imap_tls: TlsMode::Tls,
-            smtp_host: "smtp.exmail.qq.com".into(),
+            smtp_host: "smtp.mail.yahoo.com".into(),
             smtp_port: 465,
             smtp_tls: TlsMode::Tls,
             append_sent: AppendSentPolicy::Never,
             send_imap_id: false,
-            auth_hint: "若企业已开启安全登录，请在网页版邮箱生成客户端专用密码。".into(),
-        },
-        MailPreset {
-            id: "aliyun-mail".into(),
-            name: "阿里企业邮".into(),
-            imap_host: "imap.qiye.aliyun.com".into(),
-            imap_port: 993,
-            imap_tls: TlsMode::Tls,
-            smtp_host: "smtp.qiye.aliyun.com".into(),
-            smtp_port: 465,
-            smtp_tls: TlsMode::Tls,
-            append_sent: AppendSentPolicy::Auto,
-            send_imap_id: false,
-            auth_hint: "请在阿里邮箱网页端开启第三方客户端安全密码并填入。".into(),
+            auth_hint: "请在 Yahoo 账号安全设置（Account Security）中生成 16 位「应用专用密码（App Password）」填入此处（非登录密码）。".into(),
         },
         MailPreset {
             id: "custom".into(),
             name: "自定义 IMAP / SMTP".into(),
+            auth_kind: MailAuthKind::Password,
+            oauth_configured: false,
             imap_host: String::new(),
             imap_port: 993,
             imap_tls: TlsMode::Tls,
@@ -477,12 +556,29 @@ pub fn validate_account_input(input: &MailAccountInput) -> Result<MailAccountInp
     if provider.is_empty() || provider.len() > 64 {
         return Err("邮箱服务商标识无效".into());
     }
+    let oauth_client_id = input
+        .oauth_client_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(super::oauth::validate_client_id)
+        .transpose()?;
+    let oauth_tenant = input
+        .oauth_tenant
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(super::oauth::validate_tenant)
+        .transpose()?;
     Ok(MailAccountInput {
         id: input.id.clone().filter(|value| !value.trim().is_empty()),
         provider,
         label,
         email,
         display_name,
+        auth_kind: input.auth_kind.clone(),
+        oauth_client_id,
+        oauth_tenant,
         imap_host,
         imap_port: input.imap_port,
         imap_tls: input.imap_tls.clone(),

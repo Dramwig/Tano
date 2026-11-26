@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="yahoo-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7859FF"/>
+      <stop offset="100%" stop-color="#6001D1"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#yahoo-bg)"/>
+  <g transform="translate(21.3,26.5) scale(1.04)">
+    <path fill="#FFFFFF" d="M0 17.862L17.333 58.665L11.016 73.375H26.44L49.518 17.862H34.192L24.906 41.312L15.741 17.862Z"/>
+    <path fill="#FFFFFF" d="M64.981 0L49.746 36.6H66.912L82.083 0Z"/>
+    <circle cx="54.243" cy="49.638" r="9.535" fill="#FFFFFF"/>
+  </g>
+</svg>

@@ -89,13 +89,13 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 [data-preview-structure='islands'] .theme-preview-toolbar { border-bottom: 0; background: var(--preview-sidebar); }
 [data-preview-structure='islands'] .theme-preview-workspace { gap: 5px; padding: 0 5px 5px; background: var(--preview-sidebar); }
 [data-preview-structure='islands'] .theme-preview-sidebar { padding: 6px 4px; border: 0; background: transparent; }
-[data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar { border: 1px solid var(--preview-line); border-radius: 4px; background: var(--preview-paper); }
-[data-preview-structure='islands'] .theme-preview-main { padding: 7px 9px; border: 1px solid var(--preview-line); border-radius: 4px; }
+[data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar { border-radius: 4px; background: var(--preview-paper); }
+[data-preview-structure='islands'] .theme-preview-main { padding: 7px 9px; border-radius: 4px; }
 [data-preview-structure='islands'] .theme-preview-document { gap: 6px; }
 [data-preview-structure='islands'] .theme-preview-nav:last-child { display: none; }
 /* Paper: a single soft sheet on the desk with a centred title. */
 [data-preview-structure='document'] .theme-preview-main { padding: 6px 16px; background: var(--preview-sidebar); }
-[data-preview-structure='document'] .theme-preview-document { padding: 8px 9px; gap: 6px; border: 1px solid var(--preview-line); border-radius: 2px; background: var(--preview-paper); box-shadow: 0 2px 5px -2px #00000026; }
+[data-preview-structure='document'] .theme-preview-document { padding: 8px 9px; gap: 6px; border-radius: 2px; background: var(--preview-paper); }
 [data-preview-structure='document'] .theme-preview-heading { width: 44%; align-self: center; height: 3px; margin-bottom: 2px; }
 [data-preview-structure='document'] .theme-preview-callout { display: none; }
 [data-preview-structure='document'] .theme-preview-paragraph-short { display: flex; }
@@ -135,7 +135,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 .theme-preview[data-preview-surface='raised'][data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
 .theme-preview[data-preview-surface='raised'][data-preview-structure='islands'] .theme-preview-main,
 .theme-preview[data-preview-surface='raised'][data-preview-structure='document'] .theme-preview-document {
-  border-color: var(--preview-raised-edge);
+  border: 1px solid var(--preview-raised-edge);
   box-shadow: var(--preview-raised-shadow);
 }
 .theme-preview[data-preview-surface='raised'][data-preview-structure='continuous'] .theme-preview-main {
@@ -164,7 +164,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 .theme-preview[data-preview-surface='paper'][data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
 .theme-preview[data-preview-surface='paper'][data-preview-structure='islands'] .theme-preview-main,
 .theme-preview[data-preview-surface='paper'][data-preview-structure='document'] .theme-preview-document {
-  border-color: var(--preview-paper-edge);
+  border: 1px solid var(--preview-paper-edge);
   box-shadow: var(--preview-paper-shadow);
 }
 /* Frosted glass: the same two cards, milky and translucent over soft orbs of colour (see axis-material-glass.css). */
@@ -201,7 +201,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 .theme-preview[data-preview-surface='frost']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
 .theme-preview[data-preview-surface='liquid'][data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
 .theme-preview:is([data-preview-surface='frost'], [data-preview-surface='liquid']) .theme-preview-main {
-  border-color: var(--preview-rim);
+  border: 1px solid var(--preview-rim);
   border-radius: 6px;
   background: linear-gradient(160deg, var(--preview-sheen), transparent 55%), color-mix(in srgb, var(--preview-paper) var(--preview-glass), transparent);
   box-shadow: inset 0 1px 0 var(--preview-rim), 0 6px 12px -8px #1c305a4d;
@@ -214,7 +214,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 .theme-preview[data-preview-surface='liquid']:not([data-preview-structure='islands']) .theme-preview-sidebar { background: transparent; }
 .theme-preview[data-preview-surface='liquid'][data-preview-structure='islands']:not([data-preview-flat-sidebar]) .theme-preview-sidebar,
 .theme-preview[data-preview-surface='liquid'] .theme-preview-main {
-  border-color: transparent;
+  border: 0;
   background: color-mix(in srgb, var(--preview-paper) var(--preview-glass), transparent);
   box-shadow: 0 0 0 .5px var(--preview-outline), inset 1px 1px 0 var(--preview-rim), inset -1px -1px 0 var(--preview-edge),
     0 6px 12px -8px #1c305a4d;

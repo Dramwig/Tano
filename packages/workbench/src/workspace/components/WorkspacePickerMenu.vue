@@ -11,12 +11,16 @@ import {
   FolderPlus,
   House,
   Search,
+  Server,
   Trash2,
 } from 'lucide-vue-next';
+import { isRemoteWorkspacePath } from '@tano/protocol';
 import ShortcutHint from '@tano/editor/shortcut-hint';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
+import { isFeatureEnabled } from '../../features';
 import { t } from '../../i18n/i18n';
 import { mobile } from '../../platform/platform';
+import { useSshStore } from '../../ssh/store';
 import PluginMenu from '../../plugins/components/PluginMenu.vue';
 import OpenWorkspaceIcon from '../../shell/components/OpenWorkspaceIcon.vue';
 import WorkspaceMenuLayout from '../../shell/components/WorkspaceMenuLayout.vue';
@@ -54,6 +58,14 @@ const {
 const { shortcutHint } = toRefs(prefs);
 const { workspaceDropdownContextMenu, openWorkspaceEntryContextMenu } = toRefs(treeMenus);
 const { commandPaletteOpened, recyclePanel } = toRefs(modals);
+const ssh = useSshStore();
+const sshEnabled = isFeatureEnabled('sshRemoteWorkspace');
+const visibleRecent = () =>
+  sshEnabled
+    ? store.value.recent.slice(0, 8)
+    : store.value.recent
+        .filter((item) => !isRemoteWorkspacePath(item.path) && item.remote?.kind !== 'ssh')
+        .slice(0, 5);
 </script>
 
 <template>
@@ -84,7 +96,7 @@ const { commandPaletteOpened, recyclePanel } = toRefs(modals);
         <WorkspaceIcon
           v-else
           :icon="store.workspaceSettings.icon"
-          :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
+          :mode="workspace?.remote?.kind === 'ssh' ? 'ssh' : store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
           :size="15"
         />
       </span>
@@ -253,7 +265,7 @@ const { commandPaletteOpened, recyclePanel } = toRefs(modals);
             <button v-if="mobile" :disabled="busy" @click="createNewWorkspace">
               <FolderPlus :size="16" />{{ t('新建手机空间') }}
             </button>
-            <template v-if="store.recent.length || (!store.isDemo && !mobile)">
+            <template v-if="visibleRecent().length || (!store.isDemo && !mobile)">
               <div v-if="store.isDemo || mobile" class="menu-divider" />
               <div class="workspace-recent-heading">
                 <span class="recent-label">{{
@@ -275,8 +287,20 @@ const { commandPaletteOpened, recyclePanel } = toRefs(modals);
                 </button>
               </div>
               <button
+                v-if="ssh.available"
+                type="button"
                 class="context-menu-item"
-                v-for="item in store.recent.slice(0, 5)"
+                :disabled="busy"
+                @click="
+                  workspaceMenu = false;
+                  ssh.openConnectModal();
+                "
+              >
+                <Server :size="16" /><span class="recent-name">{{ t('连接 SSH 服务器…') }}</span>
+              </button>
+              <button
+                class="context-menu-item"
+                v-for="item in visibleRecent()"
                 :key="item.id"
                 :data-tooltip="item.path"
                 :disabled="busy"
@@ -298,7 +322,7 @@ const { commandPaletteOpened, recyclePanel } = toRefs(modals);
                 <span class="workspace-list-avatar">
                   <WorkspaceIcon
                     :icon="item.id === workspace?.id ? store.workspaceSettings.icon : item.icon"
-                    :mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
+                    :mode="item.remote?.kind === 'ssh' || isRemoteWorkspacePath(item.path) ? 'ssh' : store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
                     :size="16"
                   />
                 </span>

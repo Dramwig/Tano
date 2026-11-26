@@ -354,7 +354,7 @@ export function createWorkspaceDocumentIO(deps: WorkspaceDocumentIODeps) {
     try {
       if (file.kind === 'file' && isDataTableFilePath(file.path))
         return openDataTable(file.id, options);
-      if (!isMarkdown(file.path) || file.kind !== 'file') return;
+      if (!documentKindForEntry(file)) return;
       const replaceId =
         tabsLayout.isUtilityTab(activeId.value) &&
         !activeId.value.startsWith('blank:') &&
@@ -497,7 +497,7 @@ export function createWorkspaceDocumentIO(deps: WorkspaceDocumentIODeps) {
             (file) =>
               !file ||
               file.kind !== 'file' ||
-              !(isMarkdown(file.path) || isDataTableFilePath(file.path)),
+              !(documentKindForEntry(file) || isDataTableFilePath(file.path)),
           )
         )
           return;

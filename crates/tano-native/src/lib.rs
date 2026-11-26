@@ -13,6 +13,8 @@ pub mod mail;
 mod plans;
 #[cfg(desktop)]
 mod plugins;
+#[cfg(desktop)]
+pub(crate) mod ssh;
 pub mod storage;
 #[cfg(test)]
 mod tests;
@@ -47,6 +49,8 @@ pub(crate) use workspace::sync as workspace_sync;
 pub(crate) use workspace::{identity as workspace_identity, lock as workspace_lock};
 
 use error::NativeError;
+#[cfg(desktop)]
+use std::sync::Arc;
 use std::{
     path::{Path, PathBuf},
     sync::Mutex,
@@ -61,9 +65,53 @@ pub struct Session {
     pub(crate) _lock: std::fs::File,
 }
 
+pub(crate) enum ActiveSession {
+    Local(Session),
+    #[cfg(desktop)]
+    Remote(Arc<ssh::session::RemoteSession>),
+}
+
+impl ActiveSession {
+    pub(crate) fn id(&self) -> &str {
+        match self {
+            Self::Local(s) => &s.id,
+            #[cfg(desktop)]
+            Self::Remote(s) => &s.id,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct AppState {
-    pub(crate) session: Mutex<Option<Session>>,
+    pub(crate) session: Mutex<Option<ActiveSession>>,
+}
+
+#[cfg(desktop)]
+pub(crate) fn remote_session(state: &AppState) -> Option<Arc<ssh::session::RemoteSession>> {
+    let guard = state.session.lock().ok()?;
+    match guard.as_ref()? {
+        ActiveSession::Remote(remote) => Some(remote.clone()),
+        ActiveSession::Local(_) => None,
+    }
+}
+
+#[cfg(desktop)]
+pub(crate) fn remote_workspace_session(
+    workspace_id: &str,
+    state: &AppState,
+) -> Result<Option<Arc<ssh::session::RemoteSession>>, String> {
+    let guard = state.session.lock().map_err(|e| e.to_string())?;
+    match guard.as_ref() {
+        Some(ActiveSession::Remote(remote)) => {
+            if remote.id != workspace_id {
+                return Err(
+                    NativeError::WorkspaceSwitched("所属工作空间已切换，操作已取消").into(),
+                );
+            }
+            Ok(Some(remote.clone()))
+        }
+        _ => Ok(None),
+    }
 }
 
 pub(crate) fn with_session<T>(
@@ -74,7 +122,14 @@ pub(crate) fn with_session<T>(
     // a workspace holds it during scanning; a synchronous IPC/asset callback
     // waiting here would stall the WebView and all window events.
     let guard = state.session.lock().map_err(|e| e.to_string())?;
-    let session = guard.as_ref().ok_or(NativeError::WorkspaceNotOpen)?;
+    let active = guard.as_ref().ok_or(NativeError::WorkspaceNotOpen)?;
+    let session = match active {
+        ActiveSession::Local(s) => s,
+        #[cfg(desktop)]
+        ActiveSession::Remote(_) => {
+            return Err("当前打开的是 SSH 远程工作区，此操作仅支持本地工作区".into());
+        }
+    };
     if !session.root_key.is_empty() && storage::native_key(&session.root) != session.root_key {
         return Err(NativeError::WorkspaceSwitched("工作区根目录已替换，请重新打开工作区").into());
     }
@@ -82,12 +137,13 @@ pub(crate) fn with_session<T>(
     f(session)
 }
 
-pub(crate) fn with_session_for_journal<T>(
+pub(crate) fn with_session_id_for_journal<T>(
     state: State<AppState>,
-    f: impl FnOnce(&Session) -> Result<T, String>,
+    f: impl FnOnce(&str) -> Result<T, String>,
 ) -> Result<T, String> {
     let guard = state.session.lock().map_err(|e| e.to_string())?;
-    f(guard.as_ref().ok_or(NativeError::WorkspaceNotOpen)?)
+    let active = guard.as_ref().ok_or(NativeError::WorkspaceNotOpen)?;
+    f(active.id())
 }
 
 pub fn cache_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -164,6 +220,8 @@ pub fn configure_with_commands(
     let builder = builder.manage(plugin_oauth::PluginOAuthState::default());
     #[cfg(desktop)]
     let builder = builder.manage(mail::MailState::default());
+    #[cfg(desktop)]
+    let builder = builder.manage(ssh::SshState::default());
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -179,17 +237,42 @@ pub fn configure_with_commands(
                 window
                     .state::<plugin_native::PluginNativeState>()
                     .stop_window(window.label());
+                if window.label() == "main" {
+                    window.state::<ssh::SshState>().cancel_all_prompts();
+                }
             }
         })
         .register_asynchronous_uri_scheme_protocol("tano-asset", |context, request, responder| {
             let app = context.app_handle().clone();
+            #[cfg(desktop)]
+            let remote_opt = remote_session(&app.state::<AppState>());
+            #[cfg(desktop)]
+            if let Some(remote) = remote_opt {
+                tauri::async_runtime::spawn(async move {
+                    let response = ssh::storage::remote_respond_asset(
+                        remote.transport.as_ref(),
+                        &remote.remote_root,
+                        &remote.id,
+                        &remote.asset_cache,
+                        &request,
+                    )
+                    .await;
+                    responder.respond(response);
+                });
+                return;
+            }
             tauri::async_runtime::spawn_blocking(move || {
                 let state = app.state::<AppState>();
                 let response = match state.session.lock() {
-                    Ok(guard) if guard.is_some() => {
-                        let session = guard.as_ref().unwrap();
-                        assets::respond(&session.root, &session.id, &request)
-                    }
+                    Ok(guard) => match guard.as_ref() {
+                        Some(ActiveSession::Local(session)) => {
+                            assets::respond(&session.root, &session.id, &request)
+                        }
+                        _ => tauri::http::Response::builder()
+                            .status(404)
+                            .body(b"No workspace".to_vec())
+                            .expect("static response"),
+                    },
                     _ => tauri::http::Response::builder()
                         .status(404)
                         .body(b"No workspace".to_vec())

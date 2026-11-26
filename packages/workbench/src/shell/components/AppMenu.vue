@@ -2,6 +2,8 @@
 import ShortcutHint from '@tano/editor/shortcut-hint';
 import { ChevronRight } from 'lucide-vue-next';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { isRemoteWorkspacePath } from '@tano/protocol';
+import { isFeatureEnabled } from '../../features';
 import { t } from '../../i18n/i18n';
 import { shortcutLabel } from '../shortcuts';
 import type { WorkbenchCommand } from '../command-palette';
@@ -59,7 +61,14 @@ function rows(items: (string | null | Entry)[]): Row[] {
 }
 
 const recentRows = computed<Entry[]>(() => {
-  const items = store.recent.filter(item => item.id !== store.workspace?.id).slice(0, 5);
+  const sshEnabled = isFeatureEnabled('sshRemoteWorkspace');
+  const items = store.recent
+    .filter(
+      (item) =>
+        item.id !== store.workspace?.id &&
+        (sshEnabled || (!isRemoteWorkspacePath(item.path) && item.remote?.kind !== 'ssh')),
+    )
+    .slice(0, 5);
   if (!items.length) return [];
   return [
     { key: 'recent-heading', label: t('最近工作空间'), heading: true, disabled: true, run: () => {} },
@@ -72,7 +81,7 @@ const groups = computed<Group[]>(() => [
     id: 'file', label: t('文件'),
     rows: rows([
       'workbench.new', 'workbench.folder', 'workbench.new-window', null,
-      'workbench.open', 'workbench.open-folder', null,
+      'workbench.open', 'workbench.open-folder', 'workbench.ssh-connect', null,
       ...recentRows.value, null,
       'workbench.save', 'workbench.saveAs', null,
       ...['markdown', 'docx', 'pdf', 'html', 'png'].map(format => `workbench.export.${format}`), 'workbench.print',
@@ -103,6 +112,7 @@ const groups = computed<Group[]>(() => [
     // Workspace-wide actions only; plugin-provided commands deliberately stay in the command palette.
     rows: rows([
       'workbench.home', 'workbench.switch-workspace', null,
+      'workbench.ssh-terminal', 'workbench.ssh-reconnect', 'workbench.ssh-disconnect', null,
       'workbench.import', 'workbench.templates', null,
       'workbench.reveal', 'workbench.settings.workspace',
     ]),

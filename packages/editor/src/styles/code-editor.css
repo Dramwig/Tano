@@ -1,0 +1,108 @@
+/* SPDX-License-Identifier: MIT */
+.code-editor {
+  display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--tano-source-font-size, 13.5px);
+  line-height: 1.65;
+  tab-size: 2;
+}
+
+.code-editor .cm-editor {
+  height: 100%;
+  background: transparent;
+}
+
+.code-editor .cm-scroller {
+  overflow: auto;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  tab-size: inherit;
+  background: transparent;
+}
+
+.code-editor .cm-gutters {
+  background: transparent;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  user-select: none;
+}
+
+.code-editor .cm-lineNumbers .cm-gutterElement {
+  padding: 0 12px 0 8px;
+  min-width: 42px;
+  text-align: right;
+  color: var(--muted);
+}
+
+.code-editor .cm-activeLineGutter {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.code-editor .cm-activeLine {
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
+}
+
+.code-editor .cm-content {
+  min-height: calc(100vh - 220px);
+  padding: 12px 0 48px;
+  caret-color: var(--text);
+}
+
+.code-editor .cm-line {
+  padding-inline: 16px;
+}
+
+.code-editor .cm-focused {
+  outline: none;
+}
+
+.code-editor .cm-selectionBackground,
+.code-editor .cm-focused .cm-selectionBackground {
+  background: var(--block-selection);
+}
+
+.code-editor .token.comment,
+.code-editor .token.prolog,
+.code-editor .token.doctype,
+.code-editor .token.cdata {
+  color: var(--muted);
+}
+
+.code-editor .token.keyword,
+.code-editor .token.boolean,
+.code-editor .token.builtin,
+.code-editor .token.important {
+  color: var(--syntax-purple, #a35ac9);
+}
+
+.code-editor .token.string,
+.code-editor .token.attr-value,
+.code-editor .token.char {
+  color: var(--syntax-green, #418450);
+}
+
+.code-editor .token.number,
+.code-editor .token.constant,
+.code-editor .token.symbol,
+.code-editor .token.function {
+  color: var(--syntax-blue, #387bb2);
+}
+
+.code-editor .token.property,
+.code-editor .token.tag,
+.code-editor .token.attr-name,
+.code-editor .token.class-name {
+  color: var(--syntax-orange, #c76b29);
+}
+
+.code-editor .token.operator,
+.code-editor .token.punctuation {
+  color: var(--muted);
+}

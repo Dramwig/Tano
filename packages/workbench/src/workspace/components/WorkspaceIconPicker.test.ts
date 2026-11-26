@@ -85,7 +85,8 @@ it('removes custom emoji input and the all button, and supports removal, empty r
   await nextTick(); state.icon = ''; await open();
   expect([...panel()!.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === '移除')!.disabled).toBe(true);
   tab('upload').click(); await nextTick();
-  [...panel()!.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === '选择图片')!.click();
+  expect(panel()!.querySelector('.workspace-icon-picker-upload-divider')).toBeNull();
+  [...panel()!.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === '点击选择图片，或拖拽到这里')!.click();
   expect(upload).toHaveBeenCalledOnce(); await nextTick();
   expect(panel()).not.toBeNull();
   expect(trigger().getAttribute('aria-expanded')).toBe('true');
@@ -148,6 +149,55 @@ it('accepts clipboard file fallback without intercepting text, other tabs, or di
   tab('upload').click(); await nextTick();
   expect(paste(tab('upload'), [], [file]).defaultPrevented).toBe(true);
   expect(pasteImage).toHaveBeenCalledExactlyOnceWith(file);
+});
+
+function drag(target: Element, type: string, files: File[] = []) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'dataTransfer', { value: { types: ['Files'], files, dropEffect: 'none' } });
+  target.dispatchEvent(event);
+  return event;
+}
+
+it('accepts dropped images and highlights the drop zone while dragging', async () => {
+  const { pasteImage } = mount(); await open();
+  tab('upload').click(); await nextTick();
+  const zone = panel()!.querySelector<HTMLElement>('.workspace-icon-picker-dropzone')!;
+  expect(drag(zone, 'dragenter').defaultPrevented).toBe(true); await nextTick();
+  expect(zone.dataset.state).toBe('dragging');
+  expect(zone.textContent).toContain('松开以上传图片');
+  drag(zone, 'dragleave'); await nextTick();
+  expect(zone.dataset.state).toBeUndefined();
+  const file = new File(['image'], 'drop.gif', { type: 'image/gif' });
+  drag(zone, 'dragenter');
+  expect(drag(zone, 'drop', [file]).defaultPrevented).toBe(true);
+  expect(pasteImage).toHaveBeenCalledExactlyOnceWith(file);
+  await nextTick();
+  expect(panel()).toBeNull(); expect(document.activeElement).toBe(trigger());
+});
+
+it('explains rejected formats and oversized images only after a bad paste or drop, then recovers', async () => {
+  vi.useFakeTimers();
+  try {
+    const { pasteImage } = mount(); await open();
+    tab('upload').click(); await nextTick();
+    const zone = panel()!.querySelector<HTMLElement>('.workspace-icon-picker-dropzone')!;
+    const hint = zone.querySelector<HTMLElement>('.workspace-icon-picker-upload-hint')!;
+    expect(hint.textContent).toContain('Ctrl+V');
+    expect(hint.textContent).not.toMatch(/PNG|MB/);
+    const pdf = new File(['%PDF'], 'notes.pdf', { type: 'application/pdf' });
+    expect(paste(zone, [{ kind: 'file', type: pdf.type, getAsFile: () => pdf }]).defaultPrevented).toBe(true); await nextTick();
+    expect(zone.dataset.state).toBe('error');
+    expect(hint.textContent).toBe('仅支持 PNG、JPG、WebP 或 GIF 图片');
+    const big = new File(['x'], 'huge.png', { type: 'image/png' });
+    Object.defineProperty(big, 'size', { value: 7 * 1024 * 1024 + 150_000 });
+    drag(zone, 'drop', [big]); await nextTick();
+    expect(hint.textContent).toBe('图片不能超过 2 MB（当前 7.2 MB）');
+    expect(pasteImage).not.toHaveBeenCalled();
+    expect(panel()).not.toBeNull();
+    vi.advanceTimersByTime(4000); await nextTick();
+    expect(zone.dataset.state).toBeUndefined();
+    expect(hint.textContent).toContain('Ctrl+V');
+  } finally { vi.useRealTimers(); }
 });
 
 it('keeps searches global and resets the directory and scroll position when results or tabs change', async () => {
@@ -234,6 +284,7 @@ it('renders optional upload-actions slot content and lets it dismiss the popover
   tab('upload').click(); await nextTick();
   const action = [...panel()!.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === '从外部获取')!;
   expect(action).not.toBeNull();
+  expect(panel()!.querySelector('.workspace-icon-picker-upload-divider')?.textContent).toBe('或');
   action.click(); await nextTick();
   expect(extra).toHaveBeenCalledOnce();
   expect(panel()).toBeNull();

@@ -9,7 +9,7 @@ use crate::{personal_plans, printing, updates};
 #[cfg(desktop)]
 use crate::{
     assistant, import_connections, mail, plan_connections, plugin_connections, plugin_native,
-    plugin_oauth, workspace_git, workspace_sync,
+    plugin_oauth, ssh, workspace_git, workspace_sync,
 };
 
 type InvokeHandler = fn(tauri::ipc::Invoke<tauri::Wry>) -> bool;
@@ -66,9 +66,34 @@ fn desktop_handler(command: &str) -> Option<InvokeHandler> {
             assistant::assistant_external_result,
         ]);
     }
+    if command.starts_with("ssh_") {
+        return Some(tauri::generate_handler![
+            ssh::ssh_hosts_list,
+            ssh::ssh_host_save,
+            ssh::ssh_quick_connect_parse,
+            ssh::ssh_host_remove,
+            ssh::ssh_connect,
+            ssh::ssh_host_test,
+            ssh::ssh_disconnect,
+            ssh::ssh_reconnect,
+            ssh::ssh_connection_status,
+            ssh::ssh_challenge_respond,
+            ssh::ssh_list_dir,
+            ssh::ssh_mkdir,
+            ssh::ssh_known_hosts_list,
+            ssh::ssh_known_hosts_remove,
+            ssh::ssh_settings_load,
+            ssh::ssh_settings_save,
+            ssh::ssh_mcp_sync,
+            ssh::ssh_open_terminal,
+            ssh::ssh_remote_search,
+        ]);
+    }
     if command.starts_with("mail_") {
         return Some(tauri::generate_handler![
             mail::commands::mail_presets_list,
+            mail::commands::mail_oauth_authorize,
+            mail::commands::mail_oauth_cancel,
             mail::commands::mail_accounts_list,
             mail::commands::mail_account_test,
             mail::commands::mail_account_save,

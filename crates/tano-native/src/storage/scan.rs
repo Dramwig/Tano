@@ -404,5 +404,7 @@ fn scan_inner(root: &Path, id: &str, cache: &Path, reuse: bool) -> Result<Worksp
         files: entries,
         newly_created: None,
         reinitialized: None,
+        #[cfg(desktop)]
+        remote: None,
     })
 }

@@ -12,11 +12,14 @@ import {
   PanelTop,
   PencilLine,
   Search,
+  Server,
   UserRound,
   X,
 } from 'lucide-vue-next';
 import { defaultCapabilities, defaultEditorPreferences, type EditorPreferences } from '@tano/editor/runtime';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
+import { isFeatureEnabled } from '../../features';
+import { SettingsSshPage } from '../../shell/workbench-async-components';
 import { glassMaterials, type AppearanceSelection } from '../../appearance/appearance';
 import { defaultSplitFontSettings, type SplitFontSettings, type VisualFontChoice } from '../../appearance/editor-font';
 import { glassWallpaper } from '../../appearance/glass-wallpaper';
@@ -164,6 +167,13 @@ const pages = [
     get terms() { return uiSearchText('助手设置') + ' ' + uiSearchText('助手 模型 连接 API 密钥 Codex CLI Claude CLI token 工具调用 个人设置'); },
   },
   {
+    id: 'ssh',
+    get label() { return t('SSH 远程'); },
+    get group() { return t('个人偏好'); },
+    icon: Server,
+    get terms() { return uiSearchText('SSH 远程 服务器 SFTP known_hosts 指纹 密钥 跳板机 远端工作区'); },
+  },
+  {
     id: 'workspace',
     get label() { return t('基本设置'); },
     get group() { return t('工作区设置'); },
@@ -214,7 +224,11 @@ const availablePluginPages = computed(() =>
     : [],
 );
 const availablePages = computed(() => [
-  ...pages.filter((item) => props.workspace || (item.id !== 'workspace' && item.id !== 'documents')),
+  ...pages.filter(
+    (item) =>
+      (props.workspace || (item.id !== 'workspace' && item.id !== 'documents')) &&
+      (item.id !== 'ssh' || (isFeatureEnabled('sshRemoteWorkspace') && props.native && !props.mobile)),
+  ),
   ...availableExtraPages.value.map((item) => ({ ...item, group: t(item.group), icon: item.icon ?? UserRound })),
   ...availablePluginPages.value.map((item) => ({
     id: item.view.key,
@@ -535,6 +549,18 @@ function keydown(event: KeyboardEvent) {
         <SettingsAppearancePage v-else-if="page === 'appearance'" />
         <SettingsEditingPage v-else-if="page === 'editing'" />
         <AssistantSettings v-else-if="page === 'assistant'" @changed="emit('assistant-changed')" />
+        <div v-else-if="page === 'ssh'" class="settings-content">
+          <div class="settings-title-line">
+            <h2 id="settings-title">{{ t('SSH 远程') }}</h2>
+            <div class="settings-page-scope" role="note" tabindex="0" :aria-label="scopeLabel">
+              <UserRound :size="13" /><span>{{ scopeLabel }}</span>
+            </div>
+          </div>
+          <p class="settings-lead">
+            {{ t('连接远端 SSH 服务器，直接浏览、预览和编辑服务器上的工作区目录。') }}
+          </p>
+          <SettingsSshPage />
+        </div>
         <SettingsDocumentsPage v-else-if="page === 'documents'" />
         <SettingsWorkspacePage v-else-if="page === 'workspace'">
           <template #workspace-members-export><slot name="workspace-members-export" /></template>

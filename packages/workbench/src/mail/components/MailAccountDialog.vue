@@ -6,19 +6,30 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
+  KeyRound,
   ShieldCheck,
   Trash2,
   X,
 } from 'lucide-vue-next';
 import { t } from '../../i18n/i18n';
 import { useMailStore } from '../../stores/mail';
-import type { AppendSentPolicy, MailAccountInput, MailPreset, TlsMode } from '../types';
+import type {
+  AppendSentPolicy,
+  MailAccount,
+  MailAccountInput,
+  MailPreset,
+  TlsMode,
+} from '../types';
 import MailProviderIcon from './MailProviderIcon.vue';
 
 const mail = useMailStore();
 
 function close() {
   if (testing.value || saving.value) return;
+  if (authorizing.value) {
+    void mail.cancelOAuth();
+  }
   mail.accountDialogOpen = false;
 }
 
@@ -28,14 +39,20 @@ function onKeydown(event: KeyboardEvent) {
   close();
 }
 onMounted(() => window.addEventListener('keydown', onKeydown, true));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true));
+onBeforeUnmount(() => {
+  if (authorizing.value) void mail.cancelOAuth();
+  window.removeEventListener('keydown', onKeydown, true);
+});
 
 const selectedPresetId = ref('qq');
+const reauthAccountId = ref('');
 const label = ref('QQ 邮箱');
 const email = ref('');
 const displayName = ref('');
 const username = ref('');
 const password = ref('');
+const oauthClientId = ref('');
+const oauthTenant = ref('');
 const imapHost = ref('imap.qq.com');
 const imapPort = ref(993);
 const imapTls = ref<TlsMode>('tls');
@@ -47,6 +64,7 @@ const sendImapId = ref(false);
 
 const testing = ref(false);
 const saving = ref(false);
+const authorizing = ref(false);
 const clearingCache = ref(false);
 const error = ref('');
 const statusMessage = ref('');
@@ -55,24 +73,49 @@ const statusMessage = ref('');
 const step = ref<'pick' | 'form'>('pick');
 const emailInput = ref<HTMLInputElement>();
 const isCustom = computed(() => selectedPresetId.value === 'custom');
+const currentPreset = computed<MailPreset | undefined>(() =>
+  mail.presets.find((item) => item.id === selectedPresetId.value),
+);
+const isOAuth = computed(() => currentPreset.value?.authKind === 'oauth2-microsoft');
+const oauthConfigured = computed(() => !!currentPreset.value?.oauthConfigured);
 
 async function pickProvider(presetId: string) {
+  reauthAccountId.value = '';
+  oauthClientId.value = '';
+  oauthTenant.value = '';
   applyPreset(presetId);
   step.value = 'form';
   await nextTick();
   emailInput.value?.focus();
 }
 
+function startReauthorize(acc: MailAccount) {
+  applyPreset(acc.provider);
+  reauthAccountId.value = acc.id;
+  label.value = acc.label;
+  email.value = acc.email;
+  displayName.value = acc.displayName;
+  oauthClientId.value = acc.oauthClientId ?? '';
+  oauthTenant.value = acc.oauthTenant ?? '';
+  imapHost.value = acc.imapHost;
+  imapPort.value = acc.imapPort;
+  imapTls.value = acc.imapTls;
+  smtpHost.value = acc.smtpHost;
+  smtpPort.value = acc.smtpPort;
+  smtpTls.value = acc.smtpTls;
+  step.value = 'form';
+}
+
 function backToPick() {
   if (testing.value || saving.value) return;
+  if (authorizing.value) {
+    void mail.cancelOAuth();
+  }
+  reauthAccountId.value = '';
   step.value = 'pick';
   error.value = '';
   statusMessage.value = '';
 }
-
-const currentPreset = computed<MailPreset | undefined>(() =>
-  mail.presets.find((item) => item.id === selectedPresetId.value),
-);
 
 function applyPreset(presetId: string) {
   selectedPresetId.value = presetId;
@@ -174,6 +217,52 @@ async function submitAccount() {
   }
 }
 
+async function submitOAuth() {
+  authorizing.value = true;
+  error.value = '';
+  statusMessage.value = t('已打开系统浏览器，请在 Microsoft 页面完成登录授权…');
+  try {
+    const saved = await mail.authorizeOAuth({
+      id: reauthAccountId.value || undefined,
+      provider: selectedPresetId.value,
+      label: label.value.trim(),
+      email: email.value.trim(),
+      displayName: displayName.value.trim(),
+      oauthClientId: oauthClientId.value.trim() || undefined,
+      oauthTenant: oauthTenant.value.trim() || undefined,
+      imapHost: imapHost.value.trim(),
+      imapPort: Number(imapPort.value),
+      imapTls: imapTls.value,
+      smtpHost: smtpHost.value.trim(),
+      smtpPort: Number(smtpPort.value),
+      smtpTls: smtpTls.value,
+    });
+    statusMessage.value = t('账号已保存，正在首次同步文件夹与近期邮件…');
+    try {
+      await mail.syncAccount(saved.id);
+      email.value = '';
+      displayName.value = '';
+      reauthAccountId.value = '';
+      step.value = 'pick';
+      statusMessage.value = t('账号已连接并完成首次同步。');
+    } catch (syncErr) {
+      error.value =
+        syncErr instanceof Error
+          ? `${t('账号已保存，但首次同步失败：')}${syncErr.message}`
+          : String(syncErr);
+    }
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+    statusMessage.value = '';
+  } finally {
+    authorizing.value = false;
+  }
+}
+
+function cancelOAuthFlow() {
+  void mail.cancelOAuth();
+}
+
 async function removeAccount(accountId: string) {
   error.value = '';
   try {
@@ -249,6 +338,16 @@ function formatBytes(bytes: number): string {
                     <strong>{{ acc.label }}</strong>
                     <span>{{ acc.email }}</span>
                   </div>
+                  <button
+                    v-if="acc.authKind === 'oauth2-microsoft'"
+                    type="button"
+                    class="icon-button"
+                    :aria-label="t('重新授权')"
+                    :data-tooltip="t('重新授权')"
+                    @click="startReauthorize(acc)"
+                  >
+                    <KeyRound :size="15" />
+                  </button>
                   <button
                     type="button"
                     class="icon-button danger"
@@ -329,23 +428,57 @@ function formatBytes(bytes: number): string {
             </button>
           </header>
 
-          <form class="mail-modal-body mail-account-form" @submit.prevent="submitAccount">
+          <form
+            class="mail-modal-body mail-account-form"
+            @submit.prevent="isOAuth ? submitOAuth() : submitAccount()"
+          >
             <p v-if="currentPreset?.authHint" class="mail-auth-hint">{{ currentPreset.authHint }}</p>
 
-            <label class="mail-field">
-              <span>{{ t('邮箱地址') }}</span>
-              <input
-                ref="emailInput"
-                v-model="email"
-                type="email"
-                autocomplete="email"
-                placeholder="name@example.com"
-              />
-            </label>
-            <label class="mail-field">
-              <span>{{ t('授权码 / App 专用密码') }}</span>
-              <input v-model="password" type="password" autocomplete="off" />
-            </label>
+            <template v-if="isOAuth">
+              <p v-if="!oauthConfigured" class="mail-auth-hint">
+                {{
+                  t(
+                    '当前构建未内置 Outlook OAuth 应用 ID：请在 Microsoft Entra ID 注册公共客户端（桌面回调 http://localhost），填写下方 Client ID，或在应用数据目录配置 mail-oauth.json。',
+                  )
+                }}
+              </p>
+              <label v-if="!oauthConfigured" class="mail-field">
+                <span>{{ t('Microsoft 应用 Client ID') }}</span>
+                <input
+                  v-model="oauthClientId"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="00000000-0000-0000-0000-000000000000"
+                />
+              </label>
+              <label class="mail-field">
+                <span>{{ t('邮箱地址（可选，用于登录提示）') }}</span>
+                <input
+                  ref="emailInput"
+                  v-model="email"
+                  type="email"
+                  autocomplete="email"
+                  placeholder="name@outlook.com"
+                />
+              </label>
+            </template>
+
+            <template v-else>
+              <label class="mail-field">
+                <span>{{ t('邮箱地址') }}</span>
+                <input
+                  ref="emailInput"
+                  v-model="email"
+                  type="email"
+                  autocomplete="email"
+                  placeholder="name@example.com"
+                />
+              </label>
+              <label class="mail-field">
+                <span>{{ t('授权码 / App 专用密码') }}</span>
+                <input v-model="password" type="password" autocomplete="off" />
+              </label>
+            </template>
 
             <!-- A custom server cannot work without hosts: keep them in view. -->
             <div v-if="isCustom" class="mail-form-grid">
@@ -373,7 +506,17 @@ function formatBytes(bytes: number): string {
                   <span>{{ t('发件人显示名（可选）') }}</span>
                   <input v-model="displayName" type="text" />
                 </label>
-                <label class="mail-field mail-form-full">
+                <template v-if="isOAuth">
+                  <label v-if="oauthConfigured" class="mail-field">
+                    <span>{{ t('Microsoft 应用 Client ID（可选）') }}</span>
+                    <input v-model="oauthClientId" type="text" autocomplete="off" />
+                  </label>
+                  <label class="mail-field" :class="{ 'mail-form-full': !oauthConfigured }">
+                    <span>{{ t('Microsoft 租户（默认 common）') }}</span>
+                    <input v-model="oauthTenant" type="text" autocomplete="off" placeholder="common" />
+                  </label>
+                </template>
+                <label v-else class="mail-field mail-form-full">
                   <span>{{ t('登录用户名（留空同邮箱）') }}</span>
                   <input v-model="username" type="text" />
                 </label>
@@ -422,26 +565,58 @@ function formatBytes(bytes: number): string {
           <footer class="mail-modal-footer">
             <p class="mail-footer-note">
               <ShieldCheck :size="13" />
-              <span>{{ t('授权码仅保存在本机系统凭据库') }}</span>
+              <span>{{
+                isOAuth
+                  ? t('访问令牌仅保存在本机系统凭据库')
+                  : t('授权码仅保存在本机系统凭据库')
+              }}</span>
             </p>
-            <button
-              type="button"
-              class="mail-btn-ghost"
-              :disabled="testing || saving"
-              @click="testConnection"
-            >
-              <span v-if="testing" class="mail-btn-spinner" aria-hidden="true" />
-              {{ testing ? t('正在测试…') : t('测试连接') }}
-            </button>
-            <button
-              type="button"
-              class="mail-btn-primary"
-              :disabled="testing || saving"
-              @click="submitAccount"
-            >
-              <span v-if="saving" class="mail-btn-spinner" aria-hidden="true" />
-              {{ saving ? t('正在保存…') : t('保存并同步') }}
-            </button>
+            <template v-if="isOAuth">
+              <button
+                v-if="authorizing"
+                type="button"
+                class="mail-btn-ghost"
+                @click="cancelOAuthFlow"
+              >
+                {{ t('取消授权') }}
+              </button>
+              <button
+                type="button"
+                class="mail-btn-primary"
+                :disabled="authorizing"
+                @click="submitOAuth"
+              >
+                <span v-if="authorizing" class="mail-btn-spinner" aria-hidden="true" />
+                <ExternalLink v-else :size="14" />
+                {{
+                  authorizing
+                    ? t('等待浏览器授权…')
+                    : reauthAccountId
+                      ? t('重新授权 Microsoft 账号')
+                      : t('使用 Microsoft 账号登录')
+                }}
+              </button>
+            </template>
+            <template v-else>
+              <button
+                type="button"
+                class="mail-btn-ghost"
+                :disabled="testing || saving"
+                @click="testConnection"
+              >
+                <span v-if="testing" class="mail-btn-spinner" aria-hidden="true" />
+                {{ testing ? t('正在测试…') : t('测试连接') }}
+              </button>
+              <button
+                type="button"
+                class="mail-btn-primary"
+                :disabled="testing || saving"
+                @click="submitAccount"
+              >
+                <span v-if="saving" class="mail-btn-spinner" aria-hidden="true" />
+                {{ saving ? t('正在保存…') : t('保存并同步') }}
+              </button>
+            </template>
           </footer>
         </template>
       </section>

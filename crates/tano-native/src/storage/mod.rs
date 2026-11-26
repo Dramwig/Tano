@@ -29,6 +29,7 @@ pub use io::{
     create, create_atomic, duplicate_entry, move_entry, read, remove_empty_folder, rename,
     temporary, write,
 };
+pub(crate) use io::{create_code, read_code, write_code};
 pub use path_guard::{
     ensure_file_parent, is_workspace_data_directory, is_workspace_data_path, resolve,
     resolve_storage,
@@ -48,6 +49,9 @@ pub struct Workspace {
     pub newly_created: Option<bool>,
     #[serde(rename = "reinitialized", skip_serializing_if = "Option::is_none")]
     pub reinitialized: Option<bool>,
+    #[cfg(desktop)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote: Option<crate::ssh::types::RemoteWorkspaceInfo>,
 }
 
 #[derive(Serialize)]
@@ -62,11 +66,45 @@ pub struct Entry {
     content_hash: Option<String>,
 }
 
+impl Entry {
+    #[cfg(desktop)]
+    pub(crate) fn new(
+        id: String,
+        path: String,
+        name: String,
+        kind: String,
+        size: u64,
+        modified: u64,
+        content_hash: Option<String>,
+    ) -> Self {
+        Self {
+            id,
+            path,
+            name,
+            kind,
+            size,
+            modified,
+            content_hash,
+        }
+    }
+}
+
 #[derive(Serialize, Debug)]
 pub struct Snapshot {
     pub content: String,
     pub hash: String,
     modified: u64,
+}
+
+impl Snapshot {
+    #[cfg(desktop)]
+    pub(crate) fn new(content: String, hash: String, modified: u64) -> Self {
+        Self {
+            content,
+            hash,
+            modified,
+        }
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -100,6 +138,74 @@ pub(crate) fn is_data_table(path: &Path) -> bool {
         name.to_string_lossy()
             .to_ascii_lowercase()
             .ends_with(".table.json")
+    })
+}
+
+pub(crate) fn is_editable_code_path(path: &Path) -> bool {
+    if is_markdown(path) || is_data_table(path) {
+        return false;
+    }
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        let lower = ext.to_ascii_lowercase();
+        if matches!(
+            lower.as_str(),
+            "js" | "mjs"
+                | "cjs"
+                | "ts"
+                | "mts"
+                | "cts"
+                | "jsx"
+                | "tsx"
+                | "vue"
+                | "svelte"
+                | "py"
+                | "rs"
+                | "css"
+                | "scss"
+                | "less"
+                | "html"
+                | "htm"
+                | "xml"
+                | "yaml"
+                | "yml"
+                | "toml"
+                | "ini"
+                | "conf"
+                | "cfg"
+                | "properties"
+                | "sh"
+                | "bash"
+                | "zsh"
+                | "sql"
+                | "c"
+                | "h"
+                | "cpp"
+                | "hpp"
+                | "cc"
+                | "java"
+                | "kt"
+                | "swift"
+                | "dart"
+                | "go"
+                | "rb"
+                | "php"
+                | "ps1"
+                | "dockerfile"
+                | "json"
+                | "jsonc"
+                | "txt"
+                | "log"
+                | "csv"
+                | "tsv"
+        ) {
+            return true;
+        }
+    }
+    path.file_name().is_some_and(|name| {
+        matches!(
+            name.to_string_lossy().to_ascii_lowercase().as_str(),
+            "dockerfile" | "makefile" | "procfile" | "gemfile" | "rakefile"
+        )
     })
 }
 

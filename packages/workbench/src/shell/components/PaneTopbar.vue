@@ -36,6 +36,7 @@ import MarkdownRevealToggle from '../../documents/components/MarkdownRevealToggl
 import SourceCodeIcon from '../../documents/components/SourceCodeIcon.vue';
 import PluginViewHeader from '../../plugins/components/PluginViewHeader.vue';
 import CalendarTopbarControls from '../../plans/components/CalendarTopbarControls.vue';
+import SshStatusBadge from '../../ssh/components/SshStatusBadge.vue';
 
 defineProps<{
   pane: WorkspacePane;
@@ -173,7 +174,7 @@ const { treeDocumentIcons, loadTreeDocumentIcon } = toRefs(treeMenus);
       :workspace-id="workspace?.id"
       :workspace-name="workspace?.name ?? 'Tano'"
       :workspace-icon="store.workspaceSettings.icon"
-      :workspace-mode="store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
+      :workspace-mode="workspace?.remote?.kind === 'ssh' ? 'ssh' : store.isDemo ? 'demo' : store.isWeb ? 'web' : 'local'"
       :entries="workspace?.files ?? []"
       :folder-home-file-name="store.workspaceSettings.folderHomeFileName"
       :document-icons="treeDocumentIcons"
@@ -294,6 +295,7 @@ const { treeDocumentIcons, loadTreeDocumentIcon } = toRefs(treeMenus);
         "
         :actions="extensionActions"
       />
+      <SshStatusBadge v-if="workspace?.remote?.kind === 'ssh'" />
       <span
         v-if="
           workspaceStatusLabel &&

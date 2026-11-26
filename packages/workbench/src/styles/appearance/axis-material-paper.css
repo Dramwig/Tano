@@ -17,7 +17,7 @@
     --surface-sheet-shadow:
       0 1px 2px color-mix(in srgb, var(--text) 5%, transparent),
       0 6px 18px -10px color-mix(in srgb, var(--text) 12%, transparent);
-    --surface-document-border: var(--paper-edge);
+    --surface-document-border: 1px solid var(--paper-edge);
     --surface-document-shadow:
       0 1px 2px color-mix(in srgb, var(--text) 7%, transparent),
       0 12px 30px -14px color-mix(in srgb, var(--text) 18%, transparent);

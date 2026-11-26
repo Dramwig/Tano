@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { BookOpen, Cloud, FolderOpen } from 'lucide-vue-next';
+import { BookOpen, Cloud, FolderOpen, Server } from 'lucide-vue-next';
 import { builtinWorkspaceIcon } from '../workspace-icons';
 import { workspaceIconComponents } from '../workspace-icon-components';
 import { workspaceEmojiSprite } from '../workspace-emoji';
-const props = withDefaults(defineProps<{ icon?: string; size?: number; mode?: 'demo' | 'web' | 'local' }>(), {
+const props = withDefaults(defineProps<{ icon?: string; size?: number; mode?: 'demo' | 'web' | 'local' | 'ssh' }>(), {
   size: 17,
   mode: 'local',
 });
@@ -19,6 +19,7 @@ const emojiSprite = computed(() => props.icon && !props.icon.startsWith('data:')
     <span v-if="emojiSprite" class="workspace-emoji-sprite" :style="emojiSprite" />
     <template v-else>{{ icon }}</template>
   </span>
+  <Server v-else-if="mode === 'ssh'" class="workspace-default-icon" :size="size" aria-hidden="true" />
   <Cloud v-else-if="mode === 'web'" class="workspace-default-icon" :size="size" aria-hidden="true" />
   <BookOpen v-else-if="mode === 'demo'" class="workspace-default-icon" :size="size" aria-hidden="true" />
   <FolderOpen v-else class="workspace-default-icon" :size="size" aria-hidden="true" />

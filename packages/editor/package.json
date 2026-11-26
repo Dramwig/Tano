@@ -10,6 +10,7 @@
     "./block-icons": "./src/core/block-icons.ts",
     "./shortcut-hint": "./src/primitives/ShortcutHint.vue",
     "./code-preview": "./src/views/code-preview.ts",
+    "./code-editor": "./src/views/CodeEditor.vue",
     ".": "./src/views/MarkdownEditor.vue",
     "./syntax": "./src/markdown/syntax.ts",
     "./frontmatter-display": "./src/markdown/frontmatter-display.ts",

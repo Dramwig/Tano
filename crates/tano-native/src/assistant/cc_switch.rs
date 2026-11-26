@@ -101,6 +101,7 @@ fn parse(app: String, id: String, name: String, raw: String) -> Provider {
                 quota: None,
                 kind: crate::assistant_cli::Kind::Api,
                 cli_path: String::new(),
+                execution_target: Default::default(),
                 reasoning_effort: None,
                 endpoint,
                 protocol,

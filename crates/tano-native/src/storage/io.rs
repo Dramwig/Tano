@@ -40,11 +40,25 @@ pub fn read(path: &Path) -> Result<Snapshot, String> {
     {
         return Err(NativeError::UnsupportedFormat("当前版本仅编辑 Markdown 文档和数据表").into());
     }
+    read_utf8_bounded(path, MAX_DOCUMENT_BYTES, false)
+}
+
+pub(crate) fn read_code(path: &Path) -> Result<Snapshot, String> {
+    if !super::is_editable_code_path(path) {
+        return Err(NativeError::UnsupportedFormat("此文件类型不支持代码/纯文本编辑").into());
+    }
+    read_utf8_bounded(path, 2 * 1024 * 1024, true)
+}
+
+fn read_utf8_bounded(path: &Path, limit: u64, reject_nul: bool) -> Result<Snapshot, String> {
     let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
-    if metadata.len() > MAX_DOCUMENT_BYTES {
-        return Err(NativeError::SizeLimit("文档大于 8 MB，请使用外部编辑器").into());
+    if metadata.len() > limit {
+        return Err(NativeError::SizeLimit("文档超过编辑大小限制，请使用外部编辑器").into());
     }
     let bytes = fs::read(path).map_err(|e| e.to_string())?;
+    if reject_nul && bytes.contains(&0) {
+        return Err(NativeError::UnsupportedFormat("检测到二进制文件，无法作为纯文本编辑").into());
+    }
     let content = String::from_utf8(bytes.clone())
         .map_err(|_| NativeError::InvalidEncoding("文档必须使用 UTF-8 编码"))?;
     Ok(Snapshot {
@@ -88,6 +102,65 @@ pub fn create(path: &Path, content: &str) -> Result<(), String> {
         return Err(NativeError::SizeLimit("文档不能超过 8 MB").into());
     }
     create_atomic(path, content.as_bytes())
+}
+
+pub(crate) fn create_code(path: &Path, content: &str) -> Result<(), String> {
+    if !super::is_editable_code_path(path) {
+        return Err(NativeError::UnsupportedFormat("此文件类型不支持作为代码/纯文本创建").into());
+    }
+    if content.len() as u64 > 2 * 1024 * 1024 {
+        return Err(NativeError::SizeLimit("代码/文本文件不能超过 2 MB").into());
+    }
+    if content.as_bytes().contains(&0) {
+        return Err(NativeError::InvalidEncoding("纯文本内容不能包含空字节").into());
+    }
+    create_atomic(path, content.as_bytes())
+}
+
+pub(crate) fn write_code(
+    path: &Path,
+    content: &str,
+    expected: &str,
+) -> Result<WriteResult, String> {
+    if !super::is_editable_code_path(path) {
+        return Err(NativeError::UnsupportedFormat("此文件类型不支持代码/纯文本编辑").into());
+    }
+    if !path.exists() {
+        return Ok(WriteResult::Missing);
+    }
+    if content.len() as u64 > 2 * 1024 * 1024 {
+        return Err(NativeError::SizeLimit("代码/文本文件不能超过 2 MB").into());
+    }
+    if content.as_bytes().contains(&0) {
+        return Err(NativeError::InvalidEncoding("纯文本内容不能包含空字节").into());
+    }
+    let current = read_code(path)?;
+    if current.hash != expected {
+        return Ok(WriteResult::Conflict { snapshot: current });
+    }
+    if content == current.content {
+        return Ok(WriteResult::Saved { snapshot: current });
+    }
+    let staged = temporary(path, content.as_bytes())?;
+    staged
+        .as_file()
+        .set_permissions(fs::metadata(path).map_err(|e| e.to_string())?.permissions())
+        .map_err(|e| e.to_string())?;
+    if !path.exists() {
+        return Ok(WriteResult::Missing);
+    }
+    let latest = read_code(path)?;
+    if latest.hash != expected {
+        return Ok(WriteResult::Conflict { snapshot: latest });
+    }
+    staged.persist(path).map_err(|e| e.to_string())?;
+    Ok(WriteResult::Saved {
+        snapshot: Snapshot {
+            content: content.into(),
+            hash: hash(content.as_bytes()),
+            modified: modified(&fs::metadata(path).map_err(|e| e.to_string())?),
+        },
+    })
 }
 
 pub fn write(path: &Path, content: &str, expected: &str) -> Result<WriteResult, String> {

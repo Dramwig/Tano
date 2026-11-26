@@ -19,6 +19,9 @@ pub struct RecentWorkspace {
     created_at: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     icon: Option<String>,
+    #[cfg(desktop)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) remote: Option<crate::ssh::types::RemoteWorkspaceInfo>,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,7 +73,11 @@ struct Envelope {
 
 fn connection(cache: &Path) -> Result<rusqlite::Connection, String> {
     let db = storage::database(cache)?;
-    db.execute_batch("CREATE TABLE IF NOT EXISTS recent_workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL, opened_at INTEGER NOT NULL);").map_err(|e| e.to_string())?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS recent_workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL, opened_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS recent_workspace_remotes (id TEXT PRIMARY KEY, remote_json TEXT NOT NULL);",
+    )
+    .map_err(|e| e.to_string())?;
     Ok(db)
 }
 pub fn record(cache: &Path, workspace: &storage::Workspace) -> Result<(), String> {
@@ -79,7 +86,42 @@ pub fn record(cache: &Path, workspace: &storage::Workspace) -> Result<(), String
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_millis() as u64;
-    db.execute("INSERT INTO recent_workspaces VALUES (?1,?2,?3,?4) ON CONFLICT(id) DO UPDATE SET name=excluded.name,path=excluded.path,opened_at=excluded.opened_at", params![workspace.id,workspace.name,workspace.path,time]).map_err(|e| e.to_string())?;
+    db.execute(
+        "INSERT INTO recent_workspaces VALUES (?1,?2,?3,?4)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, path=excluded.path, opened_at=excluded.opened_at",
+        params![workspace.id, workspace.name, workspace.path, time],
+    )
+    .map_err(|e| e.to_string())?;
+    #[cfg(desktop)]
+    if let Some(remote) = &workspace.remote {
+        let remote_json = serde_json::to_string(remote).map_err(|e| e.to_string())?;
+        db.execute(
+            "INSERT INTO recent_workspace_remotes VALUES (?1,?2)
+             ON CONFLICT(id) DO UPDATE SET remote_json=excluded.remote_json",
+            params![workspace.id, remote_json],
+        )
+        .map_err(|e| e.to_string())?;
+    } else {
+        let _ = db.execute(
+            "DELETE FROM recent_workspace_remotes WHERE id = ?1",
+            params![workspace.id],
+        );
+    }
+    Ok(())
+}
+
+#[cfg(desktop)]
+pub fn unregister_remote(cache: &Path, workspace_id: &str, uri: &str) -> Result<(), String> {
+    let db = connection(cache)?;
+    db.execute(
+        "DELETE FROM recent_workspaces WHERE id = ?1 AND path = ?2",
+        params![workspace_id, uri],
+    )
+    .map_err(|e| e.to_string())?;
+    let _ = db.execute(
+        "DELETE FROM recent_workspace_remotes WHERE id = ?1",
+        params![workspace_id],
+    );
     Ok(())
 }
 /// Forget the app registration and menu entry, retaining all content, indexes and recovery drafts.
@@ -105,10 +147,17 @@ pub fn unregister(
 pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
     let db = connection(cache)?;
     let mut statement = db
-        .prepare("SELECT id,name,path,opened_at FROM recent_workspaces ORDER BY opened_at DESC")
+        .prepare("SELECT w.id,w.name,w.path,w.opened_at,COALESCE(r.remote_json,'') FROM recent_workspaces w LEFT JOIN recent_workspace_remotes r ON r.id=w.id ORDER BY w.opened_at DESC")
         .map_err(|e| e.to_string())?;
     let rows = statement
         .query_map([], |row| {
+            let remote_raw: String = row.get(4)?;
+            #[cfg(desktop)]
+            let remote = (!remote_raw.is_empty())
+                .then(|| serde_json::from_str(&remote_raw).ok())
+                .flatten();
+            #[cfg(not(desktop))]
+            let _ = remote_raw;
             Ok(RecentWorkspace {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -116,6 +165,8 @@ pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
                 opened_at: row.get(3)?,
                 created_at: None,
                 icon: None,
+                #[cfg(desktop)]
+                remote,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -123,6 +174,11 @@ pub fn recent(cache: &Path) -> Result<Vec<RecentWorkspace>, String> {
     drop(statement);
     let mut valid = Vec::new();
     for mut workspace in rows {
+        #[cfg(desktop)]
+        if crate::ssh::uri::is_remote_workspace_uri(&workspace.path) {
+            valid.push(workspace);
+            continue;
+        }
         match fs::metadata(&workspace.path) {
             Ok(metadata) if metadata.is_dir() => {
                 workspace.icon = recent_icon(Path::new(&workspace.path));

@@ -12,6 +12,7 @@ Tano 是一个以真实文件为内容源、让人与 Agent 在同一页工作�
 | [本地开发](local-development.md) | 环境要求、启动与检查 |
 | [Windows 右键打开](windows-shell.md) | 安装时可选的右键菜单、文件夹工作区与独立 Markdown 文件 |
 | [第三方账号导入](account-import.md) | OAuth 应用配置、连接方式与导入范围 |
+| [Outlook 邮件登录](outlook-mail-oauth.md) | 桌面 OAuth 应用注册、构建与联调 |
 | [手机与平板开发](../mobile.md) | Android、iPhone/iPad、响应式布局与本机验证 |
 | [架构](architecture.md) | 存储分层与工作区身份 |
 | [文件夹首页](folder-home.md) | README 首页、识别设置和文件树导航 |

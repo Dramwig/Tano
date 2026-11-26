@@ -12,6 +12,9 @@ https://mimg.127.net/p/freemail/index/unified/static/2026/css/style.52d41eed807f
 netease-126.svg — Green 126 mark cropped from the official header and traced.
 https://mimg.127.net/p/freemail/index/unified/static/2026/css/style.f725ce8b2ece3e1a366f.css
 
+outlook.svg — Microsoft Outlook icon SVG.
+https://upload.wikimedia.org/wikipedia/commons/c/cc/Microsoft_Outlook_Icon_%282025%E2%80%93present%29.svg
+
 gmail.svg — Original Gmail SVG from Google Workspace.
 https://www.gstatic.com/images/branding/productlogos/gmail_2026/v2/web/192px.svg
 https://about.google/brand-resource-center/products-and-services/
@@ -20,8 +23,6 @@ icloud.svg — Mail icon shown for iCloud Mail in Apple's iCloud guide, traced.
 https://support.apple.com/en-ca/guide/icloud/mm203ae070a2/icloud
 https://help.apple.com/assets/6AAB1A7B3D258762A20204E6/6AAB1A7EA2303D266D0C0FD9/en_CA/9a1224c90714bed734cb49d2b96ebfaa.png
 
-tencent-exmail.svg — Tencent Exmail symbol cropped from the official header sprite and traced.
-https://rescdn.qqmail.com/bizmail/zh_CN/htmledition/images/wwbiz/indexIcons_2x7a90f5.png
-
-aliyun-mail.svg — Alibaba Mail symbol cropped from the official sign-in logo and traced.
-https://qiye.aliyun.com/static/0.2.9/images/forNetCN/logo.png
+yahoo.svg — Yahoo Mail monogram adapted from the official Yahoo 2019 brand mark and app palette.
+https://mail.yahoo.com/
+https://upload.wikimedia.org/wikipedia/commons/3/3a/Yahoo%21_%282019%29.svg

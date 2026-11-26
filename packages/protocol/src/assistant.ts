@@ -8,6 +8,11 @@ export function isAssistantReasoningSelection(value: unknown): value is Assistan
   return typeof value === 'string' && ['cli-default', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(value);
 }
 
+export type AssistantExecutionTarget =
+  | { mode: 'local' }
+  | { mode: 'remote-active-ssh' }
+  | { mode: 'remote-host'; hostId: string };
+
 export interface AssistantConnection {
   id: string;
   name: string;
@@ -16,6 +21,7 @@ export interface AssistantConnection {
   quota?: AssistantQuotaConfig;
   kind?: 'api' | 'codex-cli' | 'claude-cli';
   cliPath?: string;
+  executionTarget?: AssistantExecutionTarget;
   /** Legacy connection default, used when restoring a conversation without its own selection. */
   reasoningEffort?: AssistantReasoningEffort;
   endpoint: string;

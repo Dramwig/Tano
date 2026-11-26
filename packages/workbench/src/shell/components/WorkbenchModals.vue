@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, toRefs } from 'vue';
+import { inject, onBeforeUnmount, onMounted, toRefs } from 'vue';
 import { AlertTriangle, ArrowRight, FileText, LoaderCircle, X } from 'lucide-vue-next';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import WindowScope from '../../windows/WindowScope.vue';
@@ -13,9 +13,12 @@ import {
   PlanArchiveDialog,
   PlanDetailPanel,
   SelectionTodoDialog,
+  SshAuthPromptModal,
+  SshConnectModal,
 } from '../workbench-async-components';
 import { t } from '../../i18n/i18n';
 import { mobile } from '../../platform/platform';
+import { useSshStore } from '../../ssh/store';
 import { workbenchModalsKey, workbenchShellKey } from '../workbench-context';
 import CommandPalette from './CommandPalette.vue';
 import NewTabPicker from '../../tabs/components/NewTabPicker.vue';
@@ -25,6 +28,34 @@ import WorkbenchSettings from '../../settings/components/WorkbenchSettings.vue';
 const shell = inject(workbenchShellKey);
 const modals = inject(workbenchModalsKey);
 if (!shell || !modals) throw new Error('Workbench context is required');
+const ssh = useSshStore();
+
+function onOpenSshConnectEvent(event: Event) {
+  const detail = (event as CustomEvent<{ hostId?: string } | undefined>).detail;
+  ssh.openConnectModal(detail?.hostId ?? null);
+}
+
+function consumePendingSshConnect() {
+  if (!ssh.available || shell?.store.isWeb) return;
+  let pending = false;
+  try {
+    pending = sessionStorage.getItem('tano.pendingSshConnect') === '1';
+    if (pending) sessionStorage.removeItem('tano.pendingSshConnect');
+  } catch {
+    return;
+  }
+  if (pending) ssh.openConnectModal();
+}
+
+onMounted(() => {
+  void ssh.initListeners();
+  window.addEventListener('tano:open-ssh-connect', onOpenSshConnectEvent);
+  consumePendingSshConnect();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('tano:open-ssh-connect', onOpenSshConnectEvent);
+});
 
 const {
   activeWindow,
@@ -170,6 +201,8 @@ const {
         :commands="workbenchCommands"
         @close="commandPaletteOpened = false"
       />
+      <SshConnectModal v-if="ssh.available && ssh.connectModalOpen" />
+      <SshAuthPromptModal v-if="ssh.available && ssh.activeChallenge" />
       <WorkbenchSettings v-if="settingsPanel" />
       <div v-if="store.fileMutationPending" class="file-mutation-status" role="status">
         {{ t('正在同步更改…') }}

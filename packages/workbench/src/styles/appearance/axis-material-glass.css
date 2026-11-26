@@ -21,8 +21,9 @@
       0 22px 48px -26px color-mix(in srgb, var(--syntax-blue) 30%, color-mix(in srgb, var(--glass-shade) 20%, transparent));
     --surface-hairline: color-mix(in srgb, var(--glass-shade) 7%, transparent);
     --surface-sheet-shadow: 0 0 0 1px var(--glass-edge), var(--glass-drop);
-    --surface-document-border: var(--glass-edge);
+    --surface-document-border: 1px solid var(--glass-edge);
     --surface-document-shadow: var(--glass-drop);
+    --surface-slip-tab-shadow: 0 0 0 1px var(--glass-edge), 0 1px 2px color-mix(in srgb, var(--glass-shade) 8%, transparent);
     --glass-desk:
       radial-gradient(26% 40% at 12% 32%, color-mix(in srgb, var(--syntax-blue) 42%, transparent), transparent 70%),
       radial-gradient(30% 44% at 40% 72%, color-mix(in srgb, var(--syntax-blue) 46%, transparent), transparent 72%),
@@ -75,7 +76,7 @@
       inset 1px 1px 0 color-mix(in srgb, #ffffff 50%, transparent),
       inset -1px -1px 0 color-mix(in srgb, #ffffff 18%, transparent);
     --surface-sheet-shadow: 0 0 0 .5px var(--glass-outline), var(--glass-specular), var(--glass-drop);
-    --surface-document-border: transparent;
+    --surface-document-border: 0px solid transparent;
     --surface-document-shadow: 0 0 0 .5px var(--glass-outline), var(--glass-specular), var(--glass-drop);
   }
   :root[data-material='builtin:liquid'][data-layout='continuous'] { --glass-page-strength: 18%; }
@@ -322,12 +323,6 @@
     box-shadow: var(--liquid-frame);
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: var(--liquid-filter, blur(12px));
-  }
-
-  /* Tabbed settings share the front surface already drawn by its workspace pane. */
-  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .settings-backdrop.settings-tabbed,
-  :root:is([data-material='builtin:frost'], [data-material='builtin:liquid']) .settings-tabbed :is(.settings-dialog, .settings-nav) {
-    background: transparent;
   }
 
   /* Settings dialog: back panel and front sheet matching the workbench. */
