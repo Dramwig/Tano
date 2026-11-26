@@ -6,73 +6,86 @@
 
 @media screen {
   :root[data-material='builtin:raised'] {
-    /* Light mode: crisp sculpted bevel + physical 1px edge thickness + grounded elevation on floating surfaces.
-       Derive --raised-edge from --line so the crisp rim never washes out against darker desks like 影灰. */
-    --raised-edge: color-mix(in srgb, var(--text) 3.5%, var(--line));
-    --raised-focus-edge: color-mix(in srgb, var(--text) 10%, var(--line));
+    /* Light mode: refined sunlit rim + directional inner bevel + crisp 1px physical lower slab lip
+       + hair-tight 2–3px contact seating (no wide blurry floating halos), so cards read as solid
+       tactile slabs resting on the desk rather than hovering in mid-air or flat wireframe strokes. */
+    --raised-edge: color-mix(in srgb, var(--line) 76%, #ffffff 24%);
+    --raised-control-edge: color-mix(in srgb, var(--line) 64%, var(--control-border) 36%);
+    --raised-focus-edge: color-mix(in srgb, var(--text) 13%, var(--line));
     --raised-highlight: #ffffff;
-    --raised-top-sheen: rgb(255 255 255 / 92%);
-    --raised-underside: color-mix(in srgb, var(--text) 5.5%, transparent);
-    --raised-ledge: color-mix(in srgb, var(--text) 5.5%, transparent);
-    /* Hair-tight 1px contact seating for inline cards and sheets. */
-    --raised-contact-shadow: color-mix(in srgb, var(--text) 3%, transparent);
+    --raised-top-sheen: rgb(255 255 255 / 95%);
+    --raised-underside: color-mix(in srgb, var(--text) 7.5%, transparent);
+    --raised-ledge: color-mix(in srgb, var(--text) 8.5%, transparent);
+    /* Hair-tight contact seating only (grounded on the desk, never a wide floating drop shadow). */
+    --raised-contact-shadow: color-mix(in srgb, var(--text) 4.2%, transparent);
     --raised-bevel:
       inset 0 1px 0 var(--raised-highlight),
-      inset 1px 0 0 rgb(255 255 255 / 85%),
+      inset 0 2.5px 5px -2px var(--raised-top-sheen),
+      inset 1px 0 0 rgb(255 255 255 / 90%),
+      inset -1px 0 0 rgb(255 255 255 / 86%),
       inset 0 -1px 0 var(--raised-underside),
-      inset 0 -3px 5px -3px color-mix(in srgb, var(--text) 3.5%, transparent);
-    /* Tactile 1px physical lower edge thickness + tight 1px seating for island/inset sheets and inline cards. */
+      inset 0 -3px 6px -4px color-mix(in srgb, var(--text) 4.5%, transparent);
+    /* Tactile 1px physical lower slab thickness + tight 2px seating for island/inset sheets and inline cards. */
     --raised-card-outer-shadow:
       0 1px 0 0 var(--raised-ledge),
-      0 1px 1.5px 0 var(--raised-contact-shadow);
+      0 1px 2px 0 var(--raised-contact-shadow),
+      0 3px 6px -3px color-mix(in srgb, var(--text) 3.8%, transparent);
     --raised-card-shadow:
       var(--raised-bevel),
       var(--raised-card-outer-shadow);
-    /* Grounded soft lift shadows for standalone document sheets, popovers, and dialogs (no extra outer bezel ring). */
+    /* Compact, grounded lift for standalone document sheets, popovers, and dialogs (no wide floating cloud). */
     --raised-document-shadow:
       var(--raised-bevel),
       0 1px 0 0 var(--raised-ledge),
-      0 2px 4px -1px color-mix(in srgb, var(--text) 4.5%, transparent),
-      0 10px 24px -14px color-mix(in srgb, var(--text) 10%, transparent);
+      0 2px 5px -1px var(--raised-contact-shadow),
+      0 6px 16px -8px color-mix(in srgb, var(--text) 8%, transparent);
     --raised-popover-shadow:
       var(--raised-bevel),
       0 1px 0 0 var(--raised-ledge),
-      0 2px 6px -1px color-mix(in srgb, var(--text) 6%, transparent),
-      0 10px 24px -10px color-mix(in srgb, var(--text) 12%, transparent);
+      0 2px 6px -1px color-mix(in srgb, var(--text) 5.5%, transparent),
+      0 8px 20px -10px color-mix(in srgb, var(--text) 10%, transparent);
     --raised-dialog-shadow:
       var(--raised-bevel),
       0 1px 0 0 var(--raised-ledge),
-      0 2px 6px -1px color-mix(in srgb, var(--text) 6%, transparent),
-      0 16px 40px -12px color-mix(in srgb, var(--text) 14%, transparent);
+      0 3px 8px -2px color-mix(in srgb, var(--text) 6%, transparent),
+      0 14px 34px -12px color-mix(in srgb, var(--text) 12%, transparent);
     --raised-control-shadow:
       inset 0 1px 0 var(--raised-highlight),
-      inset 0 -1px 0 color-mix(in srgb, var(--text) 5%, transparent),
-      0 1px 0 color-mix(in srgb, var(--text) 4.5%, transparent),
-      0 1px 1.5px color-mix(in srgb, var(--text) 3%, transparent);
+      inset 0 2px 3px -1px var(--raised-top-sheen),
+      inset 0 -1px 0 color-mix(in srgb, var(--text) 6.5%, transparent),
+      0 1px 0 color-mix(in srgb, var(--text) 7%, transparent),
+      0 1px 2px color-mix(in srgb, var(--text) 3.5%, transparent);
     --raised-tab-shadow:
       inset 0 1px 0 var(--raised-highlight),
-      inset 0 -1px 0 color-mix(in srgb, var(--text) 5%, transparent),
-      0 1px 0 color-mix(in srgb, var(--text) 4.5%, transparent),
-      0 1px 1.5px var(--raised-contact-shadow);
-    /* Continuous-layout seam optics: crisp 2px seating crease only (zero wide drop-shadow band). */
-    --raised-seam-width: 2px;
-    --raised-seam-height: 2px;
+      inset 0 2px 4px -1px var(--raised-top-sheen),
+      inset 0 -1px 0 color-mix(in srgb, var(--text) 6.5%, transparent),
+      0 1px 0 color-mix(in srgb, var(--text) 7%, transparent),
+      0 1px 2px var(--raised-contact-shadow);
+    /* Continuous-layout seam optics: tight 3px seating crease only (matches dark mode's grounded feel). */
+    --raised-seam-width: 3px;
+    --raised-seam-height: 3px;
     --raised-seam-left-paint: linear-gradient(
       270deg,
-      color-mix(in srgb, var(--text) 3%, transparent) 0px,
-      transparent 2px
+      color-mix(in srgb, var(--text) 5%, transparent) 0px,
+      color-mix(in srgb, var(--text) 1.8%, transparent) 1.5px,
+      transparent 3px
     );
     --raised-seam-top-paint: linear-gradient(
       0deg,
-      color-mix(in srgb, var(--text) 2.5%, transparent) 0px,
-      transparent 2px
+      color-mix(in srgb, var(--text) 4.5%, transparent) 0px,
+      color-mix(in srgb, var(--text) 1.5%, transparent) 1.5px,
+      transparent 3px
     );
     --raised-nav-seam-shadow:
-      inset -1px 0 0 0 color-mix(in srgb, var(--text) 2.5%, transparent);
+      inset -1px 0 0 0 color-mix(in srgb, var(--text) 3.5%, transparent),
+      inset -3px 0 4px -3px color-mix(in srgb, var(--text) 3%, transparent);
     --raised-active-tab-shadow:
       inset 0 1px 0 var(--raised-highlight),
-      inset 1px 0 0 rgb(255 255 255 / 85%),
-      inset -1px 0 0 rgb(255 255 255 / 85%);
+      inset 0 2.5px 5px -2px var(--raised-top-sheen),
+      inset 1px 0 0 rgb(255 255 255 / 92%),
+      inset -1px 0 0 rgb(255 255 255 / 92%),
+      0 -0.5px 1.5px 0 color-mix(in srgb, var(--text) 3.2%, transparent),
+      0 1px 2px 0 color-mix(in srgb, var(--text) 3.8%, transparent);
 
     /* Bind into semantic surface-role slots. */
     --surface-dialog-border: var(--raised-edge);
@@ -82,7 +95,7 @@
     --surface-card-border: var(--raised-edge);
     --surface-card-shadow: var(--raised-card-shadow);
     --surface-card-expanded-shadow: var(--raised-popover-shadow);
-    --surface-control-border: var(--raised-edge);
+    --surface-control-border: var(--raised-control-edge);
     --surface-control-shadow: var(--raised-control-shadow);
     --surface-focus-border: var(--raised-focus-edge);
     --surface-sheet-border: 1px solid var(--raised-edge);
@@ -97,6 +110,7 @@
   :root[data-theme='dark'][data-material='builtin:raised'] {
     /* Dark mode: quiet outer rim + crisp overhead specular inner bevel + grounded elevation on floating surfaces. */
     --raised-edge: color-mix(in srgb, #ffffff 5.5%, var(--paper));
+    --raised-control-edge: var(--raised-edge);
     --raised-focus-edge: color-mix(in srgb, #ffffff 15%, var(--paper));
     --raised-highlight: rgb(255 255 255 / 11%);
     --raised-top-sheen: rgb(255 255 255 / 3.5%);
@@ -278,22 +292,30 @@
     margin-bottom: -4px;
   }
   :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging)::before {
+    z-index: 1;
     inset: 0 0 8px 0;
     border: 1px solid var(--raised-edge);
     border-bottom: 0;
-    clip-path: inset(-10px -10px 0 -10px);
+    clip-path: inset(-10px -10px -8px -10px);
     box-shadow: var(--raised-active-tab-shadow);
   }
   :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging)::after {
     content: '';
     position: absolute;
-    z-index: 3;
+    z-index: 2;
     left: 1px;
     right: 1px;
     bottom: -3px;
-    height: 3px;
+    height: 12px;
     background: var(--workbench-front);
     pointer-events: none;
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) > .desktop-tab-switch {
+    position: relative;
+    z-index: 4;
+  }
+  :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) > .desktop-tab-close {
+    z-index: 4;
   }
   :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners::before,
   :root[data-material='builtin:raised']:not([data-layout='document']) .desktop-tab-active:not(.desktop-tab-dragging) .desktop-tab-corners::after {

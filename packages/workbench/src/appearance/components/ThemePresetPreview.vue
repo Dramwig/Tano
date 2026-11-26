@@ -103,14 +103,15 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
 [data-preview-structure='document'] .theme-preview-paragraph-short { display: flex; }
 /* Raised card: clean flat surfaces with crisp 1px edge bevels and grounded lift shadows (see axis-material-raised.css). */
 .theme-preview[data-preview-surface='raised'] .theme-preview-scene {
-  --preview-raised-edge: color-mix(in srgb, var(--preview-text) 5%, var(--preview-line));
+  --preview-raised-edge: color-mix(in srgb, var(--preview-line) 76%, var(--preview-paper) 24%);
   --preview-raised-highlight: #ffffff;
-  --preview-raised-underside: color-mix(in srgb, var(--preview-text) 4%, transparent);
+  --preview-raised-underside: color-mix(in srgb, var(--preview-text) 7%, transparent);
   --preview-raised-shadow:
     inset 0 1px 0 var(--preview-raised-highlight),
+    inset 0 2px 4px -1px rgb(255 255 255 / 92%),
     inset 0 -1px 0 var(--preview-raised-underside),
-    0 1px 0 0 color-mix(in srgb, var(--preview-text) 5.5%, transparent),
-    0 2px 5px -1px color-mix(in srgb, var(--preview-text) 7%, transparent);
+    0 1px 0 0 color-mix(in srgb, var(--preview-text) 7.5%, transparent),
+    0 1px 2px 0 color-mix(in srgb, var(--preview-text) 4.5%, transparent);
 }
 .theme-preview[data-preview-surface='raised'] .theme-preview-scene[data-preview-mode='dark'] {
   --preview-raised-edge: color-mix(in srgb, #ffffff 11%, var(--preview-paper));
@@ -133,7 +134,7 @@ const previews = computed(() => props.preset.previews?.length ? props.preset.pre
   box-shadow: var(--preview-raised-shadow);
 }
 .theme-preview[data-preview-surface='raised'][data-preview-structure='continuous'] .theme-preview-main {
-  box-shadow: inset 1px 0 0 var(--preview-raised-edge), inset 0 1px 0 var(--preview-raised-highlight);
+  box-shadow: -2px 0 3px -1px color-mix(in srgb, var(--preview-text) 5%, transparent), inset 1px 0 0 var(--preview-raised-edge), inset 0 1px 0 var(--preview-raised-highlight);
 }
 /* Paper grain: matte paper tooth on front surfaces while preserving the scene backdrop colour. */
 .theme-preview[data-preview-surface='paper'] .theme-preview-scene {
