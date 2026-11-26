@@ -12,6 +12,7 @@ export const CalloutIconPicker = defineAsyncComponent(
   () => import('../documents/components/CalloutIconPicker.vue'),
 );
 export const SourceEditor = loadingComponent(() => import('@tano/editor/source-editor'), 'editor');
+export const CodeEditor = loadingComponent(() => import('@tano/editor/code-editor'), 'editor');
 export const ImportPanel = defineAsyncComponent(() => import('../workspace/components/ImportPanel.vue'));
 export const TemplateLibrary = loadingComponent(
   () => import('../workspace/components/TemplateLibrary.vue'),
@@ -77,4 +78,13 @@ export const DataTablePage = loadingComponent(
 );
 export const PluginInstaller = defineAsyncComponent(
   () => import('../plugins/components/PluginInstaller.vue'),
+);
+export const SshConnectModal = defineAsyncComponent(
+  () => import('../ssh/components/SshConnectModal.vue'),
+);
+export const SshAuthPromptModal = defineAsyncComponent(
+  () => import('../ssh/components/SshAuthPromptModal.vue'),
+);
+export const SettingsSshPage = defineAsyncComponent(
+  () => import('../ssh/components/SettingsSshPage.vue'),
 );

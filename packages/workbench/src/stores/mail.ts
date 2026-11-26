@@ -15,6 +15,7 @@ import type {
   MailFolder,
   MailMessageDetail,
   MailMessageSummary,
+  MailOAuthInput,
   MailPreset,
   MailSendRequest,
 } from '../mail/types';
@@ -118,6 +119,18 @@ export const useMailStore = defineStore('mail', () => {
     const saved = await mailBridge.accountSave(input, credentials);
     await refreshAccounts();
     return saved;
+  }
+
+  async function authorizeOAuth(input: MailOAuthInput) {
+    if (!available.value) throw new Error('仅桌面端支持原生邮箱连接');
+    const saved = await mailBridge.oauthAuthorize(input);
+    await refreshAccounts();
+    return saved;
+  }
+
+  async function cancelOAuth() {
+    if (!available.value) return;
+    await mailBridge.oauthCancel();
   }
 
   async function removeAccount(accountId: string) {
@@ -391,6 +404,8 @@ export const useMailStore = defineStore('mail', () => {
     refreshAccounts,
     testAccount,
     saveAccount,
+    authorizeOAuth,
+    cancelOAuth,
     removeAccount,
     syncAccount,
     syncSelectedFolder,

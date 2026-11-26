@@ -1,6 +1,16 @@
+export const iconImageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
+export const iconImageMaxBytes = 2 * 1024 * 1024;
+
+/** Why a file cannot be used as an icon image, or `null` when it can. */
+export function iconImageProblem(file: File): 'type' | 'size' | null {
+  if (!(iconImageTypes as readonly string[]).includes(file.type)) return 'type';
+  if (file.size > iconImageMaxBytes) return 'size';
+  return null;
+}
+
 /** Convert a user-selected image to a small, square PNG for icon pickers. */
 export async function iconImage(file: File): Promise<string> {
-  if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type) || file.size > 2 * 1024 * 1024)
+  if (iconImageProblem(file))
     throw new Error('请选择不超过 2 MB 的 PNG、JPEG、WebP 或 GIF 图片。');
   const url = URL.createObjectURL(file);
   try {

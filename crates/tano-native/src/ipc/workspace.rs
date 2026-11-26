@@ -1,13 +1,13 @@
 use crate::{
     app_data, cache_path, error::NativeError, identity_manifest, mobile_storage, search,
-    session_storage, storage, with_session, with_session_for_journal, with_workspace_session,
-    workspace_identity, workspace_lock, AppState, Session,
+    session_storage, storage, with_session, with_session_id_for_journal, with_workspace_session,
+    workspace_identity, workspace_lock, ActiveSession, AppState, Session,
 };
 use notify::{RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use tauri::{Emitter, Manager, State};
 
-fn workspace_switch_blocked(app: &tauri::AppHandle) -> bool {
+pub(crate) fn workspace_switch_blocked(app: &tauri::AppHandle) -> bool {
     // Auxiliary windows share the main workspace session. File and print windows
     // have their own storage and do not participate in workspace switching.
     app.webview_windows().keys().any(|label| {
@@ -18,7 +18,7 @@ fn workspace_switch_blocked(app: &tauri::AppHandle) -> bool {
     })
 }
 
-fn workspace_lock_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn workspace_lock_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     #[cfg(desktop)]
     {
         Ok(workspace_lock::shared_directory(
@@ -38,7 +38,7 @@ pub(crate) fn should_notify_workspace_change(relative: &Path) -> bool {
     })
 }
 
-fn stop_workspace_plugin_calls(_app: &tauri::AppHandle) {
+pub(crate) fn stop_workspace_plugin_calls(_app: &tauri::AppHandle) {
     // Cancel at the transition itself, so switching away and back between polling
     // ticks cannot revive a previous workspace's request or account login.
     #[cfg(desktop)]
@@ -52,6 +52,10 @@ pub(crate) async fn open_workspace(
     path: String,
     app: tauri::AppHandle,
 ) -> Result<storage::Workspace, String> {
+    #[cfg(desktop)]
+    if crate::ssh::uri::is_remote_workspace_uri(&path) {
+        return crate::ssh::session::open_remote_workspace(path, app).await;
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         open_workspace_blocking(path, app.clone(), state)
@@ -69,7 +73,7 @@ pub(crate) fn close_workspace(
     let mut guard = state.session.lock().map_err(|e| e.to_string())?;
     if guard
         .as_ref()
-        .is_some_and(|session| session.id == workspace_id)
+        .is_some_and(|session| session.id() == workspace_id)
     {
         if workspace_switch_blocked(&app) {
             return Err("请先关闭此工作区的独立窗口，再退出工作区".into());
@@ -87,16 +91,24 @@ pub(crate) fn unregister_workspace(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let mut guard = state.session.lock().map_err(|e| e.to_string())?;
-    let session = guard.as_ref().ok_or(NativeError::WorkspaceNotOpen)?;
-    if session.id != workspace_id {
+    let active = guard.as_ref().ok_or(NativeError::WorkspaceNotOpen)?;
+    if active.id() != workspace_id {
         return Err(NativeError::WorkspaceSwitched("工作区已切换，请重新确认删除注册").into());
     }
-    session_storage::unregister(
-        &cache_path(&app)?,
-        &app_data(&app)?,
-        &session.root,
-        &session.id,
-    )?;
+    match active {
+        ActiveSession::Local(session) => {
+            session_storage::unregister(
+                &cache_path(&app)?,
+                &app_data(&app)?,
+                &session.root,
+                &session.id,
+            )?;
+        }
+        #[cfg(desktop)]
+        ActiveSession::Remote(remote) => {
+            session_storage::unregister_remote(&cache_path(&app)?, &remote.id, &remote.uri)?;
+        }
+    }
     stop_workspace_plugin_calls(&app);
     guard.take();
     Ok(())
@@ -116,10 +128,12 @@ fn open_workspace_blocking(
         return Err(NativeError::InvalidPath("请选择一个文件夹").into());
     }
     let newly_created = storage::existing_workspace_identity(&root)?.is_none();
-    if let Some(session) = guard.as_ref() {
-        if session.root == root && !newly_created {
-            identity_manifest::require(&root, &session.id)?;
-            return storage::scan(&root, &session.id, &cache_path(&app)?);
+    if let Some(active) = guard.as_ref() {
+        if let ActiveSession::Local(session) = active {
+            if session.root == root && !newly_created {
+                identity_manifest::require(&root, &session.id)?;
+                return storage::scan(&root, &session.id, &cache_path(&app)?);
+            }
         }
         if workspace_switch_blocked(&app) {
             return Err("请先关闭此工作区的独立窗口，再切换工作区".into());
@@ -130,8 +144,10 @@ fn open_workspace_blocking(
     let recent_id = if registered.is_none() {
         guard
             .as_ref()
-            .filter(|session| session.root == root)
-            .map(|session| session.id.clone())
+            .and_then(|active| match active {
+                ActiveSession::Local(session) if session.root == root => Some(session.id.clone()),
+                _ => None,
+            })
             .or(session_storage::known_identity(&cache_path(&app)?, &root)?)
     } else {
         None
@@ -143,7 +159,7 @@ fn open_workspace_blocking(
         recent_id.as_deref(),
         &cache_path(&app)?,
     )?;
-    let reuse_lock = guard.as_ref().is_some_and(|session| session.id == id);
+    let reuse_lock = guard.as_ref().is_some_and(|session| session.id() == id);
     let lock = if reuse_lock {
         None
     } else {
@@ -184,21 +200,43 @@ fn open_workspace_blocking(
     workspace_identity::register_identity(&data, &root, &id)?;
     let lock = match lock {
         Some(lock) => lock,
-        None => guard.take().ok_or("工作区会话已关闭")?._lock,
+        None => match guard.take().ok_or("工作区会话已关闭")? {
+            ActiveSession::Local(local) => local._lock,
+            #[cfg(desktop)]
+            ActiveSession::Remote(_) => {
+                workspace_lock::acquire(&workspace_lock_directory(&app)?, &id)?
+            }
+        },
     };
     stop_workspace_plugin_calls(&app);
-    *guard = Some(Session {
+    *guard = Some(ActiveSession::Local(Session {
         root_key: storage::native_key(&root),
         root,
         id,
         _watcher: watcher,
         _lock: lock,
-    });
+    }));
     Ok(workspace)
 }
 
 #[tauri::command]
 pub(crate) async fn refresh_workspace(app: tauri::AppHandle) -> Result<storage::Workspace, String> {
+    #[cfg(desktop)]
+    if let Some(remote) = crate::remote_session(&app.state::<AppState>()) {
+        let cache = cache_path(&app)?;
+        let latency = remote.latency_ms.load(std::sync::atomic::Ordering::Relaxed);
+        return crate::ssh::storage::remote_scan(
+            remote.transport.as_ref(),
+            &remote.remote_root,
+            &remote.uri,
+            &remote.host_id,
+            &remote.host_label,
+            &remote.id,
+            &cache,
+            Some(latency),
+        )
+        .await;
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         with_session(state, |s| storage::scan(&s.root, &s.id, &cache_path(&app)?))
@@ -207,16 +245,46 @@ pub(crate) async fn refresh_workspace(app: tauri::AppHandle) -> Result<storage::
     .map_err(|e| format!("刷新工作空间任务失败：{e}"))?
 }
 
-#[tauri::command(async)]
-pub(crate) fn search_documents(
+#[tauri::command]
+pub(crate) async fn search_documents(
     workspace_id: String,
     query: String,
     app: tauri::AppHandle,
-    state: State<AppState>,
 ) -> Result<Vec<search::SearchHit>, String> {
-    with_workspace_session(&workspace_id, state, |s| {
-        search::query(&cache_path(&app)?, &s.id, &query)
+    #[cfg(desktop)]
+    if let Some(remote) = crate::remote_workspace_session(&workspace_id, &app.state::<AppState>())?
+    {
+        let cache = cache_path(&app)?;
+        let mut hits = search::query(&cache, &remote.id, &query)?;
+        if let Ok(remote_hits) = crate::ssh::remote_search::remote_search(
+            remote.transport.as_ref(),
+            &remote.remote_root,
+            &remote.id,
+            &cache,
+            &query,
+        )
+        .await
+        {
+            let mut seen: std::collections::HashSet<String> =
+                hits.iter().map(|h| h.path.clone()).collect();
+            for hit in remote_hits {
+                if hits.len() >= 80 {
+                    break;
+                }
+                if seen.insert(hit.path.clone()) {
+                    hits.push(hit);
+                }
+            }
+        }
+        return Ok(hits);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        with_workspace_session(&workspace_id, app.state::<AppState>(), |s| {
+            search::query(&cache_path(&app)?, &s.id, &query)
+        })
     })
+    .await
+    .map_err(|e| format!("搜索文档任务失败：{e}"))?
 }
 
 #[tauri::command(async)]
@@ -285,11 +353,11 @@ pub(crate) fn load_session(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<Option<session_storage::WorkspaceSession>, String> {
-    with_session_for_journal(state, |s| {
-        if s.id != workspace_id {
+    with_session_id_for_journal(state, |id| {
+        if id != workspace_id {
             return Err(NativeError::WorkspaceSwitched("会话所属工作区已切换").into());
         }
-        session_storage::load(&app_data(&app)?, &s.id)
+        session_storage::load(&app_data(&app)?, id)
     })
 }
 
@@ -300,11 +368,11 @@ pub(crate) fn save_session(
     app: tauri::AppHandle,
     state: State<AppState>,
 ) -> Result<(), String> {
-    with_session_for_journal(state, |s| {
-        if s.id != workspace_id {
+    with_session_id_for_journal(state, |id| {
+        if id != workspace_id {
             return Err(NativeError::WorkspaceSwitched("会话所属工作区已切换").into());
         }
-        session_storage::save(&app_data(&app)?, &s.id, &session)
+        session_storage::save(&app_data(&app)?, id, &session)
     })
 }
 

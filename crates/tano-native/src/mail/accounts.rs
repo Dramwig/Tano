@@ -71,8 +71,17 @@ fn remove_chunks(account_id: &str, manifest: &CredentialManifest) {
 }
 
 pub fn save_credentials(account_id: &str, credentials: &MailCredentials) -> Result<(), String> {
-    if credentials.username.trim().is_empty() || credentials.password.is_empty() {
-        return Err("请填写完整的邮箱账号与授权码".into());
+    let has_secret = !credentials.password.is_empty()
+        || credentials
+            .access_token
+            .as_deref()
+            .is_some_and(|v| !v.is_empty())
+        || credentials
+            .refresh_token
+            .as_deref()
+            .is_some_and(|v| !v.is_empty());
+    if credentials.username.trim().is_empty() || !has_secret {
+        return Err("请填写完整的邮箱账号与授权凭据".into());
     }
     let _guard = KEYRING_LOCK.lock().map_err(|_| "无法访问系统凭据库")?;
     let previous = read_manifest(account_id).ok();
@@ -207,6 +216,9 @@ pub fn save_account(
         } else {
             validated.display_name
         },
+        auth_kind: validated.auth_kind,
+        oauth_client_id: validated.oauth_client_id,
+        oauth_tenant: validated.oauth_tenant,
         imap_host: validated.imap_host,
         imap_port: validated.imap_port,
         imap_tls: validated.imap_tls,

@@ -6,10 +6,11 @@ import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { t, uiLocale } from '../../i18n/i18n';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { nativeInvoke as invoke } from '../../platform/native-bridge';
-import { Bot, X, Terminal, RefreshCw, FileText, Copy } from 'lucide-vue-next';
+import { Bot, X, Terminal, RefreshCw, FileText, Copy, UploadCloud } from 'lucide-vue-next';
 import { workspaceAgentGuide, assistantRulesPath } from '@tano/protocol';
 import type { AgentChange, AgentChangeDetail, AgentSetup } from '@tano/protocol';
 import { useWorkspaceStore } from '../../stores/workspace';
+import { sshClient } from '../../ssh/client';
 import { native } from '../../workspace/adapter';
 import { mobile } from '../../platform/platform';
 import ChangeDiff from './ChangeDiff.vue';
@@ -18,6 +19,8 @@ const emit = defineEmits<{ close: [] }>();
 const workspace = useWorkspaceStore();
 const localMcp = native && !mobile && !workspace.isWeb;
 const tab = ref<'guide' | 'changes' | 'mcp'>('guide');
+const mcpMode = ref<'direct' | 'bridge'>('direct');
+const syncingMcp = ref(false);
 const purpose = ref('');
 const language = ref<'zh' | 'en'>('zh');
 const draft = computed(() =>
@@ -39,7 +42,37 @@ const originalFocus = document.activeElement as HTMLElement | null;
 let disposed = false,
   request = 0;
 let timer: ReturnType<typeof setInterval> | undefined;
-const config = computed(() => (setup.value ? JSON.stringify(setup.value.config, null, 2) : ''));
+const config = computed(() => {
+  if (!setup.value) return '';
+  if (setup.value.remote) {
+    const chosen =
+      mcpMode.value === 'bridge'
+        ? (setup.value.bridgeConfig ?? setup.value.config)
+        : (setup.value.directConfig ?? setup.value.config);
+    return JSON.stringify(chosen, null, 2);
+  }
+  return JSON.stringify(setup.value.config, null, 2);
+});
+async function syncRemoteMcp() {
+  if (!setup.value?.hostId || syncingMcp.value) return;
+  syncingMcp.value = true;
+  error.value = '';
+  notice.value = '';
+  try {
+    const res = await sshClient.syncMcp(setup.value.hostId);
+    const refreshed = await invoke<AgentSetup>('agent_setup', { workspaceId: props.workspaceId });
+    if (!disposed) {
+      setup.value = refreshed;
+      notice.value = res.uploaded
+        ? t('已将 tano-mcp 同步到远端：{0}（Node {1}）', [res.remoteScriptPath, res.nodeVersion])
+        : t('远端 tano-mcp 已是最新版本（Node {0}）', [res.nodeVersion]);
+    }
+  } catch (reason) {
+    if (!disposed) error.value = String(reason);
+  } finally {
+    if (!disposed) syncingMcp.value = false;
+  }
+}
 const status = { get prepared() { return t('结果待核对'); }, get applied() { return t('已写入'); }, get failed() { return t('未写入'); } };
 async function run(task: () => Promise<void>) {
   if (busy.value || workspace.workspace?.id !== props.workspaceId) return;
@@ -313,8 +346,41 @@ onBeforeUnmount(() => {
         <p>
           {{ t('把配置加入支持 MCP 的 Agent 客户端，即可查询文件、对象和数据表，并提交跨文件修改提案。') }}
         </p>
+        <template v-if="setup?.remote">
+          <p class="panel-hint">
+            {{ t('当前为 SSH 远端工作区：{0}（{1}）。', [setup.hostLabel ?? setup.hostId ?? '', setup.remotePath ?? '']) }}
+            {{ setup.remoteDeployed ? t('远端已部署 tano-mcp.cjs。') : t('远端尚未同步 tano-mcp.cjs，请先点击下方同步按钮。') }}
+          </p>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px">
+            <button
+              type="button"
+              class="primary-button"
+              :disabled="!setup.bundled || syncingMcp || busy"
+              @click="syncRemoteMcp"
+            >
+              <UploadCloud :size="15" />
+              <span>{{ syncingMcp ? t('正在同步到远端…') : t('同步 tano-mcp 到远端') }}</span>
+            </button>
+            <button
+              type="button"
+              class="secondary-button"
+              :class="{ active: mcpMode === 'direct' }"
+              @click="mcpMode = 'direct'"
+            >
+              {{ t('远端直连配置') }}
+            </button>
+            <button
+              type="button"
+              class="secondary-button"
+              :class="{ active: mcpMode === 'bridge' }"
+              @click="mcpMode = 'bridge'"
+            >
+              {{ t('本机 SSH 桥接配置') }}
+            </button>
+          </div>
+        </template>
         <p class="panel-hint">
-          {{ t('需要 Node.js 24.12 或更新版本。默认允许读取和提交提案，修改需在 Tano 中审阅采纳。安装器已包含本机 MCP 程序。') }}
+          {{ t('需要 Node.js 22.13 或更新版本（内置 node:sqlite）。默认允许读取和提交提案，修改需在 Tano 中审阅采纳。') }}
         </p>
         <textarea
           readonly

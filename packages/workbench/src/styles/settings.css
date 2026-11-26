@@ -236,6 +236,7 @@
     transition: none;
   }
 }
+/* Tabbed settings share the front surface already drawn by their workspace pane. */
 .modal-backdrop.settings-backdrop.settings-tabbed {
   position: relative;
   inset: auto;
@@ -243,7 +244,7 @@
   height: 100%;
   padding: 0;
   z-index: auto;
-  background: var(--paper);
+  background: transparent;
   backdrop-filter: none;
 }
 :root .modal-backdrop.settings-backdrop.settings-tabbed > .settings-dialog {
@@ -251,7 +252,11 @@
   height: 100%;
   border: 0;
   border-radius: 0;
+  background: transparent;
   box-shadow: none;
+}
+.modal-backdrop.settings-backdrop.settings-tabbed .settings-nav {
+  background: transparent;
 }
 .settings-content {
   max-width: 804px;

@@ -4,23 +4,30 @@
 use super::accounts;
 use super::imap_client;
 use super::mime;
+use super::oauth;
 use super::smtp_client;
 use super::store::MailStore;
 use super::types::{
-    mail_presets, unix_timestamp_secs, validate_account_input, AppendSentPolicy, MailAccount,
-    MailAccountInput, MailCacheStats, MailCredentials, MailDownloadedAttachment, MailDraft,
-    MailFlagsPatch, MailFolder, MailMessageDetail, MailMessageSummary, MailPreset, MailSendRequest,
-    MailSendResult, MailSyncSummary, MailTestResult,
+    mail_presets_with_oauth, unix_timestamp_secs, validate_account_input, AppendSentPolicy,
+    MailAccount, MailAccountInput, MailAuthKind, MailCacheStats, MailCredentials,
+    MailDownloadedAttachment, MailDraft, MailFlagsPatch, MailFolder, MailMessageDetail,
+    MailMessageSummary, MailOAuthInput, MailPreset, MailSendRequest, MailSendResult,
+    MailSyncSummary, MailTestResult, TlsMode,
 };
 use base64::Engine;
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::path::{Path, PathBuf};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use tauri::State;
 
 #[derive(Default)]
 pub struct MailState {
     account_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    token_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    oauth_cancel: Mutex<Option<Arc<AtomicBool>>>,
 }
 
 impl MailState {
@@ -33,6 +40,72 @@ impl MailState {
             .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
             .clone()
     }
+
+    fn token_lock_for(&self, account_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut map = self
+            .token_locks
+            .lock()
+            .expect("mail token lock map poisoned");
+        map.entry(account_id.to_string())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
+    }
+
+    fn begin_oauth(&self) -> Arc<AtomicBool> {
+        let next = Arc::new(AtomicBool::new(false));
+        let mut slot = self
+            .oauth_cancel
+            .lock()
+            .expect("mail oauth cancel lock poisoned");
+        if let Some(prev) = slot.replace(next.clone()) {
+            prev.store(true, Ordering::SeqCst);
+        }
+        next
+    }
+
+    fn clear_oauth_if_current(&self, current: &Arc<AtomicBool>) {
+        let mut slot = self
+            .oauth_cancel
+            .lock()
+            .expect("mail oauth cancel lock poisoned");
+        if slot
+            .as_ref()
+            .is_some_and(|existing| Arc::ptr_eq(existing, current))
+        {
+            *slot = None;
+        }
+    }
+
+    pub fn cancel_oauth(&self) {
+        let slot = self
+            .oauth_cancel
+            .lock()
+            .expect("mail oauth cancel lock poisoned");
+        if let Some(flag) = slot.as_ref() {
+            flag.store(true, Ordering::SeqCst);
+        }
+    }
+
+    async fn resolve_credentials(
+        &self,
+        data_dir: &Path,
+        account: &MailAccount,
+    ) -> Result<MailCredentials, String> {
+        if account.auth_kind == MailAuthKind::Password {
+            return accounts::read_credentials(&account.id);
+        }
+        let lock = self.token_lock_for(&account.id);
+        let _guard = lock.lock().await;
+        let creds = accounts::read_credentials(&account.id)?;
+        let now = unix_timestamp_secs();
+        if !oauth::token_needs_refresh(&creds, now) {
+            return Ok(creds);
+        }
+        let refreshed =
+            oauth::refresh_microsoft_credentials(Some(data_dir), account, creds).await?;
+        accounts::save_credentials(&account.id, &refreshed)?;
+        Ok(refreshed)
+    }
 }
 
 fn data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -40,8 +113,171 @@ fn data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn mail_presets_list() -> Vec<MailPreset> {
-    mail_presets()
+pub fn mail_presets_list(app: tauri::AppHandle) -> Vec<MailPreset> {
+    let dir = data_dir(&app).ok();
+    let outlook_configured = oauth::has_default_microsoft_config(dir.as_deref());
+    mail_presets_with_oauth(outlook_configured)
+}
+
+#[tauri::command]
+pub fn mail_oauth_cancel(state: State<'_, MailState>) {
+    state.cancel_oauth();
+}
+
+#[tauri::command]
+pub async fn mail_oauth_authorize(
+    app: tauri::AppHandle,
+    state: State<'_, MailState>,
+    input: MailOAuthInput,
+) -> Result<MailAccount, String> {
+    let provider = input.provider.trim();
+    if provider != "outlook" {
+        return Err("目前仅 Outlook / Microsoft 365 使用 OAuth 2.0 授权登录".into());
+    }
+    let dir = data_dir(&app)?;
+    let existing = match input.id.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        Some(existing_id) => Some(accounts::get_account(&dir, existing_id)?),
+        None => None,
+    };
+
+    let override_client_id = input
+        .oauth_client_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .or_else(|| {
+            existing
+                .as_ref()
+                .and_then(|acc| acc.oauth_client_id.as_deref())
+        });
+    let override_tenant = input
+        .oauth_tenant
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .or_else(|| {
+            existing
+                .as_ref()
+                .and_then(|acc| acc.oauth_tenant.as_deref())
+        });
+
+    let config = oauth::resolve_microsoft_config(Some(&dir), override_client_id, override_tenant)?;
+    let login_hint = Some(input.email.trim())
+        .filter(|v| !v.is_empty())
+        .or_else(|| existing.as_ref().map(|acc| acc.email.as_str()));
+
+    let cancel = state.begin_oauth();
+    let bundle_res = oauth::authorize_microsoft(&app, &config, login_hint, cancel.clone()).await;
+    state.clear_oauth_if_current(&cancel);
+    let bundle = bundle_res?;
+
+    let email = bundle
+        .email
+        .or_else(|| {
+            let candidate = input.email.trim();
+            if candidate.is_empty() {
+                None
+            } else {
+                Some(candidate.to_string())
+            }
+        })
+        .or_else(|| existing.as_ref().map(|acc| acc.email.clone()))
+        .ok_or_else(|| {
+            "未能从 Microsoft 登录信息中识别邮箱地址，请先填写邮箱地址后重试。".to_string()
+        })?;
+
+    let display_name = {
+        let explicit = input.display_name.trim();
+        if !explicit.is_empty() {
+            explicit.to_string()
+        } else if let Some(name) = bundle.display_name {
+            name
+        } else if let Some(acc) = existing.as_ref() {
+            acc.display_name.clone()
+        } else {
+            email.clone()
+        }
+    };
+    let label = {
+        let explicit = input.label.trim();
+        if !explicit.is_empty() {
+            explicit.to_string()
+        } else if let Some(acc) = existing.as_ref() {
+            acc.label.clone()
+        } else {
+            "Outlook".to_string()
+        }
+    };
+    let imap_host = if !input.imap_host.trim().is_empty() {
+        input.imap_host.trim().to_string()
+    } else if let Some(acc) = existing.as_ref() {
+        acc.imap_host.clone()
+    } else {
+        "outlook.office365.com".to_string()
+    };
+    let imap_port = if input.imap_port > 0 {
+        input.imap_port
+    } else if let Some(acc) = existing.as_ref() {
+        acc.imap_port
+    } else {
+        993
+    };
+    let imap_tls = input
+        .imap_tls
+        .or_else(|| existing.as_ref().map(|acc| acc.imap_tls.clone()))
+        .unwrap_or(TlsMode::Tls);
+    let smtp_host = if !input.smtp_host.trim().is_empty() {
+        input.smtp_host.trim().to_string()
+    } else if let Some(acc) = existing.as_ref() {
+        acc.smtp_host.clone()
+    } else {
+        "smtp.office365.com".to_string()
+    };
+    let smtp_port = if input.smtp_port > 0 {
+        input.smtp_port
+    } else if let Some(acc) = existing.as_ref() {
+        acc.smtp_port
+    } else {
+        587
+    };
+    let smtp_tls = input
+        .smtp_tls
+        .or_else(|| existing.as_ref().map(|acc| acc.smtp_tls.clone()))
+        .unwrap_or(TlsMode::Starttls);
+
+    let preserved_refresh = bundle.refresh_token.or_else(|| {
+        existing
+            .as_ref()
+            .and_then(|acc| accounts::read_credentials(&acc.id).ok())
+            .and_then(|old| old.refresh_token)
+    });
+
+    let account_input = MailAccountInput {
+        id: existing.as_ref().map(|acc| acc.id.clone()),
+        provider: "outlook".to_string(),
+        label,
+        email: email.clone(),
+        display_name,
+        auth_kind: MailAuthKind::Oauth2Microsoft,
+        oauth_client_id: Some(config.client_id),
+        oauth_tenant: Some(config.tenant),
+        imap_host,
+        imap_port,
+        imap_tls,
+        smtp_host,
+        smtp_port,
+        smtp_tls,
+        append_sent: AppendSentPolicy::Never,
+        send_imap_id: false,
+    };
+    let creds = MailCredentials {
+        username: email,
+        password: String::new(),
+        access_token: Some(bundle.access_token),
+        refresh_token: preserved_refresh,
+        expires_at: Some(bundle.expires_at),
+    };
+    accounts::save_account(&dir, account_input, Some(creds))
 }
 
 #[tauri::command]
@@ -56,6 +292,9 @@ pub async fn mail_account_test(
     credentials: MailCredentials,
 ) -> Result<MailTestResult, String> {
     let validated = validate_account_input(&input)?;
+    if validated.auth_kind == MailAuthKind::Oauth2Microsoft {
+        return Err("Outlook 账号请点击「使用 Microsoft 账号登录」完成授权与连接".into());
+    }
     let account = MailAccount {
         id: validated
             .id
@@ -64,6 +303,9 @@ pub async fn mail_account_test(
         label: validated.label,
         email: validated.email.clone(),
         display_name: validated.display_name,
+        auth_kind: validated.auth_kind,
+        oauth_client_id: validated.oauth_client_id,
+        oauth_tenant: validated.oauth_tenant,
         imap_host: validated.imap_host,
         imap_port: validated.imap_port,
         imap_tls: validated.imap_tls,
@@ -143,7 +385,7 @@ pub async fn mail_sync_account(
     let _guard = lock.lock().await;
     let dir = data_dir(&app)?;
     let account = accounts::get_account(&dir, &account_id)?;
-    let creds = accounts::read_credentials(&account_id)?;
+    let creds = state.resolve_credentials(&dir, &account).await?;
 
     let sync_dir = dir.clone();
     tokio::task::spawn_blocking(move || {
@@ -214,7 +456,7 @@ pub async fn mail_sync_folder(
     let lock = state.lock_for(&folder.account_id);
     let _guard = lock.lock().await;
     let account = accounts::get_account(&dir, &folder.account_id)?;
-    let creds = accounts::read_credentials(&folder.account_id)?;
+    let creds = state.resolve_credentials(&dir, &account).await?;
 
     let sync_dir = dir.clone();
     tokio::task::spawn_blocking(move || {
@@ -288,6 +530,7 @@ pub fn mail_messages_search(
 #[tauri::command]
 pub async fn mail_message_get(
     app: tauri::AppHandle,
+    state: State<'_, MailState>,
     message_id: String,
     force_refresh: Option<bool>,
 ) -> Result<MailMessageDetail, String> {
@@ -300,7 +543,7 @@ pub async fn mail_message_get(
 
     let folder = store.get_folder(&existing.summary.folder_id)?;
     let account = accounts::get_account(&dir, &existing.summary.account_id)?;
-    let creds = accounts::read_credentials(&existing.summary.account_id)?;
+    let creds = state.resolve_credentials(&dir, &account).await?;
     let uid = existing.summary.uid;
     let msg_id = message_id.clone();
 
@@ -318,6 +561,7 @@ pub async fn mail_message_get(
 #[tauri::command]
 pub async fn mail_message_flags_update(
     app: tauri::AppHandle,
+    state: State<'_, MailState>,
     message_id: String,
     patch: MailFlagsPatch,
 ) -> Result<MailMessageDetail, String> {
@@ -327,7 +571,7 @@ pub async fn mail_message_flags_update(
         store.update_flags_local(&message_id, patch.seen, patch.flagged)?;
     let folder = store.get_folder(&folder_id)?;
     let account = accounts::get_account(&dir, &folder.account_id)?;
-    let creds = accounts::read_credentials(&folder.account_id)?;
+    let creds = state.resolve_credentials(&dir, &account).await?;
 
     let seen = patch.seen;
     let flagged = patch.flagged;
@@ -343,6 +587,7 @@ pub async fn mail_message_flags_update(
 #[tauri::command]
 pub async fn mail_message_move(
     app: tauri::AppHandle,
+    state: State<'_, MailState>,
     message_id: String,
     target_folder_id: String,
 ) -> Result<(), String> {
@@ -355,7 +600,7 @@ pub async fn mail_message_move(
         return Err("不支持跨邮箱账号移动邮件".into());
     }
     let account = accounts::get_account(&dir, &from_folder.account_id)?;
-    let creds = accounts::read_credentials(&from_folder.account_id)?;
+    let creds = state.resolve_credentials(&dir, &account).await?;
     let uid = detail.summary.uid;
 
     tokio::task::spawn_blocking(move || {
@@ -393,6 +638,7 @@ pub fn mail_invite_update(
 #[tauri::command]
 pub async fn mail_attachment_download(
     app: tauri::AppHandle,
+    state: State<'_, MailState>,
     attachment_id: String,
 ) -> Result<MailDownloadedAttachment, String> {
     let dir = data_dir(&app)?;
@@ -415,7 +661,7 @@ pub async fn mail_attachment_download(
     let detail = store.get_message_detail(&message_id)?;
     let folder = store.get_folder(&detail.summary.folder_id)?;
     let account = accounts::get_account(&dir, &detail.summary.account_id)?;
-    let creds = accounts::read_credentials(&detail.summary.account_id)?;
+    let creds = state.resolve_credentials(&dir, &account).await?;
     let uid = detail.summary.uid;
     let part_index: usize = part_id
         .parse()
@@ -444,11 +690,12 @@ pub async fn mail_attachment_download(
 #[tauri::command]
 pub async fn mail_send(
     app: tauri::AppHandle,
+    state: State<'_, MailState>,
     request: MailSendRequest,
 ) -> Result<MailSendResult, String> {
     let dir = data_dir(&app)?;
     let account = accounts::get_account(&dir, &request.account_id)?;
-    let creds = accounts::read_credentials(&request.account_id)?;
+    let creds = state.resolve_credentials(&dir, &account).await?;
     let (message_id, formatted_raw) = smtp_client::send_mail(&account, &creds, &request).await?;
 
     let should_append = match account.append_sent {

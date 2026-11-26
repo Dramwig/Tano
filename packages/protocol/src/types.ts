@@ -1,3 +1,5 @@
+import type { RemoteWorkspaceInfo } from './remote-workspace';
+
 export interface FileEntry {
   id: string;
   path: string;
@@ -28,6 +30,8 @@ export interface Workspace {
   canManagePlugins?: boolean;
   /** Supplied by the authority; content editing alone does not grant settings access. */
   canManageSettings?: boolean;
+  /** Present when the workspace is backed by a remote SSH host. */
+  remote?: RemoteWorkspaceInfo;
 }
 
 export class WorkspaceAccessRevokedError extends Error {
@@ -124,6 +128,8 @@ export interface RecentWorkspace {
   /** Whether this workspace was explicitly shared with the current user. */
   shared?: boolean;
   icon?: string;
+  /** Present when this recent workspace points to a remote SSH host. */
+  remote?: RemoteWorkspaceInfo;
 }
 
 export interface SessionDocument {

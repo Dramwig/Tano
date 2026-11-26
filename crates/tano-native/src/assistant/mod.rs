@@ -95,6 +95,24 @@ impl Default for Protocol {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "kebab-case")]
+pub enum ExecutionTarget {
+    #[default]
+    Local,
+    RemoteActiveSsh,
+    RemoteHost {
+        #[serde(rename = "hostId")]
+        host_id: String,
+    },
+}
+
+impl ExecutionTarget {
+    pub fn is_local(&self) -> bool {
+        matches!(self, Self::Local)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Connection {
@@ -108,6 +126,8 @@ pub struct Connection {
     kind: crate::assistant_cli::Kind,
     #[serde(default)]
     cli_path: String,
+    #[serde(default, skip_serializing_if = "ExecutionTarget::is_local")]
+    execution_target: ExecutionTarget,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<crate::assistant_cli::ReasoningEffort>,
     endpoint: String,
@@ -203,12 +223,46 @@ fn validate_connection(connection: &Connection) -> Result<(), String> {
         return Err("模型连接设置无效".into());
     }
     if connection.kind == crate::assistant_cli::Kind::Api {
+        if !connection.execution_target.is_local() {
+            return Err("API 模式连接仅支持本地直连，远端执行仅适用于 Codex/Claude CLI".into());
+        }
         endpoint(&connection.endpoint)?;
     } else if connection.cli_path.len() > 2000 || connection.cli_path.chars().any(char::is_control)
     {
         return Err("CLI 路径无效".into());
+    } else if !connection.execution_target.is_local() {
+        crate::ssh::remote_cli::validate_remote_cli_path(&connection.cli_path)?;
+        if let ExecutionTarget::RemoteHost { host_id } = &connection.execution_target {
+            if host_id.trim().is_empty()
+                || host_id.len() > 128
+                || host_id.chars().any(char::is_control)
+            {
+                return Err("远端 SSH 主机标识无效".into());
+            }
+        }
     }
     Ok(())
+}
+
+async fn resolve_remote_cli_transport(
+    app: &tauri::AppHandle,
+    target: &ExecutionTarget,
+) -> Result<std::sync::Arc<dyn crate::ssh::transport::RemoteTransport>, String> {
+    use tauri::Manager as _;
+    match target {
+        ExecutionTarget::Local => Err("本地连接不需要 SSH 传输".into()),
+        ExecutionTarget::RemoteActiveSsh => {
+            let state = app.state::<crate::AppState>();
+            let remote = crate::remote_session(&state)
+                .ok_or("当前未打开 SSH 远端工作区；请先连接远端工作区，或指定固定 SSH 主机")?;
+            Ok(remote.transport.clone())
+        }
+        ExecutionTarget::RemoteHost { host_id } => {
+            let ssh = app.state::<crate::ssh::SshState>();
+            let conn = ssh.get_or_connect(app, host_id, false).await?;
+            Ok(conn.transport.clone())
+        }
+    }
 }
 
 fn read_connections(directory: &Path) -> Result<Vec<StoredConnection>, String> {
@@ -330,12 +384,23 @@ pub async fn assistant_models(
         .start(&owner)?;
     let result = async {
         if config.config.kind != crate::assistant_cli::Kind::Api {
+            if !config.config.execution_target.is_local() {
+                let transport =
+                    resolve_remote_cli_transport(&app, &config.config.execution_target).await?;
+                return crate::ssh::remote_cli::probe_remote_cli_models(
+                    transport.as_ref(),
+                    config.config.kind,
+                    &config.config.cli_path,
+                )
+                .await;
+            }
             return crate::assistant_cli::models(
                 config.config.kind,
                 &config.config.cli_path,
                 &assistant_dir(&app)?,
                 cancelled,
-            ).await;
+            )
+            .await;
         }
         let url = service_endpoint(&config.config.endpoint, "models")?;
         let request = authenticate(http_client(Duration::from_secs(30))?.get(url), &config)?;
@@ -436,7 +501,9 @@ pub fn assistant_connection_save(
         return Err("请先在额度查询面板清除独立查询密钥，再更换模型服务地址".into());
     }
     if connection.kind != crate::assistant_cli::Kind::Api {
-        crate::assistant_cli::resolve(connection.kind, &connection.cli_path)?;
+        if connection.execution_target.is_local() {
+            crate::assistant_cli::resolve(connection.kind, &connection.cli_path)?;
+        }
         connections.retain(|item| item.config.id != connection.id);
         connections.push(StoredConnection {
             config: connection,
@@ -817,16 +884,34 @@ pub async fn assistant_request(
             .lock()
             .map_err(|_| "助手运行正忙")?
             .start(&owner)?;
-        let result = crate::assistant_cli::run(
-            config.config.kind,
-            &config.config.cli_path,
-            reasoning_effort,
-            &assistant_dir(&app)?,
-            body,
-            cancelled,
-            &on_chunk,
-        )
-        .await;
+        let result = if !config.config.execution_target.is_local() {
+            match resolve_remote_cli_transport(&app, &config.config.execution_target).await {
+                Ok(transport) => {
+                    crate::ssh::remote_cli::run_remote_cli(
+                        transport.as_ref(),
+                        config.config.kind,
+                        &config.config.cli_path,
+                        reasoning_effort,
+                        body,
+                        cancelled,
+                        &on_chunk,
+                    )
+                    .await
+                }
+                Err(error) => Err(error),
+            }
+        } else {
+            crate::assistant_cli::run(
+                config.config.kind,
+                &config.config.cli_path,
+                reasoning_effort,
+                &assistant_dir(&app)?,
+                body,
+                cancelled,
+                &on_chunk,
+            )
+            .await
+        };
         state
             .requests
             .lock()
@@ -1453,6 +1538,7 @@ mod tests {
             name: "test".into(),
             kind: crate::assistant_cli::Kind::Api,
             cli_path: String::new(),
+            execution_target: ExecutionTarget::Local,
             icon: None,
             quota: None,
             reasoning_effort: None,
@@ -1553,6 +1639,7 @@ mod tests {
                 name: "fixture".into(),
                 kind: crate::assistant_cli::Kind::Api,
                 cli_path: String::new(),
+                execution_target: ExecutionTarget::Local,
                 icon: None,
                 quota: None,
                 reasoning_effort: None,

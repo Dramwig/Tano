@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { FileRegistry, fileHandlers } from './file-core';
+import { FileRegistry, editableDocumentKind, fileHandlers, isEditableCodePath } from './file-core';
 import { parseFileMetadata, fileMetadataPath } from './file-metadata';
 const file = { id: 'abcdef', path: 'a.pdf', name: 'a.pdf', kind: 'file' as const, size: 3, modified: 1, contentHash: 'first' };
 it('resolves the same identity at a new path with a changed revision and excludes internal data', () => {
@@ -25,4 +25,16 @@ it('validates portable metadata and never accepts paths or executable/nested pro
   for (const bad of [{ ...value, fileId: '123456' }, { ...value, tags: ['x', 'x'] }, { ...value, properties: { owner: {} } }])
     expect(() => parseFileMetadata(JSON.stringify(bad), 'abcdef')).toThrow();
   expect(() => fileMetadataPath('../escape')).toThrow();
+});
+it('classifies editable code and plain-text paths without changing Markdown or table routing', () => {
+  for (const path of ['src/main.ts', 'app.py', 'Cargo.toml', 'data.json', 'notes.txt', 'sheet.csv', 'Dockerfile', 'Makefile']) {
+    expect(isEditableCodePath(path)).toBe(true);
+    expect(editableDocumentKind(path, false)).toBeNull();
+    expect(editableDocumentKind(path, true)).toBe('code');
+  }
+  for (const path of ['README.md', 'grid.table.json', 'photo.png', 'doc.pdf', '.tano/settings.tano.json', 'bin.exe']) {
+    expect(isEditableCodePath(path)).toBe(false);
+  }
+  expect(editableDocumentKind('README.md', false)).toBe('markdown');
+  expect(editableDocumentKind('README.md', true)).toBe('markdown');
 });

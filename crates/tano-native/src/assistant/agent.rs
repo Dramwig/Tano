@@ -48,6 +48,20 @@ pub fn changes(
     root: &Path,
     selected: Option<&str>,
 ) -> Result<Vec<Change>, String> {
+    let root = root
+        .display()
+        .to_string()
+        .trim_start_matches("\\\\?\\")
+        .to_string();
+    changes_for_root_str(data, id, &root, selected)
+}
+
+pub fn changes_for_root_str(
+    data: &Path,
+    id: &str,
+    root: &str,
+    selected: Option<&str>,
+) -> Result<Vec<Change>, String> {
     uuid::Uuid::parse_str(id).map_err(|_| "工作区标识无效")?;
     let path = data.join("agents").join(format!("{id}.sqlite"));
     if !path.exists() {
@@ -57,11 +71,7 @@ pub fn changes(
         .map_err(|e| e.to_string())?;
     db.busy_timeout(std::time::Duration::from_secs(3))
         .map_err(|e| e.to_string())?;
-    let root = root
-        .display()
-        .to_string()
-        .trim_start_matches("\\\\?\\")
-        .to_string();
+    let root = root.to_owned();
     let body = if selected.is_some() {
         "before_content,after_content"
     } else {

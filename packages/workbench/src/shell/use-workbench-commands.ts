@@ -5,7 +5,10 @@ import type { FileEntry } from '@tano/protocol';
 import type { useAssistantStore } from '../assistant/store';
 import type { DocumentExportFormat } from '../documents/document-export';
 import { t } from '../i18n/i18n';
+import { isFeatureEnabled } from '../features';
 import { mobile } from '../platform/platform';
+import { sshClient } from '../ssh/client';
+import { useSshStore } from '../ssh/store';
 import type { WorkbenchExtensions } from '../runtime';
 import type { SettingsPageId } from '../settings/settings-window';
 import type { useUpdatesStore } from '../stores/updates';
@@ -156,6 +159,7 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
     openSettings,
   } = deps;
   const { workspace, active, busy } = storeToRefs(store);
+  const ssh = useSshStore();
 
   const workbenchCommands = computed<WorkbenchCommand[]>(() => {
     const hasDocument = !!active.value;
@@ -570,6 +574,70 @@ export function useWorkbenchCommands(deps: WorkbenchCommandsDeps) {
         available: navigationContext.value === 'workspace' && !!workspace.value,
         run: () => openSettings('workspace'),
       },
+      ...(isFeatureEnabled('sshRemoteWorkspace') && native && !mobile
+        ? [
+            {
+              id: 'workbench.ssh-connect',
+              category: t('SSH 远程'),
+              get label() {
+                return t('连接 SSH 服务器…');
+              },
+              keywords: 'ssh remote server sftp',
+              available: !busy.value,
+              run: () => ssh.openConnectModal(),
+            },
+            {
+              id: 'workbench.ssh-terminal',
+              category: t('SSH 远程'),
+              get label() {
+                return t('打开远端 SSH 终端');
+              },
+              keywords: 'ssh terminal shell',
+              available: workspace.value?.remote?.kind === 'ssh',
+              run: () => {
+                const remote = workspace.value?.remote;
+                if (remote) return sshClient.openTerminal(remote.hostId, remote.remotePath);
+              },
+            },
+            {
+              id: 'workbench.ssh-reconnect',
+              category: t('SSH 远程'),
+              get label() {
+                return t('重新连接 SSH 服务器');
+              },
+              keywords: 'ssh reconnect',
+              available: workspace.value?.remote?.kind === 'ssh',
+              run: async () => {
+                const remote = workspace.value?.remote;
+                if (!remote) return;
+                await ssh.reconnect(remote.hostId);
+                await store.refresh();
+              },
+            },
+            {
+              id: 'workbench.ssh-disconnect',
+              category: t('SSH 远程'),
+              get label() {
+                return t('断开 SSH 连接');
+              },
+              keywords: 'ssh disconnect',
+              available: workspace.value?.remote?.kind === 'ssh',
+              run: () => {
+                const remote = workspace.value?.remote;
+                if (remote) return ssh.disconnect(remote.hostId);
+              },
+            },
+            {
+              id: 'workbench.settings.ssh',
+              category: t('设置'),
+              get label() {
+                return t('SSH 远程设置');
+              },
+              keywords: 'ssh known_hosts server',
+              run: () => openSettings('ssh'),
+            },
+          ]
+        : []),
       {
         id: 'workbench.settings.about',
         category: t('设置'),

@@ -44,6 +44,8 @@
   :root[data-layout='islands'] .sidebar-bottom {
     margin: auto -8px 0;
     padding: 7px 8px;
+  }
+  :root[data-layout='islands']:not([data-layout-theme='builtin:inset']) .sidebar-bottom {
     border-top: 1px solid var(--surface-hairline);
     border-radius: 0 0 var(--radius-card) var(--radius-card);
   }
@@ -94,12 +96,6 @@
   }
   /* The column card starts below the desk row, level with the sidebar card. */
   :root[data-layout='islands'] .main-column.workspace-card { margin-top: var(--island-top); }
-  :root[data-layout='islands'] :is(.folder-view-entry, .review-card) {
-    border: 1px solid var(--surface-card-border);
-    border-radius: var(--radius-card);
-    background: var(--workbench-front);
-    box-shadow: var(--surface-card-shadow);
-  }
 
   /* Settings repeat the workbench: navigation sits on the desk and the page is one card beside it.
      The rows inside stay flat, so there is never a card inside a card. A settings tab already lives
@@ -189,7 +185,7 @@
     background-color: var(--workbench-front);
     background-image: var(--surface-sheet-texture);
     background-size: var(--surface-sheet-texture-size);
-    border: 1px solid var(--surface-document-border);
+    border: var(--surface-document-border);
     border-radius: var(--radius-card);
     box-shadow: var(--surface-document-shadow);
   }

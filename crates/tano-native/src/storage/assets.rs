@@ -26,6 +26,13 @@ pub struct ImportedAsset {
     image: bool,
 }
 
+impl ImportedAsset {
+    #[cfg(desktop)]
+    pub(crate) fn new(path: String, name: String, image: bool) -> Self {
+        Self { path, name, image }
+    }
+}
+
 pub fn import(
     root: &Path,
     name: &str,

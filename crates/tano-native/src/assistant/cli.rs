@@ -385,9 +385,52 @@ fn claude_connection_settings(command: &mut Command) -> Result<Option<String>, S
         .map(str::to_owned))
 }
 
+pub(crate) fn send_progress(channel: &Channel<Vec<u8>>, kind: &str) -> Result<(), String> {
+    progress(channel, kind)
+}
+
+pub(crate) fn schema_json() -> Value {
+    schema()
+}
+
+pub(crate) fn build_prompt(request: &Value) -> String {
+    let mut messages = request["messages"].clone();
+    if let Some(messages) = messages.as_array_mut() {
+        for message in messages {
+            if let Some(parts) = message["content"].as_array() {
+                message["content"] = parts
+                    .first()
+                    .and_then(|part| part.get("text"))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+            }
+        }
+    }
+    format!(
+        "{INSTRUCTIONS}\nTano conversation and authorized function definitions:\n{}",
+        json!({"messages":messages, "tools":request["tools"]})
+    )
+}
+
+pub(crate) fn parse_output_for_remote(
+    kind: Kind,
+    output: &[u8],
+    request: &Value,
+) -> Result<(Reply, Value), String> {
+    parse_output(kind, output, request)
+}
+
+pub(crate) fn finish_reply_for_remote(
+    reply: Reply,
+    usage: Value,
+    channel: &Channel<Vec<u8>>,
+) -> Result<(), String> {
+    finish_reply(reply, usage, "", channel)
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Reply {
+pub(crate) struct Reply {
     content: String,
     #[serde(rename = "toolCalls")]
     calls: Vec<Call>,

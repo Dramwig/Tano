@@ -155,7 +155,7 @@ const {
     :key="`search:${active.id}`"
     :ref="(el) => setPaneSearch(pane.id, el)"
     :editor="
-      paneSource(pane.activeId)
+      isCodeDocument || paneSource(pane.activeId)
         ? paneSourceEditors.get(pane.id)
         : paneEditors.get(pane.id)
     "
@@ -169,6 +169,7 @@ const {
       :ref="(el) => setPaneElement('scroll', pane.id, el)"
       class="document-layout"
       :data-toolbar-dock="
+        !isCodeDocument &&
         pane.id === store.activePaneId &&
         !paneSource(pane.activeId) &&
         !paneReadonly(active)
@@ -180,6 +181,7 @@ const {
       <main class="document-main">
         <LayoutDocumentChrome :layout="appearance.layout" :path="active.path" />
         <EditorTools
+          v-if="!isCodeDocument"
           :shortcuts="shortcuts"
           v-model:mode="toolbarMode"
           :assistant="assistant.available"
@@ -316,18 +318,58 @@ const {
             '--tano-source-font-size': `${sourceFontSize}px`,
           }"
           :class="{
-            'source-view': paneSource(pane.activeId),
+            'source-view': paneSource(pane.activeId) || isCodeDocument,
+            'code-view': isCodeDocument,
             'conflicted-editor': active.conflict,
-            'width-unlimited': !limitPageWidth,
+            'width-unlimited': !limitPageWidth || isCodeDocument,
           }"
           tabindex="-1"
           @mousedown.self="
+            !isCodeDocument &&
             !paneSource(pane.activeId) &&
             paneEditors.get(pane.id)?.focusTrailingParagraph($event)
           "
           @contextmenu="openPageContextMenu"
         >
+          <template v-if="isCodeDocument">
+            <div class="code-editor-bar">
+              <span class="code-editor-lang">{{ codeLanguageTag }}</span>
+              <span class="code-editor-meta">{{ codeLineCount }} {{ t('行') }}</span>
+              <span class="code-editor-spacer" />
+              <button
+                type="button"
+                class="code-editor-bar-btn"
+                :class="{ active: codeWordWrap }"
+                :aria-pressed="codeWordWrap"
+                @click="codeWordWrap = !codeWordWrap"
+              >
+                <WrapText :size="14" />
+                <span>{{ t('自动换行') }}</span>
+              </button>
+              <button
+                v-if="canSwitchCodePreview"
+                type="button"
+                class="code-editor-bar-btn"
+                @click="switchCodeToPreview"
+              >
+                <Eye :size="14" />
+                <span>{{ t('预览') }}</span>
+              </button>
+            </div>
+            <CodeEditor
+              :key="active.id"
+              :ref="(el) => setPaneElement('source', pane.id, el)"
+              :model-value="active.content"
+              :path="active.path"
+              :readonly="paneReadonly(active)"
+              :word-wrap="codeWordWrap"
+              @ready="paneEditorReady(pane.id, active.id, true)"
+              @selection-change="paneSourceSelections[pane.id] = $event"
+              @update:model-value="store.editDocument(active.id, $event)"
+            />
+          </template>
           <DocumentSuggestions
+            v-else
             v-slot="suggestions"
             :document="active"
             :readonly="paneReadonly(active)"
@@ -495,3 +537,45 @@ const {
     />
   </div>
 </template>
+
+<style scoped>
+.code-editor-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--muted);
+}
+.code-editor-lang {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.code-editor-spacer {
+  flex: 1;
+}
+.code-editor-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.code-editor-bar-btn:hover,
+.code-editor-bar-btn.active {
+  background: var(--hover);
+  border-color: var(--accent);
+}
+</style>

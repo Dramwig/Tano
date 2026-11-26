@@ -56,6 +56,7 @@ jobs:
         shell: pwsh
         env:
           LOCAL_EVIDENCE: ${{ inputs.local_evidence }}
+          TANO_MAIL_OUTLOOK_CLIENT_ID: ${{ vars.TANO_MAIL_OUTLOOK_CLIENT_ID }}
           TANO_LOCAL_CERTIFICATE_THUMBPRINT: ${{ vars.LOCAL_WINDOWS_CERTIFICATE_THUMBPRINT }}
           UNSIGNED_PREVIEW: ${{ inputs.unsigned_preview }}
         run: |

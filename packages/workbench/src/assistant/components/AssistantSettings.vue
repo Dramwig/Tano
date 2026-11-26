@@ -7,7 +7,11 @@ import { vSurfaceMotion, closeSurfaceDialog } from '@tano/editor/surface-motion'
 import { uiLocale, t } from '../../i18n/i18n';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue';
 import { Bot, Copy, Save, ChevronDown, Eye, EyeOff, Gauge, LoaderCircle, MoreHorizontal, Pencil, Plus, Settings2, Trash2, TriangleAlert, Wifi } from 'lucide-vue-next';
-import type { AssistantConnection } from '@tano/protocol';
+import type { AssistantConnection, AssistantExecutionTarget } from '@tano/protocol';
+import { isFeatureEnabled } from '../../features';
+import { mobile } from '../../platform/platform';
+import { useSshStore } from '../../ssh/store';
+import { native } from '../../workspace/adapter';
 import { useAssistantStore, type AssistantConnectionCheck } from '../store';
 import AssistantUsage from './AssistantUsage.vue';
 import '../settings-dialog.css';
@@ -306,6 +310,33 @@ watch(pendingDeletion, connection => {
   cancelDeletionButton.value?.focus();
 }, { flush: 'post' });
 
+const ssh = useSshStore();
+const sshCliTargetAvailable = computed(
+  () => isFeatureEnabled('sshRemoteWorkspace') && native && !mobile,
+);
+
+function executionTargetMode(target?: AssistantExecutionTarget): 'local' | 'remote-active-ssh' | 'remote-host' {
+  return target?.mode ?? 'local';
+}
+
+function setExecutionTargetMode(mode: string) {
+  if (!draft.value) return;
+  if (mode === 'remote-active-ssh') {
+    draft.value.executionTarget = { mode: 'remote-active-ssh' };
+  } else if (mode === 'remote-host') {
+    const first = ssh.allHosts[0]?.id ?? '';
+    draft.value.executionTarget = { mode: 'remote-host', hostId: first };
+    if (!ssh.allHosts.length) void ssh.loadHosts();
+  } else {
+    draft.value.executionTarget = undefined;
+  }
+}
+
+function setExecutionTargetHost(hostId: string) {
+  if (!draft.value) return;
+  draft.value.executionTarget = { mode: 'remote-host', hostId };
+}
+
 function editConnection(connection: AssistantConnection) {
   if (connection.platformProvider) return;
   closeMenu(true);
@@ -317,12 +348,14 @@ function editConnection(connection: AssistantConnection) {
     endpoint: connection.endpoint,
     kind: connection.kind ?? 'api',
     cliPath: connection.cliPath ?? '',
+    executionTarget: connection.executionTarget ? { ...connection.executionTarget } : undefined,
     reasoningEffort: connection.reasoningEffort,
     protocol: connection.protocol ?? 'chat-completions',
     autoAdapt: connection.autoAdapt ?? true,
     tools: connection.tools,
     maxOutputTokens: connection.maxOutputTokens,
   };
+  if (sshCliTargetAvailable.value && !ssh.allHosts.length) void ssh.loadHosts();
   resetSecret();
   error.value = '';
   notice.value = '';
@@ -370,6 +403,7 @@ async function saveConnection() {
       : secret.value;
     await assistant.saveConnection(
       { ...draft.value, endpoint: cli ? '' : draft.value.endpoint,
+        executionTarget: cli ? draft.value.executionTarget : undefined,
         reasoningEffort: draft.value.kind === 'codex-cli' ? draft.value.reasoningEffort : undefined },
       cli ? undefined : key,
     );
@@ -603,7 +637,35 @@ onBeforeUnmount(() => {
               </div>
                 <p class="config-field-hint">{{ t('密钥安全保存在本机，留空保留已保存的密钥。') }}</p>
               </template>
-              <template v-else><label>{{ t('CLI 可执行文件路径') }}<input v-model="draft.cliPath" maxlength="2000" autocomplete="off" :placeholder="t('留空自动查找')" /></label><p class="config-field-hint">{{ t('使用本机已登录的账号，通常无需填写路径。') }}</p></template>
+              <template v-else>
+                <div v-if="sshCliTargetAvailable" class="config-field-grid">
+                  <label>
+                    {{ t('执行环境') }}
+                    <select
+                      :value="executionTargetMode(draft.executionTarget)"
+                      @change="setExecutionTargetMode(($event.target as HTMLSelectElement).value)"
+                    >
+                      <option value="local">{{ t('本机（Local）') }}</option>
+                      <option value="remote-active-ssh">{{ t('当前 SSH 远端工作区') }}</option>
+                      <option value="remote-host">{{ t('指定 SSH 服务器') }}</option>
+                    </select>
+                  </label>
+                  <label v-if="draft.executionTarget?.mode === 'remote-host'">
+                    {{ t('目标 SSH 服务器') }}
+                    <select
+                      :value="draft.executionTarget.hostId"
+                      @change="setExecutionTargetHost(($event.target as HTMLSelectElement).value)"
+                    >
+                      <option value="">{{ t('请选择服务器…') }}</option>
+                      <option v-for="host in ssh.allHosts" :key="host.id" :value="host.id">
+                        {{ host.name }} ({{ host.username }}@{{ host.host }})
+                      </option>
+                    </select>
+                  </label>
+                </div>
+                <label>{{ t('CLI 可执行文件路径') }}<input v-model="draft.cliPath" maxlength="2000" autocomplete="off" :placeholder="executionTargetMode(draft.executionTarget) === 'local' ? t('留空自动查找') : t('留空在远端 PATH 查找，或填 /usr/local/bin/codex')" /></label>
+                <p class="config-field-hint">{{ executionTargetMode(draft.executionTarget) === 'local' ? t('使用本机已登录的账号，通常无需填写路径。') : t('通过 SSH 通道调用远端服务器上已登录的 CLI，同样启用只读沙箱与结构化校验。') }}</p>
+              </template>
             </section>
             <details class="config-disclosure config-advanced">
               <summary><span>{{ t('高级设置') }}</span><span class="config-summary-hint">{{ t('协议与工具') }} <ChevronDown :size="14" /></span></summary>

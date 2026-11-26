@@ -27,8 +27,8 @@ export const builtInFileHandlers: readonly FileHandler[] = Object.freeze([
   ...Object.entries({ png: 'png', jpg: 'jpeg', jpeg: 'jpeg', gif: 'gif', webp: 'webp', avif: 'avif', bmp: 'bmp', svg: 'svg+xml' })
     .map(([ext, mime]) => handler(`image-${ext}`, [ext], `image/${mime}`, 'image')),
   handler('csv', ['csv', 'tsv'], 'text/csv', 'csv'),
-  handler('json', ['json'], 'application/json', 'json'),
-  handler('code', ['js', 'ts', 'jsx', 'tsx', 'vue', 'py', 'rs', 'css', 'html', 'htm', 'xml', 'yaml', 'yml', 'toml', 'ini', 'sh', 'sql', 'c', 'h', 'cpp', 'hpp', 'java', 'go', 'rb', 'php', 'ps1'], 'text/plain', 'code'),
+  handler('json', ['json', 'jsonc'], 'application/json', 'json'),
+  handler('code', ['js', 'mjs', 'cjs', 'ts', 'mts', 'cts', 'jsx', 'tsx', 'vue', 'svelte', 'py', 'rs', 'css', 'scss', 'less', 'html', 'htm', 'xml', 'yaml', 'yml', 'toml', 'ini', 'conf', 'cfg', 'properties', 'sh', 'bash', 'zsh', 'sql', 'c', 'h', 'cpp', 'hpp', 'cc', 'java', 'kt', 'swift', 'dart', 'go', 'rb', 'php', 'ps1', 'dockerfile'], 'text/plain', 'code'),
   handler('text', ['txt', 'log'], 'text/plain', 'text'),
   handler('audio', ['mp3', 'wav', 'ogg', 'm4a', 'flac'], 'audio/*', 'audio'),
   handler('video', ['mp4', 'webm', 'mov'], 'video/*', 'video'),
@@ -43,6 +43,31 @@ export class FileHandlerRegistry {
     return this.handlers.find(item => item.extensions.some(ext => name.endsWith(`.${ext}`))) ?? binaryHandler;
   }
 }
+const EDITABLE_CODE_BASENAMES = new Set(['dockerfile', 'makefile', 'procfile', 'gemfile', 'rakefile']);
+
+/**
+ * Returns true for plain-text and source code files that can be opened in the
+ * CodeMirror source editor when `codeFileEditing` is enabled. Excludes internal
+ * `.tano/` files, Markdown documents, and `.table.json` data tables.
+ */
+export function isEditableCodePath(path: string): boolean {
+  if (!path || isWorkspaceInternalPath(path)) return false;
+  const resolved = fileHandlers.resolve(path);
+  if (resolved.preview === 'markdown' || resolved.preview === 'table') return false;
+  if (resolved.preview === 'code' || resolved.preview === 'json' || resolved.preview === 'text' || resolved.preview === 'csv') {
+    return true;
+  }
+  const base = path.split('/').at(-1)?.toLowerCase() ?? '';
+  return EDITABLE_CODE_BASENAMES.has(base);
+}
+
+export function editableDocumentKind(path: string, allowCodeEditing = false): 'markdown' | 'code' | null {
+  const resolved = fileHandlers.resolve(path);
+  if (resolved.preview === 'markdown') return 'markdown';
+  if (allowCodeEditing && isEditableCodePath(path)) return 'code';
+  return null;
+}
+
 export const fileHandlers = new FileHandlerRegistry();
 export interface WorkspaceFile extends FileEntry {
   workspaceId: string;

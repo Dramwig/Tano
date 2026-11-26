@@ -9,6 +9,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } fro
 import { Search, Upload } from 'lucide-vue-next';
 import WorkspaceIcon from './WorkspaceIcon.vue';
 import { filterWorkspaceIconGroups, workspaceBuiltinIconGroups, workspaceEmojiGroups } from '../workspace-icons';
+import { iconImageMaxBytes, iconImageProblem } from '../icon-image';
 
 export interface WorkspaceIconPickerExtraTab {
   id: string;
@@ -136,6 +137,8 @@ async function toggle() {
   }
 }
 function close(restoreFocus = false) {
+  clearUploadError();
+  dragDepth = 0; dragging.value = false;
   open.value = false;
   if (restoreFocus) trigger.value?.focus({ preventScroll: true });
 }
@@ -146,23 +149,81 @@ function select(value: string) {
 }
 function upload() {
   if (props.disabled) return;
+  clearUploadError();
   emit('upload');
 }
-function pasteImage(event: ClipboardEvent) {
-  if (!open.value || tab.value !== 'upload' || props.disabled || !event.clipboardData) return;
-  const items = [...event.clipboardData.items];
-  const file = items.find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile()
-    ?? [...event.clipboardData.files].find(file => file.type.startsWith('image/'));
-  if (!file) return;
-  event.preventDefault();
-  event.stopPropagation();
+// Upload feedback stays silent until a dropped or pasted file is rejected.
+const uploadError = ref('');
+const dragging = ref(false);
+let dragDepth = 0;
+let uploadErrorTimer: ReturnType<typeof setTimeout> | undefined;
+function formatBytes(bytes: number) {
+  // Round up so a file just over the limit never reads as equal to it.
+  return bytes >= 1024 * 1024 ? `${Math.ceil(bytes / 1024 / 1024 * 10) / 10} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
+}
+function clearUploadError() {
+  if (uploadErrorTimer) clearTimeout(uploadErrorTimer);
+  uploadErrorTimer = undefined;
+  uploadError.value = '';
+}
+function showUploadError(message: string) {
+  clearUploadError();
+  uploadError.value = message;
+  uploadErrorTimer = setTimeout(clearUploadError, 4000);
+}
+/** Validate a dropped or pasted file; valid images are emitted through `pasteImage`. */
+function acceptImage(file: File) {
+  const problem = iconImageProblem(file);
+  if (problem === 'type') { showUploadError(t('仅支持 PNG、JPG、WebP 或 GIF 图片')); return; }
+  if (problem === 'size') {
+    showUploadError(t('图片不能超过 {0}（当前 {1}）', [formatBytes(iconImageMaxBytes), formatBytes(file.size)]));
+    return;
+  }
+  clearUploadError();
   emit('pasteImage', file);
   close(true);
 }
+function pasteImage(event: ClipboardEvent) {
+  if (!open.value || tab.value !== 'upload' || props.disabled || !event.clipboardData) return;
+  const items = [...event.clipboardData.items].filter(item => item.kind === 'file');
+  const file = (items.find(item => item.type.startsWith('image/')) ?? items[0])?.getAsFile()
+    ?? [...event.clipboardData.files].find(file => file.type.startsWith('image/'))
+    ?? event.clipboardData.files[0];
+  if (!file) return;
+  event.preventDefault();
+  event.stopPropagation();
+  acceptImage(file);
+}
+function hasFiles(event: DragEvent) {
+  return [...(event.dataTransfer?.types ?? [])].includes('Files');
+}
+function dragEnter(event: DragEvent) {
+  if (props.disabled || !hasFiles(event)) return;
+  event.preventDefault();
+  dragDepth++;
+  dragging.value = true;
+}
+function dragOver(event: DragEvent) {
+  if (props.disabled || !hasFiles(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+}
+function dragLeave() {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) dragging.value = false;
+}
+function dropImage(event: DragEvent) {
+  dragDepth = 0; dragging.value = false;
+  if (props.disabled || !hasFiles(event)) return;
+  event.preventDefault();
+  const file = event.dataTransfer?.files[0];
+  if (file) acceptImage(file);
+}
 function focusUpload(event: PointerEvent) {
-  (event.currentTarget as HTMLElement).focus({ preventScroll: true });
+  if (event.target === event.currentTarget) (event.currentTarget as HTMLElement).focus({ preventScroll: true });
 }
 function changeTab(value: Tab) {
+  clearUploadError();
   tab.value = value;
   query.value = ''; focusedIcon.value = '';
   void nextTick().then(place);
@@ -225,6 +286,7 @@ onMounted(() => {
   window.addEventListener('resize', dismiss);
 });
 onBeforeUnmount(() => {
+  clearUploadError();
   window.removeEventListener('pointerdown', outside, true);
   window.removeEventListener('focusin', outside, true);
   window.removeEventListener('scroll', outside, true);
@@ -285,13 +347,25 @@ onBeforeUnmount(() => {
           </nav>
         </template>
         <div v-else class="workspace-icon-picker-upload" tabindex="-1" @pointerdown="focusUpload">
-          <div class="workspace-icon-picker-upload-symbol" aria-hidden="true"><Upload :size="24" /></div>
-          <p class="workspace-icon-picker-upload-title">{{ t('上传{0}', [label]) }}</p>
-          <div class="workspace-icon-picker-upload-actions">
-            <button type="button" class="settings-button" :disabled="disabled" @click="upload">{{ t('选择图片') }}</button>
-            <slot name="upload-actions" :close="close" />
-            <p class="workspace-icon-picker-upload-paste">{{ t('或按') }} <kbd>Ctrl+V</kbd> {{ t('粘贴图片') }}</p>
+          <div
+            class="workspace-icon-picker-dropzone" :data-state="uploadError ? 'error' : dragging ? 'dragging' : undefined"
+            :data-disabled="disabled || undefined"
+            @dragenter="dragEnter" @dragover="dragOver" @dragleave="dragLeave" @drop="dropImage"
+          >
+            <Upload class="workspace-icon-picker-dropzone-symbol" :size="20" aria-hidden="true" />
+            <button
+              type="button" class="workspace-icon-picker-dropzone-button" :disabled="disabled"
+              :aria-describedby="`${pickerId}-upload-hint`" @click="upload"
+            >{{ dragging ? t('松开以上传图片') : t('点击选择图片，或拖拽到这里') }}</button>
+            <p :id="`${pickerId}-upload-hint`" class="workspace-icon-picker-upload-hint" aria-live="polite">
+              <template v-if="uploadError">{{ uploadError }}</template>
+              <template v-else>{{ t('也可按') }} <kbd>Ctrl+V</kbd> {{ t('粘贴图片') }}</template>
+            </p>
           </div>
+          <template v-if="$slots['upload-actions']">
+            <div class="workspace-icon-picker-upload-divider" aria-hidden="true"><span>{{ t('或') }}</span></div>
+            <div class="workspace-icon-picker-upload-actions"><slot name="upload-actions" :close="close" /></div>
+          </template>
         </div>
       </div>
     </section>
@@ -324,14 +398,25 @@ onBeforeUnmount(() => {
 .workspace-icon-picker-categories { display: flex; justify-content: flex-start; gap: 4px; flex: none; padding: 8px 12px; border-top: 1px solid var(--line); }
 .workspace-icon-picker-categories button { display: flex; align-items: center; justify-content: center; flex: 0 1 32px; min-width: 0; width: 32px; height: 32px; padding: 0; border-radius: 6px; font-size: 17px; color: var(--text); }
 .workspace-icon-picker-categories button:hover, .workspace-icon-picker-categories button[aria-current='location'] { background: var(--hover); }
-.workspace-icon-picker-upload { display: flex; flex-direction: column; align-items: center; min-height: 0; overflow-y: auto; padding: 24px 20px 22px; text-align: center; }
-.workspace-icon-picker-upload-symbol { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 12px; color: var(--muted); background: var(--surface); }
-.workspace-icon-picker-upload-title { margin: 12px 0 0; font-size: 14px; font-weight: 500; line-height: 20px; }
-.workspace-icon-picker-upload-actions { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 16px; }
-.workspace-icon-picker-upload-actions .settings-button { min-width: 112px; min-height: 34px; padding: 6px 11px; justify-content: center; border-color: var(--green-fill); color: var(--on-accent, #fff); background: var(--green-fill); }
-.workspace-icon-picker-upload-actions .settings-button:hover:not(:disabled) { border-color: var(--green-fill-hover); background: var(--green-fill-hover); }
-.workspace-icon-picker-upload-paste { margin: 0; color: var(--muted); font-size: 12px; line-height: 20px; }
-.workspace-icon-picker-upload-paste kbd { font-family: inherit; font-size: inherit; }
+.workspace-icon-picker-upload { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; padding: 12px; outline: 0; }
+.workspace-icon-picker-dropzone { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 128px; padding: 20px 16px; border: 1px dashed var(--control-border); border-radius: 8px; color: var(--muted); text-align: center; transition: border-color 120ms, background-color 120ms, color 120ms; }
+.workspace-icon-picker-dropzone:hover:not([data-disabled]), .workspace-icon-picker-dropzone[data-state='dragging'] { border-color: var(--text); background: var(--hover); color: var(--text); }
+.workspace-icon-picker-dropzone[data-state='error'] { border-color: var(--danger); background: var(--danger-bg); }
+.workspace-icon-picker-dropzone[data-disabled] { opacity: .5; }
+.workspace-icon-picker-dropzone-symbol { flex: none; margin-bottom: 2px; }
+.workspace-icon-picker-dropzone-button { padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 13px; line-height: 20px; cursor: pointer; }
+/* Stretch the button over the whole zone so any click inside opens the file chooser. */
+.workspace-icon-picker-dropzone-button::after { position: absolute; inset: 0; border-radius: inherit; content: ''; }
+.workspace-icon-picker-dropzone-button:disabled { cursor: default; }
+.workspace-icon-picker .workspace-icon-picker-dropzone-button:focus-visible { outline: 0; }
+.workspace-icon-picker .workspace-icon-picker-dropzone-button:focus-visible::after { outline: 2px solid var(--text); outline-offset: 2px; }
+.workspace-icon-picker-upload-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
+.workspace-icon-picker-dropzone[data-state='error'] .workspace-icon-picker-upload-hint { color: var(--danger); }
+.workspace-icon-picker-upload-hint kbd { padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); font-family: inherit; font-size: 11px; }
+.workspace-icon-picker-upload-divider { display: flex; align-items: center; gap: 10px; margin: 12px 2px; color: var(--muted); font-size: 12px; }
+.workspace-icon-picker-upload-divider::before, .workspace-icon-picker-upload-divider::after { flex: 1; height: 1px; background: var(--line); content: ''; }
+.workspace-icon-picker-upload-actions { display: flex; flex-direction: column; gap: 2px; }
+.workspace-icon-picker-remove:hover:not(:disabled) { color: var(--danger); }
 .workspace-icon-picker button:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
 }
 </style>

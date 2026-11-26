@@ -48,7 +48,7 @@
   border-color: var(--surface-control-border);
 }
 
-:is([data-surface-role='backdrop'], .modal-backdrop) {
+:is([data-surface-role='backdrop'], .modal-backdrop):not(.settings-tabbed, .settings-windowed) {
   background: var(--backdrop);
 }
 

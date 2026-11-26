@@ -10,6 +10,7 @@ import {
 import { storeToRefs } from 'pinia';
 import { version as appVersion } from '../../package.json';
 import {
+  editableDocumentKind,
   fileHandlers,
   isObjectPath,
   isPlanObject,
@@ -18,6 +19,7 @@ import {
   type FileEntry,
   type ReferenceIdentity,
 } from '@tano/protocol';
+import { isFeatureEnabled } from '../features';
 import { native } from '../workspace/adapter';
 import { agentInboxKey, useAgentInboxController } from '../assistant/agent-controller';
 import { butterflyScope } from '../assistant/butterfly';
@@ -539,7 +541,12 @@ export function useWorkbench(props: WorkbenchProps, emit: (event: 'ready') => vo
       else openObjectDetail(record);
       return;
     }
-    if (handler.preview === 'markdown' || handler.preview === 'table') {
+    const editableKind = editableDocumentKind(file.path, isFeatureEnabled('codeFileEditing'));
+    const openDirectlyAsCode =
+      editableKind === 'code' &&
+      file.size <= 2 * 1024 * 1024 &&
+      handler.preview !== 'csv';
+    if (handler.preview === 'markdown' || handler.preview === 'table' || openDirectlyAsCode) {
       if (newTab) await store.openFileInNewTab(file);
       else await store.openFile(file);
       if (store.activePaneId === templatePaneId.value && store.activeId === file.id)

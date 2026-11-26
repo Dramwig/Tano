@@ -22,7 +22,7 @@ const props = defineProps<{
   workspaceId?: string;
   workspaceName: string;
   workspaceIcon?: string;
-  workspaceMode?: 'demo' | 'web' | 'local';
+  workspaceMode?: 'demo' | 'web' | 'local' | 'ssh';
   hideWorkspace?: boolean;
   entries: FileEntry[];
   folderHomeFileName?: FolderHomeFileName;

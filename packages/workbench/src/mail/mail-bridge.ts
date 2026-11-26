@@ -12,6 +12,7 @@ import type {
   MailFolder,
   MailMessageDetail,
   MailMessageSummary,
+  MailOAuthInput,
   MailPreset,
   MailSendRequest,
   MailSendResult,
@@ -21,6 +22,8 @@ import type {
 
 export const mailBridge = {
   presetsList: () => invoke<MailPreset[]>('mail_presets_list'),
+  oauthAuthorize: (input: MailOAuthInput) => invoke<MailAccount>('mail_oauth_authorize', { input }),
+  oauthCancel: () => invoke<void>('mail_oauth_cancel'),
   accountsList: () => invoke<MailAccount[]>('mail_accounts_list'),
   accountTest: (input: MailAccountInput, credentials: MailCredentials) =>
     invoke<MailTestResult>('mail_account_test', { input, credentials }),

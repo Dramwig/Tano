@@ -181,7 +181,25 @@ pub(crate) fn policy_for(
 ) -> Result<String, String> {
     let path = crate::storage::resolve_storage(root, ".tano/plugins.tano.json", true)?;
     let content = crate::workspace_git::read_bounded(&path, 16 * 1024 * 1024)?;
-    let value: Value = serde_json::from_slice(&content).map_err(|_| "插件规则损坏")?;
+    policy_for_bytes(
+        &content,
+        plugin,
+        integrity,
+        permission,
+        declaration,
+        capability,
+    )
+}
+
+pub(crate) fn policy_for_bytes(
+    content: &[u8],
+    plugin: &str,
+    integrity: &str,
+    permission: &str,
+    declaration: &str,
+    capability: &str,
+) -> Result<String, String> {
+    let value: Value = serde_json::from_slice(content).map_err(|_| "插件规则损坏")?;
     let plugins = value
         .get("plugins")
         .and_then(Value::as_array)
@@ -214,7 +232,7 @@ pub(crate) fn policy_for(
     {
         return Err("此插件版本没有当前能力授权".into());
     }
-    Ok(crate::storage::hash(&content))
+    Ok(crate::storage::hash(content))
 }
 fn authorize(
     app: &tauri::AppHandle,
@@ -236,6 +254,34 @@ pub async fn plugin_native_request(
 ) -> Result<Value, String> {
     valid_request(&request)?;
     let args = crate::workspace_git::parse_args(&request.command, request.args.clone())?;
+    #[cfg(desktop)]
+    if let Some(remote) =
+        crate::remote_workspace_session(&request.workspace_id, &app.state::<crate::AppState>())?
+    {
+        let policy_path =
+            crate::ssh::uri::join_remote_posix(&remote.remote_root, ".tano/plugins.tano.json")
+                .map_err(|e| e.to_string())?;
+        let (policy_bytes, _) = remote
+            .transport
+            .read_bytes(&policy_path, 16 * 1024 * 1024)
+            .await
+            .map_err(|_| "无法读取远端插件规则 .tano/plugins.tano.json")?;
+        policy_for_bytes(
+            &policy_bytes,
+            &request.plugin_id,
+            &request.integrity,
+            "native",
+            "nativeCommands",
+            &request.command,
+        )?;
+        return crate::ssh::remote_git::query_remote_git(
+            remote.transport.as_ref(),
+            &remote.remote_root,
+            &request.command,
+            args,
+        )
+        .await;
+    }
     let initial = authorize(&app, &request)?;
     let key = format!("{}:{}", window.label(), request.request_id);
     let state = app.state::<PluginNativeState>();

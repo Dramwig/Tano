@@ -5,6 +5,7 @@ import type { DocumentLayoutState } from '../workspace/workspace-document-layout
 export interface OpenDocument {
   id: string;
   path: string;
+  format?: 'markdown' | 'code';
   content: string;
   base: FileSnapshot;
   saving: boolean;
@@ -13,6 +14,20 @@ export interface OpenDocument {
   conflict?: { copyPath: string; disk: FileSnapshot };
   error?: string;
   tableLayout?: DocumentLayoutState;
+}
+
+export function conflictCopyPath(path: string, stamp = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID().slice(0, 6)}`): string {
+  if (/\.(md|markdown)$/i.test(path)) {
+    return path.replace(/\.(md|markdown)$/i, `.conflict-${stamp}.md`);
+  }
+  const slash = path.lastIndexOf('/');
+  const dir = slash >= 0 ? path.slice(0, slash + 1) : '';
+  const name = slash >= 0 ? path.slice(slash + 1) : path;
+  const dot = name.lastIndexOf('.');
+  if (dot > 0) {
+    return `${dir}${name.slice(0, dot)}.conflict-${stamp}${name.slice(dot)}`;
+  }
+  return `${dir}${name}.conflict-${stamp}`;
 }
 
 export const documentDirty = (doc: OpenDocument) => !!doc.creating || doc.content !== doc.base.content;
@@ -42,10 +57,7 @@ export function createDocumentSession(host: DocumentSessionHost) {
       doc.error = undefined;
       host.activity('外部修改已载入', doc.path, 'external', change);
     } else {
-      const copyPath = doc.path.replace(
-        /\.(md|markdown)$/i,
-        `.conflict-${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID().slice(0, 6)}.md`,
-      );
+      const copyPath = conflictCopyPath(doc.path);
       // Freeze editing before the asynchronous copy so further input cannot be lost.
       doc.conflict = { copyPath, disk };
       try { await host.adapter.create(copyPath, doc.content); }

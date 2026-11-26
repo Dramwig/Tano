@@ -3,8 +3,9 @@ import PreviewSkeleton from './PreviewSkeleton.vue';
 import { t } from '../../i18n/i18n';
 import { computed, defineAsyncComponent, ref, shallowRef, watch } from 'vue';
 import type { FileEntry } from '@tano/protocol';
-import { basename, fileHandlers } from '@tano/protocol';
+import { basename, fileHandlers, isEditableCodePath } from '@tano/protocol';
 import { codePreviewTokens } from '@tano/editor/code-preview';
+import { isFeatureEnabled } from '../../features';
 import { csvPreview, verifyPreviewBytes } from '../file-preview';
 import PdfPreview from './PdfPreview.vue';
 import { nativeAttachments } from '../attachments';
@@ -13,7 +14,16 @@ import type { AttachmentStatusUpdate } from '../attachment-status';
 const OfficePreview = defineAsyncComponent({ loader: () => import('./OfficePreview.vue'), loadingComponent: PreviewSkeleton, delay: 0 });
 
 const props = defineProps<{ file?: FileEntry; url: string | null; workspaceId?: string; controlsTarget?: string; readOnly?: boolean; statusManaged?: boolean }>();
-const emit = defineEmits<{ status: [update: AttachmentStatusUpdate] }>();
+const emit = defineEmits<{ status: [update: AttachmentStatusUpdate]; editSource: [file: FileEntry] }>();
+const canEditCode = computed(() =>
+  isFeatureEnabled('codeFileEditing') &&
+  !!props.file &&
+  props.file.kind === 'file' &&
+  isEditableCodePath(props.file.path) &&
+  props.file.size <= 2 * 1024 * 1024 &&
+  !props.readOnly &&
+  !props.file.readOnly,
+);
 const runtime = useWorkbenchRuntime();
 const { adapter } = runtime;
 const attachments = runtime.attachments ?? (runtime.native && adapter.mode === 'desktop' ? nativeAttachments : undefined);
@@ -111,12 +121,32 @@ watch([() => props.workspaceId, () => props.file?.id, () => props.file?.path, li
     <PreviewSkeleton v-else-if="loading" :path="file.path" :controls="!controlsTarget" />
     <p v-else-if="error" role="status">{{ error }}</p>
     <template v-else-if="type === 'csv' && csv">
+      <div v-if="canEditCode" class="attachment-code-actions">
+        <button type="button" class="attachment-edit-source-btn" @click="emit('editSource', file)">
+          {{ t('编辑源码') }}
+        </button>
+      </div>
       <p v-if="csv.error" role="alert">{{ csv.error }}</p>
       <p v-if="csv.truncated" role="status">{{ t('预览仅显示前 500 行、100 列。') }}</p>
       <table :aria-label="t('CSV 预览')"><tbody><tr v-for="(row, index) in csv.rows" :key="index"><th scope="row">{{ index + 1 }}</th><td v-for="(cell, column) in row" :key="column">{{ cell }}</td></tr></tbody></table>
     </template>
-    <template v-else-if="type === 'json' || type === 'code'"><p v-if="json.error" role="alert">{{ json.error }}</p><pre><code><span v-for="(token, index) in tokens" :key="index" :class="token.className">{{ token.text }}</span></code></pre></template>
-    <pre v-else-if="type === 'text'">{{ text }}</pre>
+    <template v-else-if="type === 'json' || type === 'code'">
+      <div v-if="canEditCode" class="attachment-code-actions">
+        <button type="button" class="attachment-edit-source-btn" @click="emit('editSource', file)">
+          {{ t('编辑源码') }}
+        </button>
+      </div>
+      <p v-if="json.error" role="alert">{{ json.error }}</p>
+      <pre><code><span v-for="(token, index) in tokens" :key="index" :class="token.className">{{ token.text }}</span></code></pre>
+    </template>
+    <template v-else-if="type === 'text'">
+      <div v-if="canEditCode" class="attachment-code-actions">
+        <button type="button" class="attachment-edit-source-btn" @click="emit('editSource', file)">
+          {{ t('编辑源码') }}
+        </button>
+      </div>
+      <pre>{{ text }}</pre>
+    </template>
     <div v-else-if="type === 'image' && mediaUrl && !failed" class="attachment-media" :aria-busy="mediaLoading">
       <PreviewSkeleton v-if="mediaLoading" :path="file.path" />
       <img v-show="!mediaLoading" :key="mediaUrl" :src="mediaUrl" :alt="basename(file.path)" @load="mediaLoading = false" @error="failed = true; mediaLoading = false" />
@@ -134,6 +164,9 @@ watch([() => props.workspaceId, () => props.file?.id, () => props.file?.path, li
 <style scoped>
 .attachment-preview { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 24px; color: var(--text); }
 .attachment-preview.attachment-reader { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.attachment-code-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.attachment-edit-source-btn { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.attachment-edit-source-btn:hover { background: var(--hover); }
 .attachment-reader > p { padding: 16px 24px; }
 .attachment-reader > .preview-skeleton:not(.preview-skeleton-excel) { box-sizing: border-box; padding: 24px; overflow: hidden; }
 pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.7 var(--font-mono); }

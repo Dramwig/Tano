@@ -141,6 +141,9 @@ for (const file of walkCss(stylesDir)) {
     if (prop === 'border-radius' && hasLiteralNonZeroLength(value)) {
       failures.push(`${rel}: hardcoded border-radius "${value}" on "${selector}" (must use 0 or var(--radius-*))`);
     }
+    if (prop === 'border' && value !== '0' && value !== 'none' && !value.startsWith('var(--surface-')) {
+      failures.push(`${rel}: literal border "${value}" on "${selector}" (must use 0, none, or var(--surface-*))`);
+    }
     if (prop === 'box-shadow' && value !== 'none' && !value.startsWith('var(--surface-')) {
       failures.push(`${rel}: literal box-shadow "${value}" on "${selector}" (must use none or var(--surface-*))`);
     }
@@ -218,6 +221,36 @@ for (const file of appearanceFiles.filter((f) => f.startsWith('axis-material-'))
   for (const { prop, selector } of parseDeclarations(text)) {
     if (prop === '--overlay-shadow' || prop === '--dialog-shadow') {
       failures.push(`${rel}: shadow token "${prop}" belongs to Material (axis-material-flat.css), not dark-theme.css`);
+    }
+  }
+}
+
+// 7. Verify the flat material baseline (tokens.css + axis-material-flat.css) keeps primary sheets,
+//    document sheets and slip tabs cleanly borderless and shadowless so switching layouts never introduces borders.
+const flatBorderlessSlots = new Set([
+  '--surface-sheet-border',
+  '--surface-document-border',
+  '--surface-slip-tab-border',
+]);
+const flatShadowlessSlots = new Set([
+  '--surface-sheet-shadow',
+  '--surface-document-shadow',
+  '--surface-slip-tab-shadow',
+]);
+for (const rel of [
+  'packages/workbench/src/styles/appearance/tokens.css',
+  'packages/workbench/src/styles/appearance/axis-material-flat.css',
+]) {
+  const text = stripComments(fs.readFileSync(path.join(root, rel), 'utf8'));
+  for (const { prop, value, selector } of parseDeclarations(text)) {
+    if (flatBorderlessSlots.has(prop) && value !== '0' && value !== 'none' && value !== '0px solid transparent') {
+      failures.push(`${rel}: flat baseline "${prop}" must stay borderless (got "${value}" on "${selector}")`);
+    }
+    if (flatShadowlessSlots.has(prop) && value !== 'none') {
+      failures.push(`${rel}: flat baseline "${prop}" must stay "none" (got "${value}" on "${selector}")`);
+    }
+    if (prop === '--surface-hairline' && /color-mix\([^)]*--text\b/i.test(value)) {
+      failures.push(`${rel}: flat baseline "--surface-hairline" must not mix --text (got "${value}" on "${selector}")`);
     }
   }
 }

@@ -667,6 +667,21 @@ test('opaque materials and layouts stay orthogonal across light/dark modes, geom
       const flatCardRadius = structure === 'islands'
         ? await page.locator('.workspace-page-content.workspace-card:visible').evaluate(el => getComputedStyle(el).borderTopLeftRadius)
         : null;
+      if (structure === 'islands') {
+        // Flat material must never paint outer borders or hairline box-shadows on island/inset sheets.
+        const flatCardEl = page.locator('.workspace-page-content.workspace-card:visible');
+        await expect(flatCardEl).toHaveCSS('box-shadow', 'none');
+        for (const side of ['border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width']) {
+          await expect(flatCardEl).toHaveCSS(side, '0px');
+        }
+        if (id === 'builtin:islands') {
+          const sidebarSurface = sidebar.locator('.sidebar-surface');
+          await expect(sidebarSurface).toHaveCSS('box-shadow', 'none');
+          await expect(sidebarSurface).toHaveCSS('border-top-width', '0px');
+        } else if (id === 'builtin:inset') {
+          await expect(sidebar.locator('.sidebar-bottom')).toHaveCSS('border-top-width', '0px');
+        }
+      }
 
       for (const opaqueMaterial of ['builtin:raised', 'builtin:paper']) {
         await material.selectOption(opaqueMaterial);
@@ -734,8 +749,17 @@ test('document layout delegates radii to shape and paper tooth strictly to paper
   await apply('layout', 'builtin:paper');
   await expect(page.locator('html')).toHaveAttribute('data-layout', 'document');
   await expect(shell).toHaveCSS('background-color', baseDeskBg);
-  // Flat material on document layout must not draw paper grain from legacy data-surface="paper".
-  await expect(docSheet).toHaveCSS('background-image', 'none');
+  // Flat material on document layout must stay borderless/shadowless and never draw legacy paper grain.
+  for (const colorMode of ['light', 'dark']) {
+    await apply('mode', colorMode);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', colorMode);
+    await expect(docSheet).toHaveCSS('background-image', 'none');
+    await expect(docSheet).toHaveCSS('box-shadow', 'none');
+    await expect(docSheet).toHaveCSS('border-top-width', '0px');
+    await expect(activeTab).toHaveCSS('box-shadow', 'none');
+    await expect(activeTab).toHaveCSS('border-top-width', '0px');
+  }
+  await apply('mode', 'light');
 
   // Corner radii on document sheet and detached slip tab must obey Shape, never hardcoded 4px/6px.
   for (const [shapeId, cardRadius, tabRadius] of [
@@ -748,10 +772,12 @@ test('document layout delegates radii to shape and paper tooth strictly to paper
     await expect(activeTab).toHaveCSS('border-top-left-radius', tabRadius);
   }
 
-  // Enabling the independent paper grain material adds subtle tooth without darkening the desk.
+  // Enabling the independent paper grain material adds subtle tooth, edge and shadow without darkening the desk.
   await apply('material', 'builtin:paper');
   await expect(shell).toHaveCSS('background-color', baseDeskBg);
   expect(await docSheet.evaluate(el => getComputedStyle(el).backgroundImage)).not.toBe('none');
+  await expect(docSheet).toHaveCSS('border-top-width', '1px');
+  expect(await docSheet.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe('none');
   await expect(docSheet).toHaveCSS('border-top-left-radius', '2px');
 });
 

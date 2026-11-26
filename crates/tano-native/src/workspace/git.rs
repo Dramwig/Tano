@@ -22,11 +22,11 @@ const ENTRY_LIMIT: usize = 200_000;
 #[serde(deny_unknown_fields)]
 pub struct QueryArgs {
     #[serde(default)]
-    path: Option<String>,
+    pub(crate) path: Option<String>,
     #[serde(default)]
-    staged: bool,
+    pub(crate) staged: bool,
     #[serde(default = "default_log_limit")]
-    limit: usize,
+    pub(crate) limit: usize,
 }
 fn default_log_limit() -> usize {
     30
@@ -462,6 +462,12 @@ fn safe_config(config: &[u8]) -> Result<String, String> {
     }
     Ok(result)
 }
+pub(crate) fn parse_status_output(bytes: &[u8], branch: &Option<String>) -> Result<Value, String> {
+    status(bytes, branch)
+}
+pub(crate) fn parse_log_output(bytes: &[u8], path: Option<&str>) -> Result<Value, String> {
+    log(bytes, path)
+}
 fn status(bytes: &[u8], branch: &Option<String>) -> Result<Value, String> {
     let text = std::str::from_utf8(bytes).map_err(|_| "Git 插件仅支持 UTF-8 文件名")?;
     let mut records = text.split('\0').filter(|row| !row.is_empty());
@@ -838,6 +844,18 @@ pub async fn workspace_git_query(
         _ => return Err("未知 Git 查询".into()),
     };
     let args = parse_args(command, args)?;
+    #[cfg(desktop)]
+    if let Some(remote) =
+        crate::remote_workspace_session(&workspace_id, &app.state::<crate::AppState>())?
+    {
+        return crate::ssh::remote_git::query_remote_git(
+            remote.transport.as_ref(),
+            &remote.remote_root,
+            command,
+            args,
+        )
+        .await;
+    }
     let root = crate::with_workspace_session(&workspace_id, app.state(), |session| {
         Ok(session.root.clone())
     })?;

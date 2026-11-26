@@ -3,16 +3,15 @@ use crate::{
     with_workspace_session, AppState,
 };
 use std::path::PathBuf;
-use tauri::State;
+use tauri::Manager;
 
-#[tauri::command(async)]
-pub(crate) fn import_attachment(
+#[tauri::command]
+pub(crate) async fn import_attachment(
     workspace_id: String,
     name: String,
     content: String,
     require_image: bool,
     app: tauri::AppHandle,
-    state: State<AppState>,
 ) -> Result<assets::ImportedAsset, String> {
     use base64::Engine;
     if content.len() > 70 * 1024 * 1024 {
@@ -21,52 +20,99 @@ pub(crate) fn import_attachment(
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(content)
         .map_err(|_| NativeError::InvalidEncoding("附件编码无效"))?;
-    with_workspace_mutating_session(&workspace_id, state, &app, |s| {
-        assets::import(
-            &s.root,
+    #[cfg(desktop)]
+    if let Some(remote) = crate::remote_workspace_session(&workspace_id, &app.state::<AppState>())?
+    {
+        return crate::ssh::storage::remote_import_attachment(
+            remote.transport.as_ref(),
+            &remote.remote_root,
+            &remote.id,
             &name,
             &bytes,
             require_image,
-            Some((&s.id, &cache_path(&app)?)),
         )
+        .await;
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        with_workspace_mutating_session(&workspace_id, app.state::<AppState>(), &app, |s| {
+            assets::import(
+                &s.root,
+                &name,
+                &bytes,
+                require_image,
+                Some((&s.id, &cache_path(&app)?)),
+            )
+        })
     })
+    .await
+    .map_err(|e| format!("导入附件任务失败：{e}"))?
 }
 
-#[tauri::command(async)]
-pub(crate) fn read_attachment(
+#[tauri::command]
+pub(crate) async fn read_attachment<R: tauri::Runtime>(
     workspace_id: String,
     path: String,
-    state: State<AppState>,
+    app: tauri::AppHandle<R>,
 ) -> Result<String, String> {
     use base64::Engine;
-    with_workspace_session(&workspace_id, state, |s| {
-        let bytes = assets::read(&s.root, &path)?;
-        Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+    #[cfg(desktop)]
+    if let Some(remote) = crate::remote_workspace_session(&workspace_id, &app.state::<AppState>())?
+    {
+        let bytes = crate::ssh::storage::remote_read_attachment(
+            remote.transport.as_ref(),
+            &remote.remote_root,
+            &remote.id,
+            &path,
+        )
+        .await?;
+        return Ok(base64::engine::general_purpose::STANDARD.encode(bytes));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        with_workspace_session(&workspace_id, app.state::<AppState>(), |s| {
+            let bytes = assets::read(&s.root, &path)?;
+            Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+        })
     })
+    .await
+    .map_err(|e| format!("读取附件任务失败：{e}"))?
 }
 
-#[tauri::command(async)]
-pub(crate) fn export_attachment(
+#[tauri::command]
+pub(crate) async fn export_attachment(
     workspace_id: String,
     path: String,
     destination: String,
     app: tauri::AppHandle,
-    state: State<AppState>,
 ) -> Result<(), String> {
-    with_workspace_session(&workspace_id, state, |s| {
-        let bytes = assets::read(&s.root, &path)?;
-        write_export(&app, &destination, &bytes)
+    #[cfg(desktop)]
+    if let Some(remote) = crate::remote_workspace_session(&workspace_id, &app.state::<AppState>())?
+    {
+        let bytes = crate::ssh::storage::remote_read_attachment(
+            remote.transport.as_ref(),
+            &remote.remote_root,
+            &remote.id,
+            &path,
+        )
+        .await?;
+        return write_export(&app, &destination, &bytes);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        with_workspace_session(&workspace_id, app.state::<AppState>(), |s| {
+            let bytes = assets::read(&s.root, &path)?;
+            write_export(&app, &destination, &bytes)
+        })
     })
+    .await
+    .map_err(|e| format!("导出附件任务失败：{e}"))?
 }
 
-#[tauri::command(async)]
-pub(crate) fn write_spreadsheet(
+#[tauri::command]
+pub(crate) async fn write_spreadsheet(
     workspace_id: String,
     path: String,
     content: String,
     expected: String,
     app: tauri::AppHandle,
-    state: State<AppState>,
 ) -> Result<String, String> {
     use base64::Engine;
     if content.len() > 70 * 1024 * 1024 {
@@ -75,17 +121,38 @@ pub(crate) fn write_spreadsheet(
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(content)
         .map_err(|_| NativeError::InvalidEncoding("附件编码无效"))?;
-    with_workspace_mutating_session(&workspace_id, state, &app, |s| {
-        assets::write_spreadsheet(
-            &s.root,
+    #[cfg(desktop)]
+    if let Some(remote) = crate::remote_workspace_session(&workspace_id, &app.state::<AppState>())?
+    {
+        let backups = app_data(&app)?
+            .join("spreadsheet-backups")
+            .join(storage::hash(remote.id.as_bytes()));
+        return crate::ssh::storage::remote_write_spreadsheet(
+            remote.transport.as_ref(),
+            &remote.remote_root,
+            &remote.id,
             &path,
             &bytes,
             &expected,
-            &app_data(&app)?
-                .join("spreadsheet-backups")
-                .join(storage::hash(s.id.as_bytes())),
+            &backups,
         )
+        .await;
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        with_workspace_mutating_session(&workspace_id, app.state::<AppState>(), &app, |s| {
+            assets::write_spreadsheet(
+                &s.root,
+                &path,
+                &bytes,
+                &expected,
+                &app_data(&app)?
+                    .join("spreadsheet-backups")
+                    .join(storage::hash(s.id.as_bytes())),
+            )
+        })
     })
+    .await
+    .map_err(|e| format!("保存工作簿任务失败：{e}"))?
 }
 
 #[tauri::command(async)]
@@ -139,7 +206,8 @@ fn write_export(app: &tauri::AppHandle, destination: &str, bytes: &[u8]) -> Resu
                 .open(destination.clone(), options)
                 .map_err(|e| e.to_string())?;
             file.write_all(&bytes).map_err(|e| e.to_string())?;
-            file.sync_all().map_err(|e| e.to_string())
+            file.sync_all().map_err(|e| e.to_string())?;
+            Ok(())
         })();
         #[cfg(target_os = "ios")]
         let _ = app

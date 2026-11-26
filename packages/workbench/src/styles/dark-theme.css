@@ -70,7 +70,7 @@
   background: var(--line-strong);
   border-color: var(--line-strong);
 }
-:root[data-theme='dark'] :is(.settings-nav, .document-history-nav) { background: var(--sidebar); }
+:root[data-theme='dark'] :is(.settings-backdrop:not(.settings-tabbed) .settings-nav, .document-history-nav) { background: var(--sidebar); }
 :root[data-theme='dark'] .review-card { background: var(--surface); }
 
 /* Input and review surfaces have a visible resting state without a bright frame. */

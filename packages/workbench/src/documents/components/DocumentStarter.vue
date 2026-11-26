@@ -175,6 +175,6 @@ onBeforeUnmount(() => {
 .document-starter button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 .document-starter-spark { color: var(--green); }
 .document-starter-menu { position: fixed; z-index: 100; min-width: 0; overflow-y: auto; overscroll-behavior: contain; outline: none; }
-:global(.editor-scroll.width-unlimited) .document-starter { max-width: none; }
+.editor-scroll.width-unlimited .document-starter { max-width: none; }
 @media (max-width: 600px) { .document-starter { --starter-control-size: 40px; } }
 </style>
