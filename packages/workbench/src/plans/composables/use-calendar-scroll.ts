@@ -28,11 +28,6 @@ export interface CalendarScrollOptions {
   onBeforeModeChange?: (from: CalendarViewMode, to: CalendarViewMode) => void;
   /** Runs once the new scale is rendered and scrolled to the current date. */
   onModePositioned?: (from: CalendarViewMode, to: CalendarViewMode) => void;
-  /**
-   * Lets the view wrap a wheel zoom in a transition. It must call `apply` (now or later);
-   * `focus` is the date under the pointer when zooming in.
-   */
-  runZoomTransition?: (from: CalendarViewMode, to: CalendarViewMode, focus: Date | undefined, apply: () => void) => void;
 }
 
 export interface CalendarScrollState {
@@ -183,16 +178,12 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
       if (nextMode !== mode) {
         lastZoomChange = now;
         const focus = ZOOM_MODES.indexOf(nextMode) < index ? zoomFocusDate(event, mode, nextMode) : undefined;
-        const apply = () => {
-          if (focus && options.onFocusDate) {
-            // The mode watcher positions the new scale on this date; skip the date watcher's scroll.
-            focusedZoomKey = localDayKey(focus);
-            options.onFocusDate(focus);
-          }
-          options.onSelectMode(nextMode);
-        };
-        if (options.runZoomTransition) options.runZoomTransition(mode, nextMode, focus, apply);
-        else apply();
+        if (focus && options.onFocusDate) {
+          // The mode watcher positions the new scale on this date; skip the date watcher's scroll.
+          focusedZoomKey = localDayKey(focus);
+          options.onFocusDate(focus);
+        }
+        options.onSelectMode(nextMode);
       }
       return;
     }
@@ -398,25 +389,9 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
   }
 
   async function positionTimeline() {
+    prepareScale();
     await nextTick();
-    if (!timeline.value && scroll.value) scroll.value.scrollLeft = 0;
-    const current = getDate();
-    if (timeline.value) {
-      const container = scroll.value;
-      if (!container) return;
-      timelineDayWidth.value = Math.max(90, (container.clientWidth - 64) / timelineVisibleCount.value);
-      fillTimelineDays(current);
-      await scrollToTimelineDate(current);
-      container.scrollTop = CALENDAR_HOUR_HEIGHT * 7;
-    } else if (getMode() === 'month') {
-      fillWeeks(current);
-      await scrollToWeek(current);
-    } else if (getMode() === 'year') {
-      fillYears(current);
-      await scrollToYear(current);
-    } else if (scroll.value) {
-      scroll.value.scrollTop = 0;
-    }
+    placeScale();
   }
 
   onMounted(() => {
@@ -431,12 +406,63 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
     timelineResizeObserver?.disconnect();
   });
 
-  watch(getMode, async (to, from) => {
+  /**
+   * Scale changes are laid out in one render and positioned synchronously right after it:
+   * shared-element morphs measure their destination as soon as the DOM updates, so the new
+   * scale must already be filled, sized and scrolled into place by then.
+   */
+  function prepareScale() {
+    const current = getDate();
+    if (timeline.value) {
+      const container = scroll.value;
+      if (container) timelineDayWidth.value = Math.max(90, (container.clientWidth - 64) / timelineVisibleCount.value);
+      // Keep the rendered days when they already cover the new range: columns then stay in
+      // place (and morph) instead of all shifting under a new list.
+      const first = localDayKey(visibleCalendarDays(current, getMode())[0]!);
+      const index = timelineDays.value.findIndex((day) => localDayKey(day) === first);
+      if (index < 7 || index > timelineDays.value.length - 14) fillTimelineDays(current);
+    } else if (getMode() === 'month') {
+      fillWeeks(current);
+    } else if (getMode() === 'year') {
+      fillYears(current);
+    }
+  }
+
+  function placeScale() {
+    const container = scroll.value;
+    if (!container) return;
+    const current = getDate();
+    if (!timeline.value) container.scrollLeft = 0;
+    if (timeline.value) {
+      positioningTimeline = true;
+      const first = localDayKey(visibleCalendarDays(current, getMode())[0]!);
+      const index = Math.max(0, timelineDays.value.findIndex((day) => localDayKey(day) === first));
+      container.scrollLeft = index * timelineDayWidth.value;
+      container.scrollTop = CALENDAR_HOUR_HEIGHT * 7;
+      positioningTimeline = false;
+    } else if (getMode() === 'month') {
+      const row = weekRow(new Date(current.getFullYear(), current.getMonth(), 1));
+      if (row) container.scrollTop += row.getBoundingClientRect().top - container.getBoundingClientRect().top - 40;
+    } else if (getMode() === 'year') {
+      positioningYear = true;
+      const section = yearSection(current.getFullYear());
+      if (section) container.scrollTop += section.getBoundingClientRect().top - container.getBoundingClientRect().top - 12;
+      positioningYear = false;
+    } else {
+      container.scrollTop = 0;
+    }
+  }
+
+  watch(getMode, (to, from) => {
     options.onBeforeViewChange();
     options.onBeforeModeChange?.(from, to);
-    await positionTimeline();
-    if (getMode() === to) options.onModePositioned?.(from, to);
+    prepareScale();
   });
+  // Post-flush: the new scale is in the DOM but has not been measured by the morph yet.
+  watch(getMode, (to, from) => {
+    placeScale();
+    if (getMode() === to) options.onModePositioned?.(from, to);
+  }, { flush: 'post' });
 
   watch(getDate, (nextDate) => {
     options.onBeforeViewChange();

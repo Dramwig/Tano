@@ -45,14 +45,19 @@ function weekday(day: Date) {
 <template>
   <div class="calendar-agenda-view">
     <p v-if="!agendaDates.length" class="calendar-agenda-empty">{{ t('本月没有日程') }}</p>
-    <section v-for="day in agendaDates" :key="localDayKey(day)" class="calendar-agenda-day">
+    <section
+      v-for="day in agendaDates"
+      :key="localDayKey(day)"
+      class="calendar-agenda-day"
+      :data-zoom-day="localDayKey(day)"
+    >
       <time
         class="calendar-agenda-date"
         :class="{ today: localDayKey(day) === today }"
         :datetime="localDayKey(day)"
         :aria-label="day.toLocaleDateString(uiLocale, { month: 'short', day: 'numeric', weekday: 'long' })"
       >
-        <strong>{{ day.getDate() }}</strong>
+        <strong :data-zoom-num="localDayKey(day)">{{ day.getDate() }}</strong>
         <span>{{ day.toLocaleDateString(uiLocale, { month: 'short' }) }} · {{ uiLocale === 'zh-CN' ? t('周') : '' }}{{ weekday(day) }}</span>
       </time>
       <div class="calendar-agenda-events">
@@ -60,6 +65,7 @@ function weekday(day: Date) {
           v-for="entry in dayEntries(day)"
           :key="`${planKey(entry.record)}:${entry.kind}`"
           class="calendar-agenda-row"
+          data-zoom-scale
           :class="interactions.itemClasses(entry.record, entry.kind)"
         >
           <button

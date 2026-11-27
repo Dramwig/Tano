@@ -22,8 +22,8 @@ import { useCalendarScroll } from '../composables/use-calendar-scroll';
 import { useCalendarInteractions } from '../composables/use-calendar-interactions';
 import {
   captureCalendarZoom,
+  discardCalendarZoom,
   playCalendarZoom,
-  startCalendarViewTransition,
   type CalendarZoomSnapshot,
 } from '../calendar-zoom-motion';
 import CalendarDayPopover from './CalendarDayPopover.vue';
@@ -49,6 +49,8 @@ const { window } = useWindowContext();
 const plans = usePlanStore();
 const scroll = ref<HTMLElement>();
 const stage = ref<HTMLElement>();
+// Scale changes morph each visible day with Motion (calendar-zoom-motion.ts). `zooming`
+// suppresses the views' generic CSS fade-in once one has run.
 const zooming = ref(false);
 let zoomSnapshot: CalendarZoomSnapshot | undefined;
 const filter = ref<CalendarFilter>({ kind: 'all', showCompleted: true, query: '' });
@@ -65,23 +67,6 @@ const dayPopoverId = useId();
 const dayPopoverKey = computed(() => dayPopover.value && localDayKey(dayPopover.value.date));
 
 const {
-// Scale change currently driven by a native view transition, and its "positioned" signal.
-let viewTransitionTo: CalendarViewMode | undefined;
-let resolveViewTransition: (() => void) | undefined;
-
-function viewTransitionPositioned(to: CalendarViewMode) {
-  return new Promise<void>((resolve) => {
-    resolveViewTransition?.();
-    const timer = setTimeout(done, 600);
-    function done() {
-      clearTimeout(timer);
-      if (resolveViewTransition === done) resolveViewTransition = undefined;
-      resolve();
-    }
-    viewTransitionTo = to;
-    resolveViewTransition = done;
-  });
-}
   timeline,
   timelineDays,
   timelineDayWidth,
@@ -102,44 +87,17 @@ function viewTransitionPositioned(to: CalendarViewMode) {
   // Hosts treat every visible-* date as the calendar's current date.
   onFocusDate: (value) => emit('visible-timeline', value),
   onBeforeViewChange: () => { dayPopover.value = undefined; },
-  onBeforeModeChange: (from, to) => {
-    if (zoomSnapshot) {
-      // Changed again before the previous scale was even positioned: its copy is still what
-      // is on screen, so retarget it instead of copying the half-built layout underneath.
-      zoomSnapshot.to = to;
-      zoomSnapshot.source = undefined;
-      zoomSnapshot.sourceLocal = undefined;
-      return;
-    }
-    zoomSnapshot = props.loading ? undefined : captureCalendarZoom(scroll.value, stage.value, props.date, from, to);
-    // Suppress the generic fade-in so it does not fight the anchored zoom.
-    zooming.value = Boolean(zoomSnapshot);
+  onBeforeModeChange: () => {
+    // A change that never reached its new scale leaves nothing to fade.
+    discardCalendarZoom(zoomSnapshot);
+    zoomSnapshot = props.loading ? undefined : captureCalendarZoom(scroll.value, stage.value);
+    if (zoomSnapshot) zooming.value = true;
   },
-  onModePositioned: (_from, to) => {
-  runZoomTransition: (from, to, focus, apply) => {
-    const started = !props.loading && startCalendarViewTransition({
-      container: scroll.value,
-      stage: stage.value,
-      from,
-      to,
-      date: focus ?? props.date,
-      positioned: () => viewTransitionPositioned(to),
-      apply: () => {
-        // Suppress the generic fade-in inside the live snapshot of the new view.
-        zooming.value = true;
-        apply();
-      },
-    });
-    if (!started) apply();
-  },
+  onModePositioned: () => {
     const snapshot = zoomSnapshot;
-    // The native view transition already captured the old view.
-    if (viewTransitionTo === to) return;
-    if (!snapshot || snapshot.to !== to) return;
+    if (!snapshot) return;
     zoomSnapshot = undefined;
-    // Keep `is-zooming` after the animation: clearing it would restart the views' CSS
-    // fade-in from transparent and flash. The next scale change resets it.
-    void playCalendarZoom(snapshot, scroll.value, stage.value, props.date);
+    void playCalendarZoom(snapshot, scroll.value);
   },
   onScrolled: () => {
     if (
@@ -148,11 +106,6 @@ function viewTransitionPositioned(to: CalendarViewMode) {
       (dayPopover.value.scrollTop !== scroll.value.scrollTop ||
         dayPopover.value.scrollLeft !== scroll.value.scrollLeft)
     ) {
-    if (viewTransitionTo === to) {
-      viewTransitionTo = undefined;
-      resolveViewTransition?.();
-      return;
-    }
       dayPopover.value = undefined;
     }
   },

@@ -53,54 +53,16 @@
   animation: tano-fade-in var(--motion-base) var(--ease-standard);
 }
 
-/* Ctrl+wheel scale changes use the anchored zoom in calendar-zoom-motion.ts instead. */
+/* Scale changes use the Motion morph and fading copy in calendar-zoom-motion.ts instead. */
 .calendar-shell.is-zooming :is(.calendar-view-inner, .calendar-month-view, .calendar-year-view, .calendar-agenda-view) {
   animation: none;
 }
 .calendar-zoom-ghost { overflow: hidden !important; }
-/* Where the previous period landed after zooming out: a soft, borderless tint. */
-.calendar-zoom-focus {
-  position: absolute;
-  z-index: 3;
-  border-radius: var(--cal-radius);
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-  pointer-events: none;
-}
-
-/* Native view transitions for scale changes (see startCalendarViewTransition). The period
-   and the other scale's viewport morph as one group that clips its snapshots, so they keep
-   their proportions; the rest of the view fades out (zooming in) or in (zooming out). */
-:root.calendar-zooming::view-transition { pointer-events: none; }
-:root.calendar-zooming::view-transition-old(root),
-:root.calendar-zooming::view-transition-new(root) { animation: none; }
-/* The period must paint above the context: groups that exist in both states are otherwise
-   ordered below new-only ones, and the context's own background would cover the period. */
-::view-transition-group(calendar-zoom-context) { z-index: 1; }
-::view-transition-group(calendar-zoom-focus) {
-  z-index: 2;
-  overflow: clip;
-  border-radius: 6px;
-  animation-duration: 440ms;
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-}
-::view-transition-old(calendar-zoom-focus) { animation: calendar-zoom-snapshot-out 440ms linear both; }
-::view-transition-new(calendar-zoom-focus) { animation: calendar-zoom-snapshot-in 440ms linear both; }
-::view-transition-old(calendar-zoom-context) { animation: calendar-zoom-context-out 220ms ease-out both; }
-::view-transition-new(calendar-zoom-context) { animation: calendar-zoom-snapshot-in 320ms ease-out 60ms both; }
-/* Snapshots are images: hand over to the sharp new view early so enlarged ones never linger. */
-@keyframes calendar-zoom-snapshot-out {
-  0%, 10% { opacity: 1; }
-  55%, 100% { opacity: 0; }
-}
-/* The period has been lifted out of the context, so the context leaves at once. */
-@keyframes calendar-zoom-context-out {
-  from { opacity: 1; }
-  60%, to { opacity: 0; }
-}
-@keyframes calendar-zoom-snapshot-in {
-  0%, 8% { opacity: 0; }
-  45%, 100% { opacity: 1; }
-}
+/* In the copy of the previous scale, days that morph are hidden (Motion moves the real
+   ones); days with nowhere to land stay and fade with the copy. */
+.calendar-zoom-ghost [data-zoom-landed] { visibility: hidden; }
+/* While they move, the morphing days paint above that fading copy. */
+.calendar-shell [data-zoom-moving] { position: relative; z-index: 3; }
 
 /* ---- Shared item pieces -------------------------------------------------- */
 .calendar-shell .calendar-inline-check {

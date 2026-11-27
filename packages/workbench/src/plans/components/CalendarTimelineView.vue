@@ -94,7 +94,7 @@ function timedEvents(day: Date) {
         :class="{ today: localDayKey(day) === today }"
       >
         <span>{{ uiLocale === 'zh-CN' ? t('周') : '' }}{{ weekday(day) }}</span>
-        <strong>{{ day.getDate() }}</strong>
+        <strong :data-zoom-num="localDayKey(day)">{{ day.getDate() }}</strong>
       </div>
       <template v-if="hasVisibleBanner || interactions.draggingKey.value">
         <span class="calendar-view-date-label">{{ t('全天') }}</span>
@@ -149,6 +149,7 @@ function timedEvents(day: Date) {
         class="calendar-view-day-column"
         :class="{ 'is-creatable': canCreate, 'is-today': localDayKey(day) === today }"
         :data-day="localDayKey(day)"
+        :data-zoom-day="localDayKey(day)"
         @pointerdown="interactions.startSlotSelection(day, $event)"
         @dragover="interactions.onTimelineDragOver(day, $event)"
         @dragleave="interactions.onDragLeave"
@@ -171,6 +172,7 @@ function timedEvents(day: Date) {
           v-for="item in timedEvents(day)"
           :key="planKey(item.record)"
           class="calendar-view-event"
+          data-zoom-scale
           :class="[
             { 'calendar-view-point': item.point, 'is-compact': item.compact, 'is-resizing': interactions.resizing.value?.key === planKey(item.record) },
             interactions.itemClasses(item.record, 'timed'),

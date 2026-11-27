@@ -1,76 +1,45 @@
-import { localDayKey, visibleCalendarDays, weekDays, type CalendarViewMode } from './calendar';
+import { animate } from 'motion/mini';
+import { localDayKey } from './calendar';
 
 /**
- * Anchored zoom transition between calendar scales.
+ * Calendar scale changes, animated with Motion.
  *
- * Switching scale (day → week → month → year) re-lays out the whole calendar, so the
- * period the user was looking at jumps to an unrelated spot. This keeps it in sight:
- * zooming out shrinks the old view into the region that period occupies in the new
- * layout (and briefly tints it); zooming in fades back everything around the period being
- * opened and grows the new view out of it. Both views are animated in the scroll viewport's
- * coordinates.
+ * A day is the same object in every scale: a button in the year view, a cell in the month
+ * grid, a column in the timeline, a row in the agenda. Those elements carry
+ * `data-zoom-day="YYYY-MM-DD"` (their date number `data-zoom-num`), so a scale change can
+ * pair each visible day before and after and morph the real element from where it was to
+ * where it lands — every date visibly travels to its new place.
  *
- * Transitions can be interrupted: a new scale change copies the view exactly as it is on
- * screen at that moment (mid-transform and mid-fade included) and continues from there.
+ * - Before the new scale renders, the visible days and numbers are measured (as they are
+ *   on screen, so an interrupted change continues from its current frame) and a copy of
+ *   the view is frozen on top.
+ * - Once the new scale is rendered and scrolled into place, each paired day is animated
+ *   with Motion from its old box to its new one. Content that must not stretch (event
+ *   chips, marked `data-zoom-scale`) is counter-scaled frame by frame; numbers travel and
+ *   resize uniformly from their old size to their new one.
+ * - Days that are not paired stay in the copy, which fades out over the new scale.
  */
 
-const SCALE: Record<CalendarViewMode, number> = {
-  day: 0, 'four-days': 1, week: 2, month: 3, agenda: 3, year: 4,
-};
-const DURATION = 380;
-/** Zooming in runs a little longer so the period being opened stays readable. */
-const EXPAND_DURATION = 460;
-const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+export const CALENDAR_MORPH_DURATION = 440;
+const FADE_DURATION = CALENDAR_MORPH_DURATION * 0.7;
+const SAMPLES = 24;
 
 interface Box { x: number; y: number; w: number; h: number }
-interface Point { x: number; y: number }
+interface Measure { days: Map<string, Box>; nums: Map<string, Box> }
+type Controls = { stop(): void; finished: Promise<unknown> };
 
 export interface CalendarZoomSnapshot {
-  from: CalendarViewMode;
-  to: CalendarViewMode;
-  ghost?: HTMLElement;
-  /** Transform the copy starts from, so an interrupted transition continues from its current frame. */
-  carried: string;
-  /** Clip the copy starts from (an interrupted zoom may be mid-reveal). */
-  carriedClip: string;
-  /** Inline opacity of the live viewport before it was hidden behind the copy. */
-  hiddenOpacity: string;
-  /** Focus region in the old view as it appeared on screen (zoom in only), relative to the viewport. */
-  source?: Box;
-  /** The same region in the copy's own, untransformed coordinates. */
-  sourceLocal?: Box;
+  ghost: HTMLElement;
+  /** Opacity the copy starts from. */
+  opacity: string;
+  before: Measure;
 }
 
-const VEIL = '--calendar-zoom-veil';
-let veilRegistered: boolean | undefined;
+const running = new WeakMap<HTMLElement, { controls: Controls[]; moved: HTMLElement[] }>();
 
-/** The surroundings fade through a registered custom property; without it, skip that step. */
-function canAnimateVeil(view: Window) {
-  if (veilRegistered !== undefined) return veilRegistered;
-  const css = (view as Window & typeof globalThis).CSS;
-  try {
-    css?.registerProperty?.({ name: VEIL, syntax: '<number>', inherits: false, initialValue: '1' });
-    veilRegistered = typeof css?.registerProperty === 'function';
-  } catch {
-    // Already registered (for example after a hot reload).
-    veilRegistered = true;
-  }
-  return veilRegistered;
-}
-
-function reducedMotion(view: Window) {
+export function calendarReducedMotion(view: Window) {
   return view.document.documentElement.dataset.motion === 'reduced'
     || Boolean(view.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-}
-
-/** The days the finer of two scales shows, which is what both views must agree on. */
-function focusDays(date: Date, from: CalendarViewMode, to: CalendarViewMode): Date[] {
-  const finer = SCALE[from] <= SCALE[to] ? from : to;
-  if (finer === 'day' || finer === 'four-days' || finer === 'week') return visibleCalendarDays(date, finer);
-  if (finer === 'month' || finer === 'agenda') {
-    return [new Date(date.getFullYear(), date.getMonth(), 1)];
-  }
-  return weekDays(date);
 }
 
 /** `YYYY-MM`, matching the prefix of a day key and the year view's `data-month`. */
@@ -78,145 +47,82 @@ export function calendarMonthKey(day: Date) {
   return localDayKey(day).slice(0, 7);
 }
 
-/** Elements that represent `days` in the view currently rendered in `container`. */
-function focusElements(container: HTMLElement, mode: CalendarViewMode, days: Date[], finer: CalendarViewMode) {
-  const keys = new Set(days.map(localDayKey));
-  if (mode === 'year') {
-    const month = calendarMonthKey(days[0]!);
-    return [...container.querySelectorAll<HTMLElement>('.calendar-year-month')]
-      .filter(element => element.dataset.month === month);
+/** cubic-bezier(0.22, 1, 0.36, 1): fast start, long soft landing. */
+function ease(t: number) {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const [x1, y1, x2, y2] = [0.22, 1, 0.36, 1];
+  const bez = (a: number, b: number, s: number) => 3 * a * s * (1 - s) ** 2 + 3 * b * s * s * (1 - s) + s ** 3;
+  let lo = 0, hi = 1, s = t;
+  for (let i = 0; i < 24; i++) {
+    s = (lo + hi) / 2;
+    if (bez(x1, x2, s) < t) lo = s; else hi = s;
   }
-  if (mode === 'month') {
-    // A month focus (from the year scale) is every cell of that month.
-    if (finer === 'month') {
-      const month = calendarMonthKey(days[0]!);
-      return [...container.querySelectorAll<HTMLElement>('.calendar-month-cell')]
-        .filter(cell => cell.dataset.day?.startsWith(month));
-    }
-    return [...container.querySelectorAll<HTMLElement>('.calendar-month-cell')]
-      .filter(cell => keys.has(cell.dataset.day ?? ''));
-  }
-  if (mode === 'day' || mode === 'four-days' || mode === 'week') {
-    return [...container.querySelectorAll<HTMLElement>('.calendar-view-day-column, .calendar-view-date-events')]
-      .filter(element => keys.has(element.dataset.day ?? ''));
-  }
-  return [];
+  return bez(y1, y2, s);
 }
 
-/** Union of the elements' boxes, clipped to the viewport and relative to it. */
-function focusBox(container: HTMLElement, elements: HTMLElement[]): Box | undefined {
-  if (!elements.length) return undefined;
+const lerp = (a: number, b: number, e: number) => a + (b - a) * e;
+
+function boxOf(element: Element): Box {
+  const rect = element.getBoundingClientRect();
+  return { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+}
+
+function measure(container: HTMLElement): Measure {
   const view = container.getBoundingClientRect();
-  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
-  for (const element of elements) {
-    const rect = element.getBoundingClientRect();
-    left = Math.min(left, rect.left); top = Math.min(top, rect.top);
-    right = Math.max(right, rect.right); bottom = Math.max(bottom, rect.bottom);
+  // At least half in view on each axis (or half the viewport, for days taller or wider
+  // than it), so slivers peeking in at an edge do not fly across the screen.
+  const visible = (box: Box) => {
+    const width = Math.min(box.x + box.w, view.right) - Math.max(box.x, view.left);
+    const height = Math.min(box.y + box.h, view.bottom) - Math.max(box.y, view.top);
+    return box.w > 0 && box.h > 0
+      && width >= Math.min(box.w, view.width) / 2 && height >= Math.min(box.h, view.height) / 2;
+  };
+  const collect = (attribute: string) => {
+    const boxes = new Map<string, Box>();
+    for (const element of container.querySelectorAll<HTMLElement>(`[${attribute}]`)) {
+      const box = boxOf(element);
+      const key = element.getAttribute(attribute);
+      if (key && visible(box) && !boxes.has(key)) boxes.set(key, box);
+    }
+    return boxes;
+  };
+  return { days: collect('data-zoom-day'), nums: collect('data-zoom-num') };
+}
+
+/** Ends a change still animating; its elements return to their own layout. */
+function settle(container: HTMLElement) {
+  const state = running.get(container);
+  if (!state) return;
+  running.delete(container);
+  for (const controls of state.controls) controls.stop();
+  for (const element of state.moved) {
+    element.style.removeProperty('transform');
+    element.style.removeProperty('transform-origin');
+    delete element.dataset.zoomMoving;
   }
-  left = Math.max(left, view.left); top = Math.max(top, view.top);
-  right = Math.min(right, view.left + container.clientWidth);
-  bottom = Math.min(bottom, view.top + container.clientHeight);
-  if (right - left < 8 || bottom - top < 8) return undefined;
-  return { x: left - view.left, y: top - view.top, w: right - left, h: bottom - top };
 }
 
-/**
- * Uniform (aspect-preserving) placement, origin top-left: `x' = s * x + tx`. Scaling both
- * axes by the same factor keeps text and grid proportions intact; the change in shape
- * between a period and the viewport is carried by a clip instead of by stretching.
- */
-interface Fit { s: number; tx: number; ty: number }
-
-function fitTransform({ s, tx, ty }: Fit) {
-  return `translate(${tx}px, ${ty}px) scale(${s})`;
-}
-
-/** Shrinks (or grows) the whole viewport so it just covers `box`, centred on it. */
-function coverBox(box: Box, viewport: Box): Fit {
-  const s = Math.max(box.w / viewport.w, box.h / viewport.h);
-  return { s, tx: box.x + box.w / 2 - (s * viewport.w) / 2, ty: box.y + box.h / 2 - (s * viewport.h) / 2 };
-}
-
-/** Moves `box` to the viewport's centre, scaled uniformly until it meets the viewport's edge. */
-function bringOut(box: Box, viewport: Box): Fit {
-  const s = Math.min(viewport.w / box.w, viewport.h / box.h);
-  return { s, tx: viewport.w / 2 - s * (box.x + box.w / 2), ty: viewport.h / 2 - s * (box.y + box.h / 2) };
-}
-
-/** Rounded corners of the reveal window, in screen pixels. */
-const CLIP_RADIUS = 6;
-const FULL_CLIP = 'inset(0px 0px 0px 0px round 0px)';
-
-/**
- * Clip, in the element's own coordinates, that shows exactly `box` on screen once `fit`
- * (and, for a copy, the transform it was captured with) is applied.
- */
-function clipToBox(box: Box, fit: Fit, viewport: Box, carried: string, view: Window) {
-  let x = (box.x - fit.tx) / fit.s;
-  let y = (box.y - fit.ty) / fit.s;
-  let w = box.w / fit.s;
-  let h = box.h / fit.s;
-  let scale = fit.s;
-  const Matrix = (view as Window & typeof globalThis).DOMMatrixReadOnly;
-  if (carried && typeof Matrix === 'function') {
-    const { a, d, e, f } = new Matrix(carried);
-    x = (x - e) / a; y = (y - f) / d; w /= a; h /= d; scale *= a;
-  }
-  const top = Math.max(0, y);
-  const left = Math.max(0, x);
-  const right = Math.max(0, viewport.w - (x + w));
-  const bottom = Math.max(0, viewport.h - (y + h));
-  return `inset(${top}px ${right}px ${bottom}px ${left}px round ${CLIP_RADIUS / scale}px)`;
-}
-
-/** Applies a translate/scale matrix (no rotation or skew) to a box. */
-function transformBox(box: Box, transform: string, view: Window): Box {
-  const Matrix = (view as Window & typeof globalThis).DOMMatrixReadOnly;
-  if (!transform || typeof Matrix !== 'function') return box;
-  const { a, d, e, f } = new Matrix(transform);
-  return { x: box.x * a + e, y: box.y * d + f, w: box.w * a, h: box.h * d };
-}
-
-/** The viewport's offset inside the stage, from layout (unaffected by transforms). */
-function stageOffset(container: HTMLElement, stage: HTMLElement): Point {
-  return container.offsetParent === stage ? { x: container.offsetLeft, y: container.offsetTop } : { x: 0, y: 0 };
-}
-
-/**
- * Called before the new scale renders: freezes a copy of the current view as it looks
- * right now and, when zooming in, records where the focused period sits in it.
- */
+/** Called before the new scale renders: measures the visible days and freezes a copy. */
 export function captureCalendarZoom(
   container: HTMLElement | undefined,
   stage: HTMLElement | undefined,
-  date: Date,
-  from: CalendarViewMode,
-  to: CalendarViewMode,
 ): CalendarZoomSnapshot | undefined {
   const view = container?.ownerDocument.defaultView;
-  if (!container || !stage || !view || from === to || reducedMotion(view)) return undefined;
+  if (!container || !stage || !view || calendarReducedMotion(view)) return undefined;
   if (typeof container.animate !== 'function' || !container.clientWidth || !container.clientHeight) return undefined;
-  // Read the in-flight frame before settling it, so the copy picks up exactly where it is.
-  const computed = view.getComputedStyle(container);
-  const carried = computed.transform && computed.transform !== 'none' ? computed.transform : '';
-  const carriedClip = computed.clipPath && computed.clipPath !== 'none' ? computed.clipPath : '';
-  const opacity = Number.parseFloat(computed.opacity);
-  container.getAnimations?.().forEach(animation => animation.cancel());
-  // Copies from earlier transitions keep fading out on their own; outlines are stale now.
-  stage.querySelectorAll('.calendar-zoom-focus').forEach(element => element.remove());
-  const snapshot: CalendarZoomSnapshot = { from, to, carried, carriedClip, hiddenOpacity: container.style.opacity };
-  if (SCALE[to] < SCALE[from]) {
-    const finer = SCALE[from] <= SCALE[to] ? from : to;
-    const source = focusBox(container, focusElements(container, from, focusDays(date, from, to), finer));
-    snapshot.sourceLocal = source;
-    snapshot.source = source && transformBox(source, carried, view);
-  }
+  // Measured as on screen, mid-change included, before that change is settled.
+  const before = measure(container);
+  settle(container);
+  const opacity = view.getComputedStyle(container).opacity || '1';
   const ghost = container.cloneNode(true) as HTMLElement;
   ghost.removeAttribute('aria-label');
   ghost.setAttribute('aria-hidden', 'true');
   ghost.inert = true;
   ghost.classList.add('calendar-zoom-ghost');
-  const offset = stageOffset(container, stage);
+  const offset = container.offsetParent === stage
+    ? { x: container.offsetLeft, y: container.offsetTop }
+    : { x: 0, y: 0 };
   Object.assign(ghost.style, {
     position: 'absolute',
     left: `${offset.x}px`,
@@ -224,315 +130,112 @@ export function captureCalendarZoom(
     width: `${container.offsetWidth}px`,
     height: `${container.offsetHeight}px`,
     pointerEvents: 'none',
-    transformOrigin: '0 0',
-    transform: carried || 'none',
-    clipPath: carriedClip || 'none',
-    opacity: String(Number.isFinite(opacity) ? opacity : 1),
+    opacity,
     zIndex: '2',
   });
-  // The live view was painted below earlier copies, so its copy goes there too.
+  // Copies of earlier, still-fading changes stay above; this one shows the live view.
   container.after(ghost);
   ghost.scrollTop = container.scrollTop;
   ghost.scrollLeft = container.scrollLeft;
-  // The live view re-renders underneath; keep it hidden until its own animation starts.
-  container.style.opacity = '0';
-  snapshot.ghost = ghost;
-  return snapshot;
+  return { ghost, opacity, before };
 }
 
-/** Drops a snapshot that will never play (the scale changed again before it was positioned). */
-export function discardCalendarZoom(snapshot: CalendarZoomSnapshot | undefined, container: HTMLElement | undefined) {
-  if (!snapshot) return;
-  snapshot.ghost?.remove();
-  if (container) container.style.opacity = snapshot.hiddenOpacity;
+export function discardCalendarZoom(snapshot: CalendarZoomSnapshot | undefined) {
+  snapshot?.ghost.remove();
 }
 
-/** Called once the new scale is rendered and scrolled into place. */
-export function playCalendarZoom(
-  snapshot: CalendarZoomSnapshot,
-  container: HTMLElement | undefined,
-  stage: HTMLElement | undefined,
-  date: Date,
-): Promise<void> {
-  const { from, to, ghost, carried } = snapshot;
-  if (!container || !stage || typeof container.animate !== 'function') {
-    discardCalendarZoom(snapshot, container);
-    return Promise.resolve();
-  }
-  const finer = SCALE[from] <= SCALE[to] ? from : to;
-  const days = focusDays(date, from, to);
-  const viewport: Box = { x: 0, y: 0, w: container.clientWidth, h: container.clientHeight };
-  const zoomingOut = SCALE[to] > SCALE[from];
-  let focus: Box | undefined;
-  if (zoomingOut) {
-    let elements = focusElements(container, to, days, finer);
-    focus = focusBox(container, elements);
-    // Keep the period being zoomed out of fully in view in the vertically scrolling layouts.
-    const first = elements[0];
-    if (first && (to === 'month' || to === 'year') && (!focus || focus.h < Math.min(first.getBoundingClientRect().height, viewport.h) - 1)) {
-      const rect = first.getBoundingClientRect();
-      const top = container.getBoundingClientRect().top;
-      container.scrollTop += rect.top - top - Math.max(24, (viewport.h - rect.height) / 2);
-      elements = focusElements(container, to, days, finer);
-      focus = focusBox(container, elements);
-    }
-  } else {
-    focus = snapshot.source;
-  }
+interface Frame { box: Box; sx: number; sy: number }
 
-  const origin = stageOffset(container, stage);
-  // The copy's motion is applied on top of the frame it was captured in.
-  const onCopy = (transform: string) =>
-    !carried ? transform : transform === 'none' ? carried : `${transform} ${carried}`;
-  const startOpacity = ghost?.style.opacity ?? '1';
-  const animations: Animation[] = [];
-  const view = container.ownerDocument.defaultView!;
-  // Motion and opacity run on separate timelines: on the shared spring curve the fades would
-  // finish in the first few frames, before the eye has found the period being moved.
-  type Frame = { transform: string; clipPath?: string };
-  const move = (element: HTMLElement, from: Frame, to: Frame, duration: number, delay = 0) =>
-    animations.push(element.animate(
-      [{ ...from, transformOrigin: '0 0' }, { ...to, transformOrigin: '0 0' }],
-      { duration, delay, easing: EASE, fill: 'both' },
-    ));
-  // `at` gives the [start, end] of the fade as fractions of `duration`, in real time.
-  const fade = (element: HTMLElement, from: string, to: string, duration: number, at: [number, number]) =>
-    animations.push(element.animate(
-      [{ opacity: from }, { opacity: from, offset: at[0] }, { opacity: to, offset: at[1] }, { opacity: to }],
-      { duration, easing: 'linear', fill: 'both' },
-    ));
-  const copyClip = snapshot.carriedClip || FULL_CLIP;
-  if (focus && zoomingOut) {
-    // The coarser view arrives from the period's spot, scaled evenly (no stretching).
-    move(container, { transform: fitTransform(bringOut(focus, viewport)) }, { transform: 'none' }, DURATION);
-    fade(container, '0', '1', DURATION, [0, 0.55]);
-    if (ghost) {
-      // The old view shrinks evenly onto the period while its window closes to the period's shape.
-      const cover = coverBox(focus, viewport);
-      move(
-        ghost,
-        { transform: onCopy('none'), clipPath: copyClip },
-        { transform: onCopy(fitTransform(cover)), clipPath: clipToBox(focus, cover, viewport, carried, view) },
-        DURATION,
-      );
-      fade(ghost, startOpacity, '0', DURATION, [0.3, 0.85]);
-    }
-    outlineFocus(stage, origin, focus);
-  } else if (focus) {
-    // Zooming in: first let everything around the period fade back so it stands alone, then
-    // open it: the finer view starts as a window the size of the period and widens evenly.
-    const hold = 110;
-    const total = hold + EXPAND_DURATION;
-    const cover = coverBox(focus, viewport);
-    move(
-      container,
-      { transform: fitTransform(cover), clipPath: clipToBox(focus, cover, viewport, '', view) },
-      { transform: 'none', clipPath: FULL_CLIP },
-      EXPAND_DURATION,
-      hold,
-    );
-    fade(container, '0', '1', total, [0.2, 0.5]);
-    if (ghost) {
-      move(
-        ghost,
-        { transform: onCopy('none'), clipPath: copyClip },
-        { transform: onCopy(fitTransform(bringOut(focus, viewport))), clipPath: copyClip },
-        EXPAND_DURATION,
-        hold,
-      );
-      fade(ghost, startOpacity, '0', total, [0.3, 0.7]);
-    }
-    const local = snapshot.sourceLocal;
-    if (ghost && local && canAnimateVeil(container.ownerDocument.defaultView!)) {
-      // Two mask layers: the period at full strength, the rest of the copy at the veil level.
-      Object.assign(ghost.style, {
-        maskImage: `linear-gradient(#000, #000), linear-gradient(rgb(0 0 0 / var(${VEIL})), rgb(0 0 0 / var(${VEIL})))`,
-        maskSize: `${local.w}px ${local.h}px, 100% 100%`,
-        maskPosition: `${local.x}px ${local.y}px, 0 0`,
-        maskRepeat: 'no-repeat',
-      });
-      animations.push(ghost.animate(
-        [{ [VEIL]: '1' }, { [VEIL]: '0.12', offset: 0.3 }, { [VEIL]: '0.12' }],
-        { duration: total, easing: 'ease-out', fill: 'both' },
-      ));
-    }
-  } else {
-    move(container, { transform: `scale(${zoomingOut ? 1.04 : 0.96})` }, { transform: 'none' }, DURATION);
-    fade(container, '0', '1', DURATION, [0, 0.6]);
-    if (ghost) fade(ghost, startOpacity, '0', DURATION, [0, 0.5]);
-  }
-  // The running animation now controls the live view's opacity.
-  container.style.opacity = snapshot.hiddenOpacity;
-  const settled = (element?: HTMLElement) => Promise.all(animations
-    .filter(animation => (animation.effect as KeyframeEffect | null)?.target === element)
-    .map(animation => animation.finished.catch(() => undefined)));
-  // Remove the copy as soon as its own animations end (they hold their faded end state).
-  if (ghost) void settled(ghost).then(() => ghost.remove());
-  // The live view's animations must not hold their end state, or they would pin its styles.
-  void settled(container).then(() => {
-    for (const animation of container.getAnimations?.() ?? []) {
-      if (animation.playState === 'finished') animation.cancel();
-    }
+/** The day's box at each sample, and its scale relative to its new layout. */
+function dayFrames(from: Box, to: Box): Frame[] {
+  return Array.from({ length: SAMPLES + 1 }, (_, index) => {
+    const e = ease(index / SAMPLES);
+    const box = { x: lerp(from.x, to.x, e), y: lerp(from.y, to.y, e), w: lerp(from.w, to.w, e), h: lerp(from.h, to.h, e) };
+    return { box, sx: box.w / to.w, sy: box.h / to.h };
   });
-  return Promise.all(animations.map(animation => animation.finished.catch(() => undefined)))
-    .then(() => { ghost?.remove(); });
-}
-
-function boxStyle(origin: Point, box: Box) {
-  return {
-    left: `${origin.x + box.x}px`,
-    top: `${origin.y + box.y}px`,
-    width: `${box.w}px`,
-    height: `${box.h}px`,
-  };
-}
-
-function placeOverlay(stage: HTMLElement, origin: Point, box: Box) {
-  const ring = stage.ownerDocument.createElement('div');
-  ring.className = 'calendar-zoom-focus';
-  ring.setAttribute('aria-hidden', 'true');
-  Object.assign(ring.style, boxStyle(origin, box));
-  stage.append(ring);
-  return ring;
-}
-
-/** Briefly tint where the previous period landed so the eye can follow it. */
-function outlineFocus(stage: HTMLElement, origin: Point, focus: Box, delay = DURATION * 0.6) {
-  const ring = placeOverlay(stage, origin, focus);
-  const animation = ring.animate(
-    [{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }],
-    { duration: 1400, delay, easing: 'ease-out', fill: 'backwards' },
-  );
-  void animation.finished.catch(() => undefined).then(() => ring.remove());
-}
-
-/* ---- View Transitions ---------------------------------------------------------------
- * Where the browser supports same-document view transitions, the scale changes that have
- * a single element standing for the period (a month-view week row, a year-view month)
- * are morphed natively: that element and the other scale's whole viewport share one
- * transition name, so the browser animates one into the other while the surroundings
- * fade. Snapshots keep their aspect ratio and the morphing group clips them, so nothing
- * is stretched. Other pairs (day / four days / week, agenda) and browsers without the API
- * use the copy-based animation above.
- */
-
-interface ViewTransitionLike {
-  finished: Promise<void>;
-  skipTransition(): void;
-}
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (update: () => Promise<void> | void) => ViewTransitionLike;
-};
-
-const VT_FOCUS = 'calendar-zoom-focus';
-const VT_CONTEXT = 'calendar-zoom-context';
-const VT_ACTIVE_CLASS = 'calendar-zooming';
-const VT_PAIRS = new Set(['month>week', 'week>month', 'year>month', 'month>year']);
-let activeViewTransition: { transition?: ViewTransitionLike } | undefined;
-
-/** The element standing for `date`'s period in `mode`: a week row or a year-view month. */
-function zoomAnchor(container: HTMLElement, mode: CalendarViewMode, date: Date) {
-  if (mode === 'month') {
-    const week = localDayKey(weekDays(date)[0]!);
-    return [...container.querySelectorAll<HTMLElement>('.calendar-month-week')]
-      .find(row => row.dataset.week === week);
-  }
-  if (mode === 'year') {
-    const month = calendarMonthKey(date);
-    return [...container.querySelectorAll<HTMLElement>('.calendar-year-month')]
-      .find(element => element.dataset.month === month);
-  }
-  return undefined;
-}
-
-function clearTransitionNames(container: HTMLElement) {
-  container.style.removeProperty('view-transition-name');
-  for (const element of container.querySelectorAll<HTMLElement>('.calendar-month-week, .calendar-year-month')) {
-    element.style.removeProperty('view-transition-name');
-  }
-}
-
-/** Scrolls `anchor` to the middle of the viewport when it is not already fully visible. */
-function revealAnchor(container: HTMLElement, anchor: HTMLElement) {
-  const view = container.getBoundingClientRect();
-  const rect = anchor.getBoundingClientRect();
-  if (rect.top >= view.top && rect.bottom <= view.top + container.clientHeight) return;
-  container.scrollTop += rect.top - view.top - Math.max(24, (container.clientHeight - rect.height) / 2);
-}
-
-export interface CalendarViewTransitionRequest {
-  container: HTMLElement | undefined;
-  stage: HTMLElement | undefined;
-  from: CalendarViewMode;
-  to: CalendarViewMode;
-  /** The period being zoomed into, or the current date when zooming out. */
-  date: Date;
-  /** Applies the scale change (and focus date) to the calendar state. */
-  apply: () => void;
-  /** Resolves once the new scale is rendered and scrolled to its date. */
-  positioned: () => Promise<void>;
 }
 
 /**
- * Runs the scale change inside a native view transition. Returns false, without applying
- * anything, when this pair or this browser is not handled; the caller then applies the
- * change itself and the copy-based animation runs.
+ * Called once the new scale is rendered and scrolled into place: morphs every day visible
+ * both before and after, and fades the copy (with the days that have nowhere to go).
  */
-export function startCalendarViewTransition(request: CalendarViewTransitionRequest): boolean {
-  const { container, stage, from, to, date, apply, positioned } = request;
-  const doc = container?.ownerDocument as ViewTransitionDocument | undefined;
-  const view = doc?.defaultView;
-  if (!container || !stage || !doc || !view || typeof doc.startViewTransition !== 'function') return false;
-  if (reducedMotion(view) || !VT_PAIRS.has(`${from}>${to}`)) return false;
-  if (!container.clientWidth || !container.clientHeight) return false;
-  const zoomingIn = SCALE[to] < SCALE[from];
-  // A zoom still in flight ends here; the new transition starts from its settled state.
-  activeViewTransition?.transition?.skipTransition();
-  container.getAnimations?.().forEach(animation => animation.cancel());
-  stage.querySelectorAll('.calendar-zoom-ghost, .calendar-zoom-focus').forEach(element => element.remove());
-  clearTransitionNames(container);
-  const oldAnchor = zoomingIn ? zoomAnchor(container, from, date) : undefined;
-  if (zoomingIn && !oldAnchor) return false;
+export function playCalendarZoom(snapshot: CalendarZoomSnapshot, container: HTMLElement | undefined): Promise<void> {
+  const { ghost, before } = snapshot;
+  if (!container || typeof ghost.animate !== 'function') {
+    ghost.remove();
+    return Promise.resolve();
+  }
+  const after = measure(container);
+  const times = Array.from({ length: SAMPLES + 1 }, (_, index) => index / SAMPLES);
+  const options = { duration: CALENDAR_MORPH_DURATION / 1000, ease: 'linear' as const, times };
+  const controls: Controls[] = [];
+  const moved: HTMLElement[] = [];
+  const move = (element: HTMLElement, transforms: string[]) => {
+    element.style.transformOrigin = '0 0';
+    element.style.transform = transforms[0]!;
+    controls.push(animate(element, { transform: transforms }, options));
+    moved.push(element);
+  };
+  const landed = new Set<string>();
+  const dayFramesByKey = new Map<string, { element: HTMLElement; to: Box; frames: Frame[] }>();
 
-  // Old state: zooming in, the period is the shared element and the rest of the view is
-  // context that fades; zooming out, the whole viewport is the shared element.
-  container.style.setProperty('view-transition-name', zoomingIn ? VT_CONTEXT : VT_FOCUS);
-  oldAnchor?.style.setProperty('view-transition-name', VT_FOCUS);
-  doc.documentElement.classList.add(VT_ACTIVE_CLASS);
-  const run: { transition?: ViewTransitionLike } = {};
-  activeViewTransition = run;
-  let newAnchor: HTMLElement | undefined;
+  for (const [key, from] of before.days) {
+    const to = after.days.get(key);
+    const element = to && container.querySelector<HTMLElement>(`[data-zoom-day="${key}"]`);
+    if (!to || !element) continue;
+    landed.add(`day:${key}`);
+    const frames = dayFrames(from, to);
+    dayFramesByKey.set(key, { element, to, frames });
+    element.dataset.zoomMoving = '';
+    move(element, frames.map(({ box, sx, sy }) => `translate(${box.x - to.x}px, ${box.y - to.y}px) scale(${sx}, ${sy})`));
+    // Content that must keep its proportions rides along at its natural size.
+    for (const child of element.querySelectorAll<HTMLElement>('[data-zoom-scale]')) {
+      move(child, frames.map(({ sx, sy }) => `scale(${1 / sx}, ${1 / sy})`));
+    }
+  }
 
-  run.transition = doc.startViewTransition(async () => {
-    const ready = positioned();
-    clearTransitionNames(container);
-    apply();
-    await ready;
-    if (activeViewTransition !== run) return;
-    if (zoomingIn) {
-      container.style.setProperty('view-transition-name', VT_FOCUS);
-      return;
-    }
-    newAnchor = zoomAnchor(container, to, date);
-    if (!newAnchor) {
-      container.style.setProperty('view-transition-name', VT_FOCUS);
-      return;
-    }
-    revealAnchor(container, newAnchor);
-    container.style.setProperty('view-transition-name', VT_CONTEXT);
-    newAnchor.style.setProperty('view-transition-name', VT_FOCUS);
+  for (const [key, to] of after.nums) {
+    // A number only travels with a day that is itself in view (headers can peek out from
+    // behind the time gutter while their column is off screen).
+    if (!after.days.has(key) || !before.days.has(key)) continue;
+    const element = container.querySelector<HTMLElement>(`[data-zoom-num="${key}"]`);
+    if (!element) continue;
+    const from = before.nums.get(key);
+    const day = dayFramesByKey.get(key);
+    const nested = day && day.element.contains(element);
+    if (!from && !nested) continue;
+    if (from) landed.add(`num:${key}`);
+    const transforms = times.map((_, index) => {
+      const e = ease(index / SAMPLES);
+      // Where the number should be on screen, scaled uniformly from its old size.
+      const scale = from ? lerp(from.h / to.h, 1, e) : 1;
+      if (nested) {
+        const { box, sx, sy } = day.frames[index]!;
+        const local = { x: to.x - day.to.x, y: to.y - day.to.y };
+        const target = from
+          ? { x: lerp(from.x, to.x, e), y: lerp(from.y, to.y, e) }
+          : { x: box.x + sx * local.x, y: box.y + sy * local.y };
+        return `translate(${(target.x - box.x) / sx - local.x}px, ${(target.y - box.y) / sy - local.y}px) scale(${scale / sx}, ${scale / sy})`;
+      }
+      return `translate(${lerp(from!.x, to.x, e) - to.x}px, ${lerp(from!.y, to.y, e) - to.y}px) scale(${scale})`;
+    });
+    if (!nested) element.dataset.zoomMoving = '';
+    move(element, transforms);
+  }
+
+  // In the copy, hide what the new scale now shows moving; the rest fades with the copy.
+  for (const element of ghost.querySelectorAll<HTMLElement>('[data-zoom-day], [data-zoom-num]')) {
+    const key = element.dataset.zoomDay ? `day:${element.dataset.zoomDay}` : `num:${element.dataset.zoomNum}`;
+    if (landed.has(key)) element.dataset.zoomLanded = '';
+  }
+  const state = { controls, moved };
+  running.set(container, state);
+  void Promise.all(controls.map(control => control.finished.catch(() => undefined))).then(() => {
+    if (running.get(container) === state) settle(container);
   });
-
-  void run.transition.finished.catch(() => undefined).then(() => {
-    if (activeViewTransition !== run) return;
-    activeViewTransition = undefined;
-    clearTransitionNames(container);
-    doc.documentElement.classList.remove(VT_ACTIVE_CLASS);
-    // Zooming out: leave a soft tint where the period landed.
-    if (newAnchor?.isConnected) {
-      const box = focusBox(container, [newAnchor]);
-      if (box) outlineFocus(stage, stageOffset(container, stage), box, 0);
-    }
-  });
-  return true;
+  const fade = ghost.animate(
+    [{ opacity: snapshot.opacity }, { opacity: 0 }],
+    { duration: FADE_DURATION, easing: 'cubic-bezier(0.33, 1, 0.68, 1)', fill: 'forwards' },
+  );
+  return fade.finished.catch(() => undefined).then(() => { ghost.remove(); });
 }

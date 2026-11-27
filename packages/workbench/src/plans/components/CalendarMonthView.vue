@@ -62,6 +62,7 @@ function dayEntries(day: Date) {
           'is-drop-target': interactions.dropTarget.value?.zone === 'day' && interactions.dropTarget.value.dayKey === localDayKey(day),
         }"
         :data-day="localDayKey(day)"
+        :data-zoom-day="localDayKey(day)"
         @dblclick.self="emit('open-quick-create', { date: localDayKey(day), time: '', end: '' }, false)"
         @dragover="interactions.onDayDragOver(day, $event)"
         @dragleave="interactions.onDragLeave"
@@ -78,6 +79,7 @@ function dayEntries(day: Date) {
           <button
             type="button"
             class="calendar-month-date"
+            :data-zoom-num="localDayKey(day)"
             :class="{ today: localDayKey(day) === today, 'month-start': day.getDate() === 1 }"
             :aria-label="t('{0}，查看日视图', [localDayKey(day)])"
             @click="emit('select-date', day)"
@@ -87,6 +89,7 @@ function dayEntries(day: Date) {
           v-for="entry in dayEntries(day).slice(0, 3)"
           :key="`${planKey(entry.record)}:${entry.kind}`"
           class="calendar-month-event"
+          data-zoom-scale
           :class="interactions.itemClasses(entry.record, entry.kind)"
           :draggable="entry.kind !== 'due' && interactions.canDragRecord(entry.record)"
           :data-tooltip="interactions.entryTooltip(entry)"

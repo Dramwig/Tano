@@ -50,6 +50,7 @@ const dayPopoverEntries = (day: Date) => calendarDayEntries(props.planned, day);
               <button
                 v-else
                 type="button"
+                :data-zoom-day="localDayKey(day)"
                 :class="{ today: localDayKey(day) === today, selected: localDayKey(day) === dayPopoverKey }"
                 :aria-label="t('{0}，{1} 个事件', [localDayKey(day), dayPopoverEntries(day).length])"
                 aria-haspopup="dialog"
@@ -57,7 +58,7 @@ const dayPopoverEntries = (day: Date) => calendarDayEntries(props.planned, day);
                 :aria-controls="localDayKey(day) === dayPopoverKey ? dayPopoverId : undefined"
                 @click="emit('open-day-popover', day, $event)"
               >
-                <span class="calendar-year-date">{{ day.getDate() }}</span>
+                <span class="calendar-year-date" :data-zoom-num="localDayKey(day)">{{ day.getDate() }}</span>
                 <i v-if="dayPopoverEntries(day).length" class="calendar-year-event-dot" aria-hidden="true" />
               </button>
             </template>
