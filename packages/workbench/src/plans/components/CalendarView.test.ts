@@ -266,10 +266,10 @@ it('renders overlapping columns, due-only markers, inline completion, month over
   await vi.waitFor(() => expect(planFixture.update).toHaveBeenCalledTimes(1));
   expect(planFixture.update.mock.calls[0]![1].properties).toMatchObject({ checkable: true, completed: true });
 
-  // Filter bar: hide completed & switch to tasks only
-  const completedCheckbox = root.querySelector<HTMLInputElement>('.calendar-filter-completed input')!;
-  completedCheckbox.checked = false;
-  completedCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+  // Filter menu: hide completed & switch to tasks only
+  root.querySelector<HTMLButtonElement>('.calendar-filter-trigger')!.click();
+  await nextTick();
+  root.querySelector<HTMLButtonElement>('.calendar-filter-completed')!.click();
   await nextTick();
   expect(root.textContent).not.toContain('已完成项');
 
@@ -278,13 +278,12 @@ it('renders overlapping columns, due-only markers, inline completion, month over
   taskFilterBtn.click();
   await nextTick();
   expect(root.querySelectorAll('.calendar-view-event')).toHaveLength(1);
+  expect(root.querySelector('.calendar-filter-trigger')?.textContent).toContain('任务');
 
   // Reset filters and open month view "+N more" popover
-  completedCheckbox.checked = true;
-  completedCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-  const allFilterBtn = [...root.querySelectorAll<HTMLButtonElement>('.calendar-filter-kinds button')]
-    .find((btn) => btn.textContent?.trim() === '全部')!;
-  allFilterBtn.click();
+  root.querySelector<HTMLButtonElement>('.calendar-filter-reset')!.click();
+  await nextTick();
+  expect(root.querySelector('.calendar-filter-menu')).toBeNull();
   mode.value = 'month';
   await render();
 

@@ -106,13 +106,14 @@ const dayPopoverEntries = (day: Date) => calendarDayEntries(props.planned, day);
 .calendar-year-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
 .calendar-year-weekdays span { padding-bottom: 4px; color: var(--muted); font-size: 10px; }
 .calendar-year-days button,
-.calendar-year-days > span { width: 28px; height: 28px; margin: auto; font-size: 11px; }
+.calendar-year-days > span { width: 28px; height: 30px; margin: auto; font-size: 11px; }
 .calendar-year-days button {
   display: grid;
-  place-items: center;
+  /* Date circle at the top, event dot in its own lane below so they never overlap. */
+  place-items: start center;
   position: relative;
   padding: 0;
-  border-radius: 50%;
+  border-radius: 6px;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
@@ -128,7 +129,7 @@ const dayPopoverEntries = (day: Date) => calendarDayEntries(props.planned, day);
 .calendar-year-days button:hover:not(.today) > .calendar-year-date { background: var(--hover); color: var(--text); }
 .calendar-year-event-dot {
   position: absolute;
-  bottom: 0;
+  bottom: 1px;
   left: 50%;
   width: 4px;
   height: 4px;

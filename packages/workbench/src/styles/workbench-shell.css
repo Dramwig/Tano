@@ -1124,6 +1124,13 @@ button:hover {
   display: flex;
   align-items: center;
 }
+.calendar-filters-host {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+}
+.calendar-filters-host:empty { display: none; }
 .calendar-topbar-controls {
   display: flex;
   align-items: center;
@@ -1138,7 +1145,6 @@ button:hover {
   font-variant-numeric: tabular-nums;
 }
 .calendar-topbar-today,
-.calendar-topbar-events,
 .calendar-topbar-mode {
   display: inline-flex;
   align-items: center;
@@ -1153,7 +1159,6 @@ button:hover {
   white-space: nowrap;
 }
 .calendar-topbar-today:hover,
-.calendar-topbar-events:hover,
 .calendar-topbar-mode:hover,
 .calendar-topbar-mode[aria-expanded='true'] {
   border-color: var(--control-border);
@@ -1161,6 +1166,7 @@ button:hover {
   color: var(--text);
 }
 .calendar-topbar-controls > .icon-button { width: 28px; height: 28px; border-radius: 7px; }
+.calendar-topbar-archive { margin-left: 2px; }
 .calendar-view-picker { position: relative; }
 .calendar-topbar-mode { min-width: 62px; }
 .calendar-topbar-mode > svg { color: var(--muted); }

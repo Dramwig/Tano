@@ -34,7 +34,14 @@ import CalendarMonthView from './CalendarMonthView.vue';
 import CalendarYearView from './CalendarYearView.vue';
 import CalendarAgendaView from './CalendarAgendaView.vue';
 
-const props = defineProps<{ date: Date; mode: CalendarViewMode; records?: ObjectRecord[]; loading?: boolean }>();
+const props = defineProps<{
+  date: Date;
+  mode: CalendarViewMode;
+  records?: ObjectRecord[];
+  loading?: boolean;
+  /** Pane topbar host; when set, the filter bar joins the navigation controls on one row. */
+  filtersTarget?: string;
+}>();
 const emit = defineEmits<{
   'select-mode': [mode: CalendarViewMode];
   'select-date': [date: Date];
@@ -49,6 +56,13 @@ const { window } = useWindowContext();
 const plans = usePlanStore();
 const scroll = ref<HTMLElement>();
 const stage = ref<HTMLElement>();
+const shell = ref<HTMLElement>();
+// The topbar only has room for filters beside the period controls on wide panes;
+// narrower panes keep them as their own row so neither group gets squeezed.
+const TOPBAR_FILTERS_MIN_WIDTH = 640;
+const shellWidth = ref(Number.POSITIVE_INFINITY);
+const filtersInTopbar = computed(() => Boolean(props.filtersTarget) && shellWidth.value >= TOPBAR_FILTERS_MIN_WIDTH);
+let shellResize: ResizeObserver | undefined;
 // Scale changes morph each visible day with Motion (calendar-zoom-motion.ts). `zooming`
 // suppresses the views' generic CSS fade-in once one has run.
 const zooming = ref(false);
@@ -215,16 +229,24 @@ function openDayPopover(day: Date, event: MouseEvent) {
 }
 
 onMounted(() => {
+  if (shell.value && typeof ResizeObserver !== 'undefined') {
+    shellWidth.value = shell.value.clientWidth;
+    shellResize = new ResizeObserver(([entry]) => { shellWidth.value = entry.contentRect.width; });
+    shellResize.observe(shell.value);
+  }
   nowTimer = setInterval(() => { nowMinutes.value = currentMinutes(); }, 60_000);
 });
 onUnmounted(() => {
+  shellResize?.disconnect();
   if (nowTimer) clearInterval(nowTimer);
 });
 </script>
 
 <template>
-  <div class="calendar-shell" :class="{ 'is-zooming': zooming }">
-    <CalendarFilterBar v-model="filter" />
+  <div ref="shell" class="calendar-shell" :class="{ 'is-zooming': zooming }">
+    <Teleport :to="filtersTarget ?? 'body'" :disabled="!filtersInTopbar" defer>
+      <CalendarFilterBar v-model="filter" :inline="filtersInTopbar" />
+    </Teleport>
     <p v-if="interactions.interactionError.value" class="calendar-error-banner" role="alert">
       <span>{{ interactions.interactionError.value }}</span>
       <button type="button" :aria-label="t('关闭')" @click="interactions.interactionError.value = ''"><X :size="14" /></button>

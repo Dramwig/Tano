@@ -241,6 +241,14 @@ const submit = () =>
     .querySelector('form')!
     .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
+const scopeSelect = () => document.querySelector<HTMLSelectElement>('.calendar-create-scope')!;
+async function chooseScope(scope: 'workspace' | 'personal') {
+  const select = scopeSelect();
+  select.value = scope;
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await nextTick();
+}
+
 async function chooseSchedule(label: string) {
   control<HTMLButtonElement>('时间安排').click();
   await nextTick();
@@ -249,12 +257,12 @@ async function chooseSchedule(label: string) {
   await nextTick();
 }
 async function choosePrecision(label: '全天事件' | '精确时间') {
-  const buttons = document.querySelectorAll<HTMLButtonElement>('.plan-date-label button');
+  const buttons = document.querySelectorAll<HTMLButtonElement>('.compact-precision');
   expect(buttons).toHaveLength(1);
-  expect(buttons[0]!.textContent).toBe(`切换为${label}`);
+  expect(buttons[0]!.getAttribute('aria-label')).toBe(`切换为${label}`);
   buttons[0]!.click();
   await nextTick();
-  expect(buttons[0]!.textContent).toBe(label === '全天事件' ? '切换为精确时间' : '切换为全天事件');
+  expect(buttons[0]!.getAttribute('aria-label')).toBe(label === '全天事件' ? '切换为精确时间' : '切换为全天事件');
 }
 
 it.each(['workspace', 'personal'] as const)('uses independent timed-event and unscheduled-task presets in %s', async scope => {
@@ -263,7 +271,7 @@ it.each(['workspace', 'personal'] as const)('uses independent timed-event and un
   await nextTick();
   control<HTMLButtonElement>('为 10 月 2 日 添加事件').click();
   await nextTick();
-  expect(document.querySelector<HTMLInputElement>('.plan-checkable input')!.checked).toBe(false);
+  expect(document.querySelector<HTMLInputElement>('.calendar-create-checkable input')!.checked).toBe(false);
   expect(control<HTMLButtonElement>('时间安排').textContent).toContain('时间段');
   expect([...document.querySelectorAll<HTMLInputElement>('input[type=datetime-local]')].map(input => input.value))
     .toEqual(['2026-10-02T09:00', '2026-10-02T10:00']);
@@ -283,7 +291,7 @@ it.each(['workspace', 'personal'] as const)('uses independent timed-event and un
   expect(section('当天安排').querySelector('input[type=checkbox]')).toBeNull();
 
   await quickAdd('整理资料');
-  expect(document.querySelector<HTMLInputElement>('.plan-checkable input')!.checked).toBe(true);
+  expect(document.querySelector<HTMLInputElement>('.calendar-create-checkable input')!.checked).toBe(true);
   expect(control<HTMLButtonElement>('时间安排').textContent).toContain('未安排');
   expect(document.querySelector('.plan-date-inputs')).toBeNull();
   submit();
@@ -380,10 +388,10 @@ it('creates, completes, reopens and opens one persisted event while the sidebar 
 
 it('creates ordinary timed events through the same form and opens their detail', async () => {
   await quickAdd('项目讨论');
-  document.querySelector<HTMLInputElement>('.plan-checkable input')!.click();
+  document.querySelector<HTMLInputElement>('.calendar-create-checkable input')!.click();
   await nextTick();
   await choosePrecision('精确时间');
-  const completion = document.querySelector<HTMLInputElement>('.plan-checkable input')!;
+  const completion = document.querySelector<HTMLInputElement>('.calendar-create-checkable input')!;
   completion.click();
   await nextTick();
   completion.click();
@@ -405,13 +413,8 @@ it('creates ordinary timed events through the same form and opens their detail',
 
 it.each(['workspace', 'personal'] as const)('persists a date-only anniversary without completion in %s and preserves the chosen date when toggling completion', async scope => {
   await quickAdd('纪念日');
-  if (scope === 'personal') {
-    control<HTMLButtonElement>('保存到').click();
-    await nextTick();
-    document.querySelector<HTMLButtonElement>('[role=menuitemradio][aria-label="个人"]')!.click();
-    await nextTick();
-  }
-  const completion = document.querySelector<HTMLInputElement>('.plan-checkable input')!;
+  if (scope === 'personal') await chooseScope('personal');
+  const completion = document.querySelector<HTMLInputElement>('.calendar-create-checkable input')!;
   completion.click();
   await nextTick();
   expect(control<HTMLButtonElement>('时间安排').textContent).toContain('计划日期');
@@ -440,12 +443,7 @@ it.each(['workspace', 'personal'] as const)('persists a date-only anniversary wi
 
 it.each(['workspace', 'personal'] as const)('switches a range between times and inclusive dates, then saves every included day in %s', async scope => {
   await quickAdd('假期');
-  if (scope === 'personal') {
-    control<HTMLButtonElement>('保存到').click();
-    await nextTick();
-    document.querySelector<HTMLButtonElement>('[role=menuitemradio][aria-label="个人"]')!.click();
-    await nextTick();
-  }
+  if (scope === 'personal') await chooseScope('personal');
   await chooseSchedule('时间段');
   async function fill(index: number, value: string) {
     const input = document.querySelectorAll<HTMLInputElement>('.plan-date-inputs input')[index]!;
@@ -465,7 +463,7 @@ it.each(['workspace', 'personal'] as const)('switches a range between times and 
   await choosePrecision('精确时间');
   expect(values()).toEqual(['2026-10-01T23:45', '2026-10-03T01:15']);
   await choosePrecision('全天事件');
-  document.querySelector<HTMLInputElement>('.plan-checkable input')!.click();
+  document.querySelector<HTMLInputElement>('.calendar-create-checkable input')!.click();
   await nextTick();
   expect(values()).toEqual(['2026-10-01', '2026-10-03']);
   submit();
@@ -609,7 +607,7 @@ it('opens a separate panel with the selected date and returns keyboard focus whe
   expect(root.querySelector('form')).toBeNull();
   expect(document.activeElement).toBe(control<HTMLInputElement>('事件名称'));
   expect(panel.querySelector<HTMLInputElement>('input[type=datetime-local]')!.value).toBe('2026-09-29T09:00');
-  const first = control<HTMLButtonElement>('保存到');
+  const first = panel.querySelector<HTMLButtonElement>('[aria-label="关闭"]')!;
   first.focus();
   first.dispatchEvent(
     new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }),
@@ -637,7 +635,7 @@ it('keeps the panel open during saving and closes it once the event is persisted
   submit();
   await nextTick();
   const panel = document.querySelector<HTMLElement>('[role=dialog]')!;
-  expect(panel.querySelector<HTMLButtonElement>('.plan-create-actions button[type=button]')!.disabled).toBe(true);
+  expect(panel.querySelector<HTMLButtonElement>('footer button[type=button]')!.disabled).toBe(true);
   panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   panel.parentElement!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
   await nextTick();
@@ -661,11 +659,8 @@ it('keeps workspace records read-only while allowing creation in the independent
   expect(control<HTMLButtonElement>('添加未安排任务').disabled).toBe(false);
   expect(control<HTMLInputElement>('完成：旧接口新任务').disabled).toBe(true);
   await quickAdd('只读项目之外的个人任务');
-  control<HTMLButtonElement>('保存到').click();
-  await nextTick();
-  expect(document.querySelector<HTMLButtonElement>('[role=menuitemradio][aria-label="工作区"]')!.disabled).toBe(true);
-  document.querySelector<HTMLButtonElement>('[role=menuitemradio][aria-label="个人"]')!.click();
-  await nextTick();
+  expect(scopeSelect().value).toBe('personal');
+  expect(scopeSelect().querySelector<HTMLOptionElement>('option[value=workspace]')!.disabled).toBe(true);
   submit();
   await vi.waitFor(() => expect(usePlanStore().personal).toHaveLength(1));
   expect(store.objects).toHaveLength(1);
@@ -702,30 +697,7 @@ it('defaults to the selected source and scopes detail selection and completion f
   await nextTick();
   expect(section('已完成任务').textContent).toContain('个人事项');
   await quickAdd('第二条个人事项');
-  expect(control<HTMLButtonElement>('保存到').textContent).toContain('个人');
-});
-
-it('keeps ownership in a compact header menu with keyboard navigation and restores focus without closing the draft', async () => {
-  await quickAdd('归属菜单');
-  const trigger = control<HTMLButtonElement>('保存到');
-  expect(document.querySelector('form [aria-label="保存到"]')).toBeNull();
-  trigger.click();
-  await nextTick();
-  expect(document.activeElement?.getAttribute('aria-label')).toBe('工作区');
-  const menu = control<HTMLElement>('保存位置');
-  menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
-  expect(document.activeElement?.getAttribute('aria-label')).toBe('个人');
-  (document.activeElement as HTMLButtonElement).click();
-  await nextTick();
-  expect(trigger.textContent).toContain('个人');
-  expect(document.activeElement).toBe(trigger);
-  trigger.click();
-  await nextTick();
-  control<HTMLElement>('保存位置').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-  await nextTick();
-  expect(control<HTMLElement>('保存位置')).toBeNull();
-  expect(control<HTMLInputElement>('事件名称').value).toBe('归属菜单');
-  expect(document.activeElement).toBe(trigger);
+  expect(scopeSelect().value).toBe('personal');
 });
 
 it('switches the sidebar range from the heading and closes the menu on Escape or outside focus', async () => {
@@ -801,10 +773,8 @@ it('enforces workspace-only records and creation even when the shared filter is 
   expect(root.textContent).not.toContain('私人的任务');
   expect(root.querySelector('.plan-view-trigger')).toBeNull();
   await quickAdd('项目任务');
-  expect(control<HTMLButtonElement>('保存到').textContent).toContain('工作区');
-  control<HTMLButtonElement>('保存到').click();
-  await nextTick();
-  expect(document.querySelector<HTMLButtonElement>('[role=menuitemradio][aria-label="个人"]')!.disabled).toBe(true);
+  expect(scopeSelect().value).toBe('workspace');
+  expect(scopeSelect().querySelector<HTMLOptionElement>('option[value=personal]')!.disabled).toBe(true);
 });
 
 it('keeps All available with no workspace and shows personal sources', async () => {

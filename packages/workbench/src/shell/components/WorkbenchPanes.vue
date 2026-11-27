@@ -332,6 +332,7 @@ function showEmptyPaneFallback(activeId: string, tab?: DocumentTab) {
             :date="calendarDate"
             :mode="calendarMode"
             :records="plans.recordsFor(calendarScope)"
+            :filters-target="isAuxiliaryWindow ? undefined : `#calendar-filters-${pane.id}`"
             @select-mode="selectCalendarMode"
             @visible-month="calendarDate = $event"
             @visible-year="calendarDate = $event"

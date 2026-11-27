@@ -257,6 +257,11 @@ const { treeDocumentIcons, loadTreeDocumentIcon } = toRefs(treeMenus);
         {{ t('重试') }}
       </button>
     </DocumentStatus>
+    <div
+      v-if="pane.activeId === CALENDAR_TAB_ID"
+      :id="`calendar-filters-${pane.id}`"
+      class="calendar-filters-host"
+    />
     <div class="topbar-right" :data-surface-role="pane.activeId === GRAPH_TAB_ID ? 'card' : undefined">
       <PluginViewHeader
         v-if="tab?.pluginView && workspace"

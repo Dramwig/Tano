@@ -7,7 +7,6 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
-  Circle,
   CircleCheck,
   Cloud,
   FolderOpen,
@@ -38,7 +37,8 @@ import { createPlanListMotion } from './plan-list-motion';
 import PlanConnectionsDialog from './PlanConnectionsDialog.vue';
 import { usePlanSyncStore } from '../../stores/plan-sync';
 import type { SyncKind } from '../../plan-sync/types';
-import PlanDateField from './PlanDateField.vue';
+import CalendarQuickCreateDialog from './CalendarQuickCreateDialog.vue';
+import type { QuickCreateDraft } from './CalendarQuickCreateDialog.vue';
 import { writePlanDate } from '../plan-date';
 import type { PlanDateValue } from '../plan-date';
 import { isPlanCompletionLocked, withPlanCompleted } from '@tano/protocol';
@@ -200,48 +200,18 @@ const monthTitle = computed(
 const selectedTitle = computed(
   () => t('{0} 月 {1} 日', [selectedDate.value.getMonth() + 1, selectedDate.value.getDate()]),
 );
-const readonly = computed(() => (draft.value?.scope ?? (props.workspaceOnly ? 'workspace' : plans.defaultScope)) === 'personal'
-  ? !plans.personalWritable : !plans.workspaceWritable);
-const cannotAdd = computed(() => props.workspaceOnly ? !plans.workspaceWritable : !plans.personalWritable && !plans.workspaceWritable);
+const canCreateWorkspace = computed(() => plans.workspaceWritable);
+const canCreatePersonal = computed(() => !props.workspaceOnly && plans.personalWritable);
+const readonly = computed(() => draft.value?.scope === 'personal' ? !canCreatePersonal.value : !canCreateWorkspace.value);
+const cannotAdd = computed(() => !canCreateWorkspace.value && !canCreatePersonal.value);
 const pending = ref<string[]>([]);
 const saving = ref(false);
 const error = ref('');
-const nameInput = ref<HTMLInputElement>();
-const createPanel = ref<HTMLElement>();
-const scopePicker = ref<HTMLElement>();
-const scopeTrigger = ref<HTMLButtonElement>();
-const scopeOpen = ref(false);
 let previousCreateFocus: HTMLElement | null = null;
-interface EventDraft {
-  scope: PlanScope;
+interface EventDraft extends QuickCreateDraft {
   workspaceId?: string;
-  name: string;
-  checkable: boolean;
-  planDate: PlanDateValue;
 }
 const draft = ref<EventDraft>();
-const scopeDescription = computed(() => draft.value?.scope === 'personal'
-  ? (personalNative ? t('仅保存在这台设备，不随工作区分享。') : t('仅保存在当前浏览器，不随工作区分享。'))
-  : t('保存在 {0}，随工作区一起携带。', [store.workspace?.name ?? '当前工作区']));
-async function toggleScope() {
-  scopeOpen.value = !scopeOpen.value;
-  if (!scopeOpen.value) return;
-  await nextTick();
-  const menu = scopePicker.value;
-  (menu?.querySelector<HTMLElement>('[aria-checked="true"]:not(:disabled)')
-    ?? menu?.querySelector<HTMLElement>('[role="menuitemradio"]:not(:disabled)'))?.focus();
-}
-async function closeScope() {
-  scopeOpen.value = false;
-  await nextTick();
-  scopeTrigger.value?.focus();
-}
-function chooseScope(scope: PlanScope) {
-  if (props.workspaceOnly && scope !== 'workspace') return;
-  if (!draft.value || saving.value || (scope === 'personal' ? !plans.personalWritable : !plans.workspaceWritable)) return;
-  draft.value.scope = scope;
-  void closeScope();
-}
 function onPickerKeydown(event: KeyboardEvent, picker?: HTMLElement) {
   const options = [
     ...(picker?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]:not(:disabled), [role="menuitem"]:not(:disabled)') ?? []),
@@ -257,83 +227,40 @@ function onPickerKeydown(event: KeyboardEvent, picker?: HTMLElement) {
   event.preventDefault();
   options[next]?.focus();
 }
-function dismissPickers(event: MouseEvent | FocusEvent) {
-  if (!(event.target instanceof Node)) return;
-  if (!scopePicker.value?.contains(event.target)) scopeOpen.value = false;
-}
-async function addEvent(kind: 'event' | 'task') {
+function addEvent(kind: 'event' | 'task') {
   if (cannotAdd.value || saving.value) return;
   viewOpen.value = false;
-  if (!draft.value) {
-    previousCreateFocus = document.activeElement as HTMLElement | null;
-    draft.value = {
-      scope: props.workspaceOnly ? 'workspace' : plans.defaultScope,
-      workspaceId: store.workspace?.id,
-      name: '',
-      checkable: kind === 'task',
-      planDate: kind === 'task'
-        ? { date: '', time: '', end: '' }
-        : { date: selected.value, time: '09:00', end: `${selected.value}T10:00` },
-    };
-  }
+  if (draft.value) return;
+  previousCreateFocus = document.activeElement as HTMLElement | null;
+  const preferred: PlanScope = props.workspaceOnly ? 'workspace' : plans.defaultScope;
+  const scope: PlanScope = preferred === 'personal'
+    ? (canCreatePersonal.value ? 'personal' : 'workspace')
+    : (canCreateWorkspace.value ? 'workspace' : 'personal');
   error.value = '';
-  await nextTick();
-  nameInput.value?.focus();
+  draft.value = {
+    scope,
+    workspaceId: store.workspace?.id,
+    name: '',
+    checkable: kind === 'task',
+    planDate: kind === 'task'
+      ? { date: '', time: '', end: '' }
+      : { date: selected.value, time: '09:00', end: `${selected.value}T10:00` },
+  };
 }
 function closeCreate() {
   if (saving.value) return;
-  scopeOpen.value = false;
   draft.value = undefined;
   error.value = '';
-}
-function onCreateKeydown(event: KeyboardEvent) {
-  if (event.isComposing) return;
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    closeCreate();
-  }
-  if (event.key !== 'Tab' || !createPanel.value) return;
-  const controls = [
-    ...createPanel.value.querySelectorAll<HTMLElement>(':is(button, input, select):not(:disabled)'),
-  ];
-  if (!controls.length) {
-    event.preventDefault();
-    createPanel.value.focus();
-  } else if (
-    event.shiftKey &&
-    (document.activeElement === controls[0] || document.activeElement === createPanel.value)
-  ) {
-    event.preventDefault();
-    controls.at(-1)?.focus();
-  } else if (
-    !event.shiftKey &&
-    (document.activeElement === controls.at(-1) || document.activeElement === createPanel.value)
-  ) {
-    event.preventDefault();
-    controls[0]?.focus();
-  }
 }
 watch(
   () => !!draft.value,
   async (open) => {
     if (open) return;
-    scopeOpen.value = false;
     await nextTick();
     if (previousCreateFocus?.isConnected) previousCreateFocus.focus({ preventScroll: true });
     previousCreateFocus = null;
   },
 );
-watch(saving, async (busy) => {
-  if (busy) scopeOpen.value = false;
-  await nextTick();
-  if (!draft.value) return;
-  if (busy) createPanel.value?.focus({ preventScroll: true });
-  else nameInput.value?.focus({ preventScroll: true });
-});
-function changeCheckable() {
-  if (draft.value && !draft.value.checkable && !draft.value.planDate.date)
-    draft.value.planDate.date = selected.value;
-}
 async function saveEvent() {
   const value = draft.value;
   const workspaceId = store.workspace?.id;
@@ -644,111 +571,16 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
-    <Teleport to="body">
-      <div v-surface-motion="'SidebarPlan:1'" v-if="draft" class="modal-backdrop plan-create-backdrop" data-surface-role="backdrop" @mousedown.self="closeCreate">
-        <section
-          ref="createPanel"
-          class="modal plan-create-panel" data-surface-role="dialog"
-          role="dialog"
-          aria-modal="true"
-          :aria-label="t('新建事件')"
-          :aria-busy="saving"
-          tabindex="-1"
-          @keydown.stop="onCreateKeydown"
-          @mousedown="dismissPickers"
-          @focusin="dismissPickers"
-        >
-          <header>
-            <h2>{{ t('新建事件') }}</h2>
-            <div class="plan-create-header-actions">
-              <div ref="scopePicker" class="plan-scope-picker">
-                <button
-                  ref="scopeTrigger"
-                  type="button"
-                  class="plan-scope-trigger"
-                  :aria-label="t('保存到')"
-                  :data-tooltip="scopeDescription"
-                  aria-haspopup="menu"
-                  aria-controls="plan-create-scope-menu"
-                  :aria-expanded="scopeOpen"
-                  :disabled="saving"
-                  @click="toggleScope"
-                  @keydown.down.prevent="scopeOpen || toggleScope()"
-                >
-                  <component :is="draft.scope === 'personal' ? UserRound : FolderOpen" :size="14" aria-hidden="true" />
-                  <span>{{ draft.scope === 'personal' ? t('个人') : t('工作区') }}</span>
-                  <ChevronDown :size="13" aria-hidden="true" />
-                </button>
-                <div v-surface-motion="'SidebarPlan:2'"
-                  v-if="scopeOpen"
-                  id="plan-create-scope-menu"
-                  class="plan-scope-menu" data-surface-role="popover"
-                  role="menu"
-                  :aria-label="t('保存位置')"
-                  @keydown="onPickerKeydown($event, scopePicker)"
-                  @keydown.esc.stop.prevent="closeScope"
-                >
-                  <span class="plan-scope-menu-heading">{{ t('保存到') }}</span>
-                  <button type="button" role="menuitemradio" :aria-label="t('工作区')" :aria-checked="draft.scope === 'workspace'" :disabled="!plans.workspaceWritable" @click="chooseScope('workspace')">
-                    <FolderOpen :size="17" aria-hidden="true" />
-                    <span><strong>{{ t('工作区') }}</strong><small>{{ store.workspace?.name ?? t('尚未打开工作区') }}</small></span>
-                    <Check v-if="draft.scope === 'workspace'" :size="15" aria-hidden="true" />
-                  </button>
-                  <button type="button" role="menuitemradio" :aria-label="t('个人')" :aria-checked="draft.scope === 'personal'" :disabled="workspaceOnly || !plans.personalWritable" @click="chooseScope('personal')">
-                    <UserRound :size="17" aria-hidden="true" />
-                    <span><strong>{{ t('个人') }}</strong><small>{{ personalNative ? t('仅这台设备，不随工作区分享') : t('仅当前浏览器，不随工作区分享') }}</small></span>
-                    <Check v-if="draft.scope === 'personal'" :size="15" aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </header>
-          <form class="plan-create" :aria-label="t('新建事件')" @submit.prevent="saveEvent">
-            <input
-              ref="nameInput"
-              v-model="draft.name"
-              class="plan-create-title"
-              :aria-label="t('事件名称')"
-              :placeholder="t('记下一件事…')"
-              autocomplete="off"
-              required
-              maxlength="200"
-              :disabled="saving || readonly"
-            />
-            <PlanDateField v-model="draft.planDate" :default-date="selected" :required="!draft.checkable" :disabled="saving || readonly">
-              <template #leading>
-              <label
-                class="plan-checkable"
-                :class="{ checked: draft.checkable, disabled: saving || readonly }"
-              >
-                <input
-                  v-model="draft.checkable"
-                  type="checkbox"
-                  :disabled="saving || readonly"
-                  @change="changeCheckable"
-                />
-                <component
-                  :is="draft.checkable ? CircleCheck : Circle"
-                  :size="24"
-                  :stroke-width="1.8"
-                  aria-hidden="true"
-                />
-                <span>{{ t('需要完成') }}</span>
-              </label>
-              </template>
-            </PlanDateField>
-            <p v-if="error" class="plan-error" role="alert">{{ error }}</p>
-            <div class="plan-create-actions">
-              <span class="plan-create-hint" aria-hidden="true">{{ t('Esc 取消 · Enter 创建') }}</span>
-              <button type="button" :disabled="saving" @click="closeCreate">{{ t('取消') }}</button
-              ><button type="submit" :disabled="saving || readonly || !draft.name.trim()">
-                {{ saving ? t('保存中…') : t('创建') }}
-              </button>
-            </div>
-          </form>
-        </section>
-      </div>
-    </Teleport>
+    <CalendarQuickCreateDialog
+      :draft="draft"
+      :saving="saving"
+      :error="error"
+      :default-date="selected"
+      :can-create-workspace="canCreateWorkspace"
+      :can-create-personal="canCreatePersonal"
+      @close="closeCreate"
+      @submit="saveEvent"
+    />
     <p v-if="error && !draft" class="plan-error" role="alert">{{ error }}</p>
     <section class="sidebar-calendar-agenda" :aria-label="t('当天安排')">
       <div class="plan-section-heading" data-plan-layout="agenda-heading">
@@ -962,49 +794,6 @@ onBeforeUnmount(() => {
 .plan-completed-toggle:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .plan-completed-toggle > svg { transform: rotate(-90deg); transition: transform 150ms ease; }
 .plan-completed-toggle[aria-expanded='true'] > svg { transform: rotate(0); }
-.plan-create-backdrop {
-  z-index: 90;
-  padding: max(24px, 26vh) 20px 24px;
-  background: #0f0f0f2b;
-  backdrop-filter: none;
-}
-.plan-create-panel {
-  width: 480px;
-  padding: 22px 28px 24px;
-  border-radius: 14px;
-  border-color: color-mix(in srgb, var(--line) 55%, transparent);
-  box-shadow: 0 18px 60px #0f0f0f24;
-}
-.plan-create-panel > header {
-  margin-bottom: 24px;
-}
-.plan-create-panel h2 {
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--muted);
-}
-.plan-create-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-.plan-scope-picker { position: relative; }
-.plan-scope-trigger {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 4px 7px;
-  border-radius: 6px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 20px;
-}
-.plan-scope-trigger:hover,
-.plan-scope-trigger[aria-expanded='true'] {
-  background: var(--surface);
-  color: var(--text);
-}
 .plan-scope-menu {
   position: absolute;
   top: calc(100% + 8px);
@@ -1056,112 +845,6 @@ onBeforeUnmount(() => {
 .plan-view-menu button:disabled { opacity: 0.5; cursor: not-allowed; }
 .plan-connections-menu { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
 .plan-connections-menu button { font-size: 12px; }
-.plan-create-header-actions button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
-.plan-create-header-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
-.plan-create {
-  margin: 0;
-}
-.plan-create .plan-create-title {
-  width: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  font-size: 26px;
-  font-weight: 500;
-  line-height: 1.5;
-  caret-color: var(--green);
-}
-.plan-create .plan-create-title::placeholder {
-  color: var(--muted);
-  font-weight: 400;
-}
-.plan-create .plan-create-title:focus-visible {
-  outline: none;
-}
-.plan-create > .plan-date-field { margin-top: 28px; }
-.plan-create .plan-checkable {
-  position: relative;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: 12px;
-  min-height: 36px;
-  margin: 0;
-  padding: 4px 6px;
-  margin-left: -6px;
-  border-radius: 6px;
-  font-size: 15px;
-  color: var(--muted);
-  cursor: pointer;
-}
-.plan-checkable.checked {
-  color: var(--green);
-}
-.plan-checkable:not(.disabled):hover {
-  background: var(--hover);
-}
-.plan-checkable.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.plan-checkable input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  padding: 0;
-  clip-path: inset(50%);
-  overflow: hidden;
-}
-.plan-checkable:has(input:focus-visible) {
-  outline: 2px solid var(--green);
-  outline-offset: 2px;
-}
-.plan-create-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 28px;
-  padding-top: 20px;
-  border-top: 1px solid var(--line);
-}
-.plan-create-hint {
-  margin-right: auto;
-  color: var(--muted);
-  font-size: 13px;
-}
-.plan-create-actions button {
-  min-height: 38px;
-  padding: 9px 18px;
-  border-radius: 7px;
-  font-size: 14px;
-  color: var(--text);
-}
-.plan-create-actions button[type='submit'] {
-  background: var(--green-fill);
-  color: var(--on-accent, white);
-}
-.plan-create-actions button[type='submit']:not(:disabled):hover {
-  background: var(--green-fill-hover);
-}
-@media (max-width: 480px) {
-  .plan-create-backdrop {
-    padding: max(20px, 12vh) 12px 20px;
-  }
-  .plan-create-panel {
-    padding: 20px;
-  }
-  .plan-create .plan-create-title {
-    font-size: 23px;
-  }
-}
-@media (max-height: 600px) {
-  .plan-create-backdrop {
-    padding-top: 24px;
-  }
-}
 .plan-error {
   color: var(--danger, #b54141);
   font-size: 12px;
@@ -1172,15 +855,11 @@ onBeforeUnmount(() => {
 .plan-view-trigger:focus-visible,
 .plan-view-menu button:focus-visible,
 .plan-load-notice summary:focus-visible,
-.plan-load-notice button:focus-visible,
-.plan-create input:focus-visible,
-.plan-create select:focus-visible,
-.plan-create button:focus-visible {
+.plan-load-notice button:focus-visible {
   outline: 2px solid var(--green);
   outline-offset: 2px;
 }
-.plan-add:disabled,
-.plan-create button:disabled {
+.plan-add:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -1280,11 +959,19 @@ onBeforeUnmount(() => {
 .sidebar-calendar-day.today > span {
   display: grid;
   place-items: center;
-  width: min(18px, 100%);
+  box-sizing: border-box;
+  width: min(22px, 100%);
   aspect-ratio: 1;
   border-radius: 50%;
   background: var(--green-fill);
   color: var(--on-accent, white);
+  font-weight: 600;
+}
+/* Every date sits 2px above the cell centre so the event dot has its own
+   lane at the bottom; today's 22px pill (rows 2–24 of 30) then never
+   overlaps it, and all dots and digits stay on the same lines. */
+.sidebar-calendar-day > span {
+  margin-bottom: 4px;
 }
 .sidebar-calendar-event-dot {
   position: absolute;

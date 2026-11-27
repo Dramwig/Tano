@@ -91,11 +91,12 @@ const emit = defineEmits<{
     <button
       v-if="isVisible('calendar-events')"
       type="button"
-      class="calendar-topbar-events"
+      class="icon-button calendar-topbar-archive"
+      :aria-label="t('已归档')"
       :data-tooltip="t('查看和恢复已归档事项')"
       @click="emit('open-archive')"
     >
-      <Archive :size="15" />{{ t('已归档') }}
+      <Archive :size="16" />
     </button>
   </div>
 </template>

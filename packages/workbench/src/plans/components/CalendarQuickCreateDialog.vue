@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { nextTick, ref, useId, watch } from 'vue';
-import { CalendarDays, FolderOpen, ListTodo, X } from 'lucide-vue-next';
+import { nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
+import { CalendarDays, Check, FolderOpen, ListTodo, X } from 'lucide-vue-next';
 import { vSurfaceMotion } from '@tano/editor/surface-motion';
+import { resizeHeight, settleHeight } from '@tano/editor/motion';
 import { t } from '../../i18n/i18n';
 import { useWindowContext } from '../../windows/context';
 import type { PlanScope } from '../../stores/plans';
@@ -31,14 +32,84 @@ const emit = defineEmits<{
 
 const { document } = useWindowContext();
 const nameInput = ref<HTMLInputElement>();
+const dialog = ref<HTMLElement>();
+const sizer = ref<HTMLElement>();
+const content = ref<HTMLFormElement>();
+
+// Smooth height changes (e.g. switching 时间安排 adds/removes date rows).
+// The form keeps its natural height and is observed; the sizer around it
+// animates from whatever height is on screen now, so rapid changes retarget
+// mid-flight instead of jumping.
+let observer: ResizeObserver | undefined;
+let shownHeight = 0;
+function observeContent(form: HTMLFormElement | undefined) {
+  observer?.disconnect();
+  observer = undefined;
+  shownHeight = 0;
+  const box = sizer.value;
+  if (!form || !box || typeof ResizeObserver === 'undefined') return;
+  observer = new ResizeObserver(() => {
+    const next = form.getBoundingClientRect().height;
+    if (!shownHeight || Math.abs(next - shownHeight) < 0.5) { shownHeight = next; return; }
+    // Layout already has the new height here (before paint). Start from the
+    // last shown height, or the in-flight animated height when retargeting.
+    const from = box.getAnimations?.().length ? box.getBoundingClientRect().height : shownHeight;
+    settleHeight(box);
+    shownHeight = next;
+    resizeHeight(box, from, next, { kind: 'smooth' });
+  });
+  observer.observe(form);
+}
+watch(content, observeContent, { flush: 'post' });
+onBeforeUnmount(() => observer?.disconnect());
+
+// aria-modal: keep Tab / Shift+Tab cycling inside the dialog.
+function trapTab(event: KeyboardEvent) {
+  if (event.key !== 'Tab' || !dialog.value) return;
+  const controls = [...dialog.value.querySelectorAll<HTMLElement>(':is(button, input, select):not(:disabled)')];
+  const active = document.activeElement;
+  if (!controls.length) {
+    event.preventDefault();
+    return;
+  }
+  if (event.shiftKey && (active === controls[0] || active === dialog.value)) {
+    event.preventDefault();
+    controls.at(-1)?.focus();
+  } else if (!event.shiftKey && active === controls.at(-1)) {
+    event.preventDefault();
+    controls[0]?.focus();
+  }
+}
 const scopeId = useId();
 
 watch(
   () => props.draft,
-  async (draft) => {
-    if (!draft) return;
+  (draft) => {
+    if (draft) nameInput.value?.focus();
+  },
+  { flush: 'post' },
+);
+
+// Inputs are disabled while saving; park focus on the dialog so Esc/Tab
+// still land inside it, then hand it back to the title (e.g. after an error).
+watch(
+  () => props.saving,
+  async (busy) => {
     await nextTick();
-    nameInput.value?.focus();
+    if (!props.draft) return;
+    if (busy) dialog.value?.focus({ preventScroll: true });
+    else nameInput.value?.focus({ preventScroll: true });
+  },
+);
+
+// A plain event needs a date; turning "需要完成" off on an unscheduled task
+// falls back to the default day instead of leaving an invalid empty draft.
+watch(
+  () => props.draft?.checkable,
+  (checkable, previous) => {
+    const draft = props.draft;
+    if (draft && previous === true && checkable === false && !draft.planDate.date)
+      draft.planDate.date = props.defaultDate;
   },
 );
 </script>
@@ -52,11 +123,15 @@ watch(
       @mousedown.self="emit('close')"
     >
       <section
+        ref="dialog"
         class="calendar-create-dialog"
         role="dialog"
         aria-modal="true"
         :aria-label="t('新建事件')"
+        :aria-busy="saving"
+        tabindex="-1"
         @keydown.esc.stop.prevent="emit('close')"
+        @keydown="trapTab"
       >
         <header>
           <h2>{{ t('新建事件') }}</h2>
@@ -64,7 +139,8 @@ watch(
             <X :size="16" />
           </button>
         </header>
-        <form @submit.prevent="emit('submit')">
+        <div ref="sizer" class="calendar-create-sizer">
+        <form ref="content" @submit.prevent="emit('submit')">
           <input
             ref="nameInput"
             v-model="draft.name"
@@ -91,6 +167,7 @@ watch(
               <span class="calendar-create-label"><ListTodo :size="15" aria-hidden="true" />{{ t('类型') }}</span>
               <label class="calendar-create-checkable">
                 <input v-model="draft.checkable" type="checkbox" :disabled="saving" />
+                <span class="calendar-create-check" aria-hidden="true"><Check :size="11" :stroke-width="3" /></span>
                 <span>{{ t('需要完成') }}</span>
               </label>
             </div>
@@ -110,6 +187,7 @@ watch(
             </button>
           </footer>
         </form>
+        </div>
       </section>
     </div>
   </Teleport>
@@ -137,6 +215,7 @@ watch(
   color: var(--text);
   box-shadow: var(--dialog-shadow, 0 16px 48px #0003);
 }
+.calendar-create-dialog:focus { outline: none; }
 .calendar-create-dialog header {
   display: flex;
   align-items: center;
@@ -236,6 +315,44 @@ watch(
   transition: background-color var(--motion-quick) var(--ease-standard);
 }
 .calendar-create-checkable:hover { background: var(--hover); }
+/* Monochrome checkbox: native blue tick clashes with the ink palette. */
+.calendar-create-checkable { position: relative; }
+.calendar-create-checkable input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.calendar-create-check {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid color-mix(in srgb, var(--text) 32%, transparent);
+  border-radius: 4px;
+  color: transparent;
+  transition: background-color var(--motion-quick) var(--ease-standard), border-color var(--motion-quick) var(--ease-standard), color var(--motion-quick) var(--ease-standard);
+}
+.calendar-create-checkable:hover .calendar-create-check { border-color: color-mix(in srgb, var(--text) 50%, transparent); }
+.calendar-create-checkable input:checked + .calendar-create-check {
+  border-color: var(--green-fill);
+  background: var(--green-fill);
+  color: var(--on-accent, #fff);
+}
+.calendar-create-checkable input:focus-visible + .calendar-create-check { box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 12%, transparent); }
+.calendar-create-checkable input:disabled + .calendar-create-check { opacity: 0.5; }
+@media (prefers-reduced-motion: no-preference) {
+  .calendar-create-checkable input:checked + .calendar-create-check > svg {
+    animation: tano-check-pop var(--motion-bouncy) var(--ease-spring-bouncy);
+  }
+}
+/* The sizer clips only while animating; the extra inline room keeps the
+   title's hover bleed and focus rings visible during that time. */
+.calendar-create-sizer { margin: 0 -10px; padding: 0 10px; }
+.calendar-create-sizer > form { display: flow-root; }
 .calendar-create-error { margin: 10px 0 0; color: var(--danger, #c24141); font-size: 12px; }
 .calendar-create-dialog footer {
   display: flex;
