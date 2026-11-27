@@ -31,6 +31,8 @@ export interface CalendarZoomSnapshot {
   ghost?: HTMLElement;
   /** Transform the copy starts from, so an interrupted transition continues from its current frame. */
   carried: string;
+  /** Clip the copy starts from (an interrupted zoom may be mid-reveal). */
+  carriedClip: string;
   /** Inline opacity of the live viewport before it was hidden behind the copy. */
   hiddenOpacity: string;
   /** Focus region in the old view as it appeared on screen (zoom in only), relative to the viewport. */
@@ -118,11 +120,53 @@ function focusBox(container: HTMLElement, elements: HTMLElement[]): Box | undefi
   return { x: left - view.left, y: top - view.top, w: right - left, h: bottom - top };
 }
 
-/** Transform (origin top-left) that maps box `a` onto box `b`. */
-function mapBox(a: Box, b: Box) {
-  const sx = b.w / a.w;
-  const sy = b.h / a.h;
-  return `translate(${b.x - a.x * sx}px, ${b.y - a.y * sy}px) scale(${sx}, ${sy})`;
+/**
+ * Uniform (aspect-preserving) placement, origin top-left: `x' = s * x + tx`. Scaling both
+ * axes by the same factor keeps text and grid proportions intact; the change in shape
+ * between a period and the viewport is carried by a clip instead of by stretching.
+ */
+interface Fit { s: number; tx: number; ty: number }
+
+function fitTransform({ s, tx, ty }: Fit) {
+  return `translate(${tx}px, ${ty}px) scale(${s})`;
+}
+
+/** Shrinks (or grows) the whole viewport so it just covers `box`, centred on it. */
+function coverBox(box: Box, viewport: Box): Fit {
+  const s = Math.max(box.w / viewport.w, box.h / viewport.h);
+  return { s, tx: box.x + box.w / 2 - (s * viewport.w) / 2, ty: box.y + box.h / 2 - (s * viewport.h) / 2 };
+}
+
+/** Moves `box` to the viewport's centre, scaled uniformly until it meets the viewport's edge. */
+function bringOut(box: Box, viewport: Box): Fit {
+  const s = Math.min(viewport.w / box.w, viewport.h / box.h);
+  return { s, tx: viewport.w / 2 - s * (box.x + box.w / 2), ty: viewport.h / 2 - s * (box.y + box.h / 2) };
+}
+
+/** Rounded corners of the reveal window, in screen pixels. */
+const CLIP_RADIUS = 6;
+const FULL_CLIP = 'inset(0px 0px 0px 0px round 0px)';
+
+/**
+ * Clip, in the element's own coordinates, that shows exactly `box` on screen once `fit`
+ * (and, for a copy, the transform it was captured with) is applied.
+ */
+function clipToBox(box: Box, fit: Fit, viewport: Box, carried: string, view: Window) {
+  let x = (box.x - fit.tx) / fit.s;
+  let y = (box.y - fit.ty) / fit.s;
+  let w = box.w / fit.s;
+  let h = box.h / fit.s;
+  let scale = fit.s;
+  const Matrix = (view as Window & typeof globalThis).DOMMatrixReadOnly;
+  if (carried && typeof Matrix === 'function') {
+    const { a, d, e, f } = new Matrix(carried);
+    x = (x - e) / a; y = (y - f) / d; w /= a; h /= d; scale *= a;
+  }
+  const top = Math.max(0, y);
+  const left = Math.max(0, x);
+  const right = Math.max(0, viewport.w - (x + w));
+  const bottom = Math.max(0, viewport.h - (y + h));
+  return `inset(${top}px ${right}px ${bottom}px ${left}px round ${CLIP_RADIUS / scale}px)`;
 }
 
 /** Applies a translate/scale matrix (no rotation or skew) to a box. */
@@ -155,11 +199,12 @@ export function captureCalendarZoom(
   // Read the in-flight frame before settling it, so the copy picks up exactly where it is.
   const computed = view.getComputedStyle(container);
   const carried = computed.transform && computed.transform !== 'none' ? computed.transform : '';
+  const carriedClip = computed.clipPath && computed.clipPath !== 'none' ? computed.clipPath : '';
   const opacity = Number.parseFloat(computed.opacity);
   container.getAnimations?.().forEach(animation => animation.cancel());
   // Copies from earlier transitions keep fading out on their own; outlines are stale now.
   stage.querySelectorAll('.calendar-zoom-focus').forEach(element => element.remove());
-  const snapshot: CalendarZoomSnapshot = { from, to, carried, hiddenOpacity: container.style.opacity };
+  const snapshot: CalendarZoomSnapshot = { from, to, carried, carriedClip, hiddenOpacity: container.style.opacity };
   if (SCALE[to] < SCALE[from]) {
     const finer = SCALE[from] <= SCALE[to] ? from : to;
     const source = focusBox(container, focusElements(container, from, focusDays(date, from, to), finer));
@@ -181,6 +226,7 @@ export function captureCalendarZoom(
     pointerEvents: 'none',
     transformOrigin: '0 0',
     transform: carried || 'none',
+    clipPath: carriedClip || 'none',
     opacity: String(Number.isFinite(opacity) ? opacity : 1),
     zIndex: '2',
   });
@@ -240,11 +286,13 @@ export function playCalendarZoom(
     !carried ? transform : transform === 'none' ? carried : `${transform} ${carried}`;
   const startOpacity = ghost?.style.opacity ?? '1';
   const animations: Animation[] = [];
+  const view = container.ownerDocument.defaultView!;
   // Motion and opacity run on separate timelines: on the shared spring curve the fades would
   // finish in the first few frames, before the eye has found the period being moved.
-  const move = (element: HTMLElement, from: string, to: string, duration: number, delay = 0) =>
+  type Frame = { transform: string; clipPath?: string };
+  const move = (element: HTMLElement, from: Frame, to: Frame, duration: number, delay = 0) =>
     animations.push(element.animate(
-      [{ transform: from, transformOrigin: '0 0' }, { transform: to, transformOrigin: '0 0' }],
+      [{ ...from, transformOrigin: '0 0' }, { ...to, transformOrigin: '0 0' }],
       { duration, delay, easing: EASE, fill: 'both' },
     ));
   // `at` gives the [start, end] of the fade as fractions of `duration`, in real time.
@@ -253,27 +301,45 @@ export function playCalendarZoom(
       [{ opacity: from }, { opacity: from, offset: at[0] }, { opacity: to, offset: at[1] }, { opacity: to }],
       { duration, easing: 'linear', fill: 'both' },
     ));
+  const copyClip = snapshot.carriedClip || FULL_CLIP;
   if (focus && zoomingOut) {
-    const outer = mapBox(focus, viewport); // focus region → full viewport
-    const inner = mapBox(viewport, focus); // full viewport → focus region
-    move(container, outer, 'none', DURATION);
+    // The coarser view arrives from the period's spot, scaled evenly (no stretching).
+    move(container, { transform: fitTransform(bringOut(focus, viewport)) }, { transform: 'none' }, DURATION);
     fade(container, '0', '1', DURATION, [0, 0.55]);
     if (ghost) {
-      move(ghost, onCopy('none'), onCopy(inner), DURATION);
-      fade(ghost, startOpacity, '0', DURATION, [0.1, 0.7]);
+      // The old view shrinks evenly onto the period while its window closes to the period's shape.
+      const cover = coverBox(focus, viewport);
+      move(
+        ghost,
+        { transform: onCopy('none'), clipPath: copyClip },
+        { transform: onCopy(fitTransform(cover)), clipPath: clipToBox(focus, cover, viewport, carried, view) },
+        DURATION,
+      );
+      fade(ghost, startOpacity, '0', DURATION, [0.3, 0.85]);
     }
     outlineFocus(stage, origin, focus);
   } else if (focus) {
     // Zooming in: first let everything around the period fade back so it stands alone, then
-    // open it. The finer view shows up inside the period before it fills the viewport.
+    // open it: the finer view starts as a window the size of the period and widens evenly.
     const hold = 110;
     const total = hold + EXPAND_DURATION;
-    const outer = mapBox(focus, viewport);
-    const inner = mapBox(viewport, focus);
-    move(container, inner, 'none', EXPAND_DURATION, hold);
-    fade(container, '0', '1', total, [0.2, 0.55]);
+    const cover = coverBox(focus, viewport);
+    move(
+      container,
+      { transform: fitTransform(cover), clipPath: clipToBox(focus, cover, viewport, '', view) },
+      { transform: 'none', clipPath: FULL_CLIP },
+      EXPAND_DURATION,
+      hold,
+    );
+    fade(container, '0', '1', total, [0.2, 0.5]);
     if (ghost) {
-      move(ghost, onCopy('none'), onCopy(outer), EXPAND_DURATION, hold);
+      move(
+        ghost,
+        { transform: onCopy('none'), clipPath: copyClip },
+        { transform: onCopy(fitTransform(bringOut(focus, viewport))), clipPath: copyClip },
+        EXPAND_DURATION,
+        hold,
+      );
       fade(ghost, startOpacity, '0', total, [0.3, 0.7]);
     }
     const local = snapshot.sourceLocal;
@@ -291,7 +357,7 @@ export function playCalendarZoom(
       ));
     }
   } else {
-    move(container, `scale(${zoomingOut ? 1.04 : 0.96})`, 'none', DURATION);
+    move(container, { transform: `scale(${zoomingOut ? 1.04 : 0.96})` }, { transform: 'none' }, DURATION);
     fade(container, '0', '1', DURATION, [0, 0.6]);
     if (ghost) fade(ghost, startOpacity, '0', DURATION, [0, 0.5]);
   }
