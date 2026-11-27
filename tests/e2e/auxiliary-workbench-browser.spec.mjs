@@ -1021,6 +1021,9 @@ test('continuous liquid glass extends only the pane edges that reach the window'
 test('settings edits update the actual main and auxiliary editors immediately', async ({ page }) => {
   await prepare(page);
   const child = await openDocumentWindow(page, 'settings-target', 'Auxiliary document\n');
+  const childActions = child.locator('.desktop-window-actions');
+  await expect(childActions).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(childActions.getByRole('button', { name: '最小化', exact: true })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await page.locator('.tree-row[title="Main.md"]').click();
   const opened = page.waitForEvent('popup');
   await page.evaluate(() => window.workbench.auxiliaryWindows.open('settings', 'settings', '设置'));

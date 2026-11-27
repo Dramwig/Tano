@@ -9,7 +9,8 @@
   .settings-font-controls button, .pc-button, .primary-button,
   .modal input, .modal button, [data-surface-role='dialog'] input, [data-surface-role='dialog'] button,
   .command-palette input, .tano-editor-panel button
-) {
+):not([role='switch']) {
+  /* Switches are pills in every shape; the dialog-wide button sweep must not square them off. */
   border-radius: var(--radius-control);
 }
 

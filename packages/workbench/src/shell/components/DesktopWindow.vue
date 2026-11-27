@@ -215,7 +215,7 @@ async function toggleMaximize() {
   border: 0;
   border-radius: 0;
   overflow: visible;
-  background: var(--workbench-back);
+  background: transparent;
   color: var(--text-secondary);
   display: flex;
   align-items: stretch;
@@ -224,8 +224,8 @@ async function toggleMaximize() {
 .desktop-window-actions:not(:popover-open) {
   display: none;
 }
-/* Settings paint the whole window. The titlebar and its teleported controls sit above that surface. */
-:root:has(.settings-windowed) :is(.desktop-window-titlebar, .desktop-window-actions) {
+/* Settings paint the whole window. The titlebar sits above that surface. */
+:root:has(.settings-windowed) .desktop-window-titlebar {
   background: transparent;
 }
 .desktop-window-actions button {
@@ -236,10 +236,11 @@ async function toggleMaximize() {
   padding: 0;
   border: 0;
   border-radius: 0;
+  background: transparent;
   color: var(--text-secondary);
 }
 .desktop-window-actions button:hover {
-  background: var(--hover);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 .desktop-window-actions .desktop-window-close:hover {
   background: #d92d20;
