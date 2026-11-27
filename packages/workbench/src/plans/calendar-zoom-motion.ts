@@ -397,11 +397,142 @@ function placeOverlay(stage: HTMLElement, origin: Point, box: Box) {
 }
 
 /** Briefly tint where the previous period landed so the eye can follow it. */
-function outlineFocus(stage: HTMLElement, origin: Point, focus: Box) {
+function outlineFocus(stage: HTMLElement, origin: Point, focus: Box, delay = DURATION * 0.6) {
   const ring = placeOverlay(stage, origin, focus);
   const animation = ring.animate(
     [{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }],
-    { duration: 1400, delay: DURATION * 0.6, easing: 'ease-out', fill: 'backwards' },
+    { duration: 1400, delay, easing: 'ease-out', fill: 'backwards' },
   );
   void animation.finished.catch(() => undefined).then(() => ring.remove());
+}
+
+/* ---- View Transitions ---------------------------------------------------------------
+ * Where the browser supports same-document view transitions, the scale changes that have
+ * a single element standing for the period (a month-view week row, a year-view month)
+ * are morphed natively: that element and the other scale's whole viewport share one
+ * transition name, so the browser animates one into the other while the surroundings
+ * fade. Snapshots keep their aspect ratio and the morphing group clips them, so nothing
+ * is stretched. Other pairs (day / four days / week, agenda) and browsers without the API
+ * use the copy-based animation above.
+ */
+
+interface ViewTransitionLike {
+  finished: Promise<void>;
+  skipTransition(): void;
+}
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => Promise<void> | void) => ViewTransitionLike;
+};
+
+const VT_FOCUS = 'calendar-zoom-focus';
+const VT_CONTEXT = 'calendar-zoom-context';
+const VT_ACTIVE_CLASS = 'calendar-zooming';
+const VT_PAIRS = new Set(['month>week', 'week>month', 'year>month', 'month>year']);
+let activeViewTransition: { transition?: ViewTransitionLike } | undefined;
+
+/** The element standing for `date`'s period in `mode`: a week row or a year-view month. */
+function zoomAnchor(container: HTMLElement, mode: CalendarViewMode, date: Date) {
+  if (mode === 'month') {
+    const week = localDayKey(weekDays(date)[0]!);
+    return [...container.querySelectorAll<HTMLElement>('.calendar-month-week')]
+      .find(row => row.dataset.week === week);
+  }
+  if (mode === 'year') {
+    const month = calendarMonthKey(date);
+    return [...container.querySelectorAll<HTMLElement>('.calendar-year-month')]
+      .find(element => element.dataset.month === month);
+  }
+  return undefined;
+}
+
+function clearTransitionNames(container: HTMLElement) {
+  container.style.removeProperty('view-transition-name');
+  for (const element of container.querySelectorAll<HTMLElement>('.calendar-month-week, .calendar-year-month')) {
+    element.style.removeProperty('view-transition-name');
+  }
+}
+
+/** Scrolls `anchor` to the middle of the viewport when it is not already fully visible. */
+function revealAnchor(container: HTMLElement, anchor: HTMLElement) {
+  const view = container.getBoundingClientRect();
+  const rect = anchor.getBoundingClientRect();
+  if (rect.top >= view.top && rect.bottom <= view.top + container.clientHeight) return;
+  container.scrollTop += rect.top - view.top - Math.max(24, (container.clientHeight - rect.height) / 2);
+}
+
+export interface CalendarViewTransitionRequest {
+  container: HTMLElement | undefined;
+  stage: HTMLElement | undefined;
+  from: CalendarViewMode;
+  to: CalendarViewMode;
+  /** The period being zoomed into, or the current date when zooming out. */
+  date: Date;
+  /** Applies the scale change (and focus date) to the calendar state. */
+  apply: () => void;
+  /** Resolves once the new scale is rendered and scrolled to its date. */
+  positioned: () => Promise<void>;
+}
+
+/**
+ * Runs the scale change inside a native view transition. Returns false, without applying
+ * anything, when this pair or this browser is not handled; the caller then applies the
+ * change itself and the copy-based animation runs.
+ */
+export function startCalendarViewTransition(request: CalendarViewTransitionRequest): boolean {
+  const { container, stage, from, to, date, apply, positioned } = request;
+  const doc = container?.ownerDocument as ViewTransitionDocument | undefined;
+  const view = doc?.defaultView;
+  if (!container || !stage || !doc || !view || typeof doc.startViewTransition !== 'function') return false;
+  if (reducedMotion(view) || !VT_PAIRS.has(`${from}>${to}`)) return false;
+  if (!container.clientWidth || !container.clientHeight) return false;
+  const zoomingIn = SCALE[to] < SCALE[from];
+  // A zoom still in flight ends here; the new transition starts from its settled state.
+  activeViewTransition?.transition?.skipTransition();
+  container.getAnimations?.().forEach(animation => animation.cancel());
+  stage.querySelectorAll('.calendar-zoom-ghost, .calendar-zoom-focus').forEach(element => element.remove());
+  clearTransitionNames(container);
+  const oldAnchor = zoomingIn ? zoomAnchor(container, from, date) : undefined;
+  if (zoomingIn && !oldAnchor) return false;
+
+  // Old state: zooming in, the period is the shared element and the rest of the view is
+  // context that fades; zooming out, the whole viewport is the shared element.
+  container.style.setProperty('view-transition-name', zoomingIn ? VT_CONTEXT : VT_FOCUS);
+  oldAnchor?.style.setProperty('view-transition-name', VT_FOCUS);
+  doc.documentElement.classList.add(VT_ACTIVE_CLASS);
+  const run: { transition?: ViewTransitionLike } = {};
+  activeViewTransition = run;
+  let newAnchor: HTMLElement | undefined;
+
+  run.transition = doc.startViewTransition(async () => {
+    const ready = positioned();
+    clearTransitionNames(container);
+    apply();
+    await ready;
+    if (activeViewTransition !== run) return;
+    if (zoomingIn) {
+      container.style.setProperty('view-transition-name', VT_FOCUS);
+      return;
+    }
+    newAnchor = zoomAnchor(container, to, date);
+    if (!newAnchor) {
+      container.style.setProperty('view-transition-name', VT_FOCUS);
+      return;
+    }
+    revealAnchor(container, newAnchor);
+    container.style.setProperty('view-transition-name', VT_CONTEXT);
+    newAnchor.style.setProperty('view-transition-name', VT_FOCUS);
+  });
+
+  void run.transition.finished.catch(() => undefined).then(() => {
+    if (activeViewTransition !== run) return;
+    activeViewTransition = undefined;
+    clearTransitionNames(container);
+    doc.documentElement.classList.remove(VT_ACTIVE_CLASS);
+    // Zooming out: leave a soft tint where the period landed.
+    if (newAnchor?.isConnected) {
+      const box = focusBox(container, [newAnchor]);
+      if (box) outlineFocus(stage, stageOffset(container, stage), box, 0);
+    }
+  });
+  return true;
 }

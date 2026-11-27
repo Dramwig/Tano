@@ -20,7 +20,12 @@ import { expandRecurringPlans } from '../recurrence';
 import { writePlanDate, type PlanDateValue } from '../plan-date';
 import { useCalendarScroll } from '../composables/use-calendar-scroll';
 import { useCalendarInteractions } from '../composables/use-calendar-interactions';
-import { captureCalendarZoom, playCalendarZoom, type CalendarZoomSnapshot } from '../calendar-zoom-motion';
+import {
+  captureCalendarZoom,
+  playCalendarZoom,
+  startCalendarViewTransition,
+  type CalendarZoomSnapshot,
+} from '../calendar-zoom-motion';
 import CalendarDayPopover from './CalendarDayPopover.vue';
 import CalendarFilterBar from './CalendarFilterBar.vue';
 import CalendarQuickCreateDialog, { type QuickCreateDraft } from './CalendarQuickCreateDialog.vue';
@@ -60,6 +65,23 @@ const dayPopoverId = useId();
 const dayPopoverKey = computed(() => dayPopover.value && localDayKey(dayPopover.value.date));
 
 const {
+// Scale change currently driven by a native view transition, and its "positioned" signal.
+let viewTransitionTo: CalendarViewMode | undefined;
+let resolveViewTransition: (() => void) | undefined;
+
+function viewTransitionPositioned(to: CalendarViewMode) {
+  return new Promise<void>((resolve) => {
+    resolveViewTransition?.();
+    const timer = setTimeout(done, 600);
+    function done() {
+      clearTimeout(timer);
+      if (resolveViewTransition === done) resolveViewTransition = undefined;
+      resolve();
+    }
+    viewTransitionTo = to;
+    resolveViewTransition = done;
+  });
+}
   timeline,
   timelineDays,
   timelineDayWidth,
@@ -94,7 +116,25 @@ const {
     zooming.value = Boolean(zoomSnapshot);
   },
   onModePositioned: (_from, to) => {
+  runZoomTransition: (from, to, focus, apply) => {
+    const started = !props.loading && startCalendarViewTransition({
+      container: scroll.value,
+      stage: stage.value,
+      from,
+      to,
+      date: focus ?? props.date,
+      positioned: () => viewTransitionPositioned(to),
+      apply: () => {
+        // Suppress the generic fade-in inside the live snapshot of the new view.
+        zooming.value = true;
+        apply();
+      },
+    });
+    if (!started) apply();
+  },
     const snapshot = zoomSnapshot;
+    // The native view transition already captured the old view.
+    if (viewTransitionTo === to) return;
     if (!snapshot || snapshot.to !== to) return;
     zoomSnapshot = undefined;
     // Keep `is-zooming` after the animation: clearing it would restart the views' CSS
@@ -108,6 +148,11 @@ const {
       (dayPopover.value.scrollTop !== scroll.value.scrollTop ||
         dayPopover.value.scrollLeft !== scroll.value.scrollLeft)
     ) {
+    if (viewTransitionTo === to) {
+      viewTransitionTo = undefined;
+      resolveViewTransition?.();
+      return;
+    }
       dayPopover.value = undefined;
     }
   },

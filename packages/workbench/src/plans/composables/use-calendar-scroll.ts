@@ -28,6 +28,11 @@ export interface CalendarScrollOptions {
   onBeforeModeChange?: (from: CalendarViewMode, to: CalendarViewMode) => void;
   /** Runs once the new scale is rendered and scrolled to the current date. */
   onModePositioned?: (from: CalendarViewMode, to: CalendarViewMode) => void;
+  /**
+   * Lets the view wrap a wheel zoom in a transition. It must call `apply` (now or later);
+   * `focus` is the date under the pointer when zooming in.
+   */
+  runZoomTransition?: (from: CalendarViewMode, to: CalendarViewMode, focus: Date | undefined, apply: () => void) => void;
 }
 
 export interface CalendarScrollState {
@@ -178,12 +183,16 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
       if (nextMode !== mode) {
         lastZoomChange = now;
         const focus = ZOOM_MODES.indexOf(nextMode) < index ? zoomFocusDate(event, mode, nextMode) : undefined;
-        if (focus && options.onFocusDate) {
-          // The mode watcher positions the new scale on this date; skip the date watcher's scroll.
-          focusedZoomKey = localDayKey(focus);
-          options.onFocusDate(focus);
-        }
-        options.onSelectMode(nextMode);
+        const apply = () => {
+          if (focus && options.onFocusDate) {
+            // The mode watcher positions the new scale on this date; skip the date watcher's scroll.
+            focusedZoomKey = localDayKey(focus);
+            options.onFocusDate(focus);
+          }
+          options.onSelectMode(nextMode);
+        };
+        if (options.runZoomTransition) options.runZoomTransition(mode, nextMode, focus, apply);
+        else apply();
       }
       return;
     }
