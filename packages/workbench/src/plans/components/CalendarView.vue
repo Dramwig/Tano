@@ -20,6 +20,7 @@ import { expandRecurringPlans } from '../recurrence';
 import { writePlanDate, type PlanDateValue } from '../plan-date';
 import { useCalendarScroll } from '../composables/use-calendar-scroll';
 import { useCalendarInteractions } from '../composables/use-calendar-interactions';
+import { captureCalendarZoom, playCalendarZoom, type CalendarZoomSnapshot } from '../calendar-zoom-motion';
 import CalendarDayPopover from './CalendarDayPopover.vue';
 import CalendarFilterBar from './CalendarFilterBar.vue';
 import CalendarQuickCreateDialog, { type QuickCreateDraft } from './CalendarQuickCreateDialog.vue';
@@ -42,6 +43,9 @@ const emit = defineEmits<{
 const { window } = useWindowContext();
 const plans = usePlanStore();
 const scroll = ref<HTMLElement>();
+const stage = ref<HTMLElement>();
+const zooming = ref(false);
+let zoomSnapshot: CalendarZoomSnapshot | undefined;
 const filter = ref<CalendarFilter>({ kind: 'all', showCompleted: true, query: '' });
 const nowMinutes = ref(currentMinutes());
 let nowTimer: ReturnType<typeof setInterval> | undefined;
@@ -73,7 +77,30 @@ const {
   onVisibleYear: (value) => emit('visible-year', value),
   onVisibleTimeline: (value) => emit('visible-timeline', value),
   onSelectMode: (value) => emit('select-mode', value),
+  // Hosts treat every visible-* date as the calendar's current date.
+  onFocusDate: (value) => emit('visible-timeline', value),
   onBeforeViewChange: () => { dayPopover.value = undefined; },
+  onBeforeModeChange: (from, to) => {
+    if (zoomSnapshot) {
+      // Changed again before the previous scale was even positioned: its copy is still what
+      // is on screen, so retarget it instead of copying the half-built layout underneath.
+      zoomSnapshot.to = to;
+      zoomSnapshot.source = undefined;
+      zoomSnapshot.sourceLocal = undefined;
+      return;
+    }
+    zoomSnapshot = props.loading ? undefined : captureCalendarZoom(scroll.value, stage.value, props.date, from, to);
+    // Suppress the generic fade-in so it does not fight the anchored zoom.
+    zooming.value = Boolean(zoomSnapshot);
+  },
+  onModePositioned: (_from, to) => {
+    const snapshot = zoomSnapshot;
+    if (!snapshot || snapshot.to !== to) return;
+    zoomSnapshot = undefined;
+    // Keep `is-zooming` after the animation: clearing it would restart the views' CSS
+    // fade-in from transparent and flash. The next scale change resets it.
+    void playCalendarZoom(snapshot, scroll.value, stage.value, props.date);
+  },
   onScrolled: () => {
     if (
       dayPopover.value &&
@@ -198,12 +225,13 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="calendar-shell">
+  <div class="calendar-shell" :class="{ 'is-zooming': zooming }">
     <CalendarFilterBar v-model="filter" />
     <p v-if="interactions.interactionError.value" class="calendar-error-banner" role="alert">
       <span>{{ interactions.interactionError.value }}</span>
       <button type="button" :aria-label="t('关闭')" @click="interactions.interactionError.value = ''"><X :size="14" /></button>
     </p>
+    <div ref="stage" class="calendar-stage">
     <main
       ref="scroll"
       class="calendar-view"
@@ -266,6 +294,7 @@ onUnmounted(() => {
         />
       </div>
     </main>
+    </div>
   </div>
   <CalendarQuickCreateDialog
     :draft="createDraft"

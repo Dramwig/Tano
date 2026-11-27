@@ -31,6 +31,14 @@
 .calendar-shell .is-overdue { --tone: var(--cal-overdue); }
 
 /* ---- Scroll container ---------------------------------------------------- */
+.calendar-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
 .calendar-view {
   flex: 1;
   min-height: 0;
@@ -43,6 +51,20 @@
 /* Switching between views fades the new layout in instead of snapping. */
 .calendar-shell :is(.calendar-view-inner, .calendar-month-view, .calendar-year-view, .calendar-agenda-view) {
   animation: tano-fade-in var(--motion-base) var(--ease-standard);
+}
+
+/* Ctrl+wheel scale changes use the anchored zoom in calendar-zoom-motion.ts instead. */
+.calendar-shell.is-zooming :is(.calendar-view-inner, .calendar-month-view, .calendar-year-view, .calendar-agenda-view) {
+  animation: none;
+}
+.calendar-zoom-ghost { overflow: hidden !important; }
+/* Where the previous period landed after zooming out: a soft, borderless tint. */
+.calendar-zoom-focus {
+  position: absolute;
+  z-index: 3;
+  border-radius: var(--cal-radius);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  pointer-events: none;
 }
 
 /* ---- Shared item pieces -------------------------------------------------- */

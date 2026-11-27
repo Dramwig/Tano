@@ -95,6 +95,30 @@ it('zooms through all time scales in both directions without changing the select
   expect(selectDate).not.toHaveBeenCalled();
 });
 
+it('zooms in on the period under the pointer', async () => {
+  mode.value = 'month';
+  await render();
+  const cell = viewport.querySelector<HTMLElement>('.calendar-month-cell[data-day="2026-10-15"]')!;
+  wheel({ deltaY: -120 }, cell);
+  expect(selectDate).toHaveBeenCalledExactlyOnceWith(new Date(2026, 9, 15));
+  expect(selectMode).toHaveBeenCalledExactlyOnceWith('week');
+
+  selectDate.mockClear();
+  mode.value = 'year';
+  await render();
+  now += 250;
+  wheel({ deltaY: -120 }, viewport.querySelector<HTMLElement>('.calendar-year-month[data-month="2026-11"] .calendar-year-weekdays')!);
+  expect(selectDate).toHaveBeenCalledExactlyOnceWith(new Date(2026, 10, 1));
+
+  selectDate.mockClear();
+  mode.value = 'week';
+  await render();
+  now += 250;
+  wheel({ deltaY: -120 }, viewport.querySelector<HTMLElement>('.calendar-view-day-column[data-day="2026-10-03"]')!);
+  // Saturday keeps the four-day window inside its week: Thursday to Sunday.
+  expect(selectDate).toHaveBeenCalledExactlyOnceWith(new Date(2026, 9, 1));
+});
+
 it.each<[CalendarViewMode, number]>([['day', -120], ['year', 120]])(
   'stops at the %s boundary while still preventing browser zoom', async (initial, deltaY) => {
     mode.value = initial;

@@ -20,8 +20,14 @@ export interface CalendarScrollOptions {
   onVisibleYear: (date: Date) => void;
   onVisibleTimeline: (date: Date) => void;
   onSelectMode: (mode: CalendarViewMode) => void;
+  /** Re-centres the calendar on the period under the pointer before zooming in. */
+  onFocusDate?: (date: Date) => void;
   onBeforeViewChange: () => void;
   onScrolled: () => void;
+  /** Runs before the new scale renders, while the previous layout is still in the DOM. */
+  onBeforeModeChange?: (from: CalendarViewMode, to: CalendarViewMode) => void;
+  /** Runs once the new scale is rendered and scrolled to the current date. */
+  onModePositioned?: (from: CalendarViewMode, to: CalendarViewMode) => void;
 }
 
 export interface CalendarScrollState {
@@ -88,6 +94,7 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
   let positioningTimeline = false;
   let timelineResizeObserver: ResizeObserver | undefined;
 
+  let focusedZoomKey = '';
   let zoomDelta = 0;
   let lastZoomWheel = -Infinity;
   let lastZoomChange = -Infinity;
@@ -170,6 +177,12 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
       zoomDelta = 0;
       if (nextMode !== mode) {
         lastZoomChange = now;
+        const focus = ZOOM_MODES.indexOf(nextMode) < index ? zoomFocusDate(event, mode, nextMode) : undefined;
+        if (focus && options.onFocusDate) {
+          // The mode watcher positions the new scale on this date; skip the date watcher's scroll.
+          focusedZoomKey = localDayKey(focus);
+          options.onFocusDate(focus);
+        }
         options.onSelectMode(nextMode);
       }
       return;
@@ -179,6 +192,39 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
     event.preventDefault();
     const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
     scroll.value.scrollLeft += delta * Math.max(1, timelineDayWidth.value / 360);
+  }
+
+  /** Day (or month, from the year scale) under the pointer, mapped to the finer scale's start date. */
+  function zoomFocusDate(event: WheelEvent, from: CalendarViewMode, to: CalendarViewMode): Date | undefined {
+    const container = scroll.value;
+    if (!container) return undefined;
+    const contains = (element: HTMLElement, x: boolean, y: boolean) => {
+      const rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0
+        && (!x || (event.clientX >= rect.left && event.clientX < rect.right))
+        && (!y || (event.clientY >= rect.top && event.clientY < rect.bottom));
+    };
+    const target = event.target instanceof Element ? event.target : undefined;
+    if (from === 'year') {
+      const month = target?.closest<HTMLElement>('.calendar-year-month[data-month]')
+        ?? [...container.querySelectorAll<HTMLElement>('.calendar-year-month[data-month]')]
+          .find(element => contains(element, true, true));
+      const [year, monthNumber] = (month?.dataset.month ?? '').split('-').map(Number);
+      return year && monthNumber ? new Date(year, monthNumber - 1, 1) : undefined;
+    }
+    const selector = from === 'month' ? '.calendar-month-cell[data-day]' : '.calendar-view-day-column[data-day]';
+    // Timeline headings and the hour gutter carry no day, so fall back to the column under the pointer.
+    const cell = target?.closest<HTMLElement>(`${from === 'month' ? '.calendar-month-cell' : '[data-day]'}[data-day]`)
+      ?? [...container.querySelectorAll<HTMLElement>(selector)]
+        .find(element => contains(element, true, from === 'month'));
+    const key = cell?.dataset.day;
+    if (!key) return undefined;
+    const [year, month, day] = key.split('-').map(Number);
+    const focus = new Date(year!, month! - 1, day!);
+    if (to !== 'four-days') return focus;
+    // Keep the four-day window inside the pointer's week while still showing that day.
+    const sunday = weekDays(focus)[6]!;
+    return focus.getTime() > dayOffset(sunday, -3).getTime() ? dayOffset(sunday, -3) : focus;
   }
 
   async function resizeTimeline() {
@@ -376,13 +422,20 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
     timelineResizeObserver?.disconnect();
   });
 
-  watch(getMode, () => {
+  watch(getMode, async (to, from) => {
     options.onBeforeViewChange();
-    void positionTimeline();
+    options.onBeforeModeChange?.(from, to);
+    await positionTimeline();
+    if (getMode() === to) options.onModePositioned?.(from, to);
   });
 
   watch(getDate, (nextDate) => {
     options.onBeforeViewChange();
+    if (focusedZoomKey) {
+      const focused = focusedZoomKey === localDayKey(nextDate);
+      focusedZoomKey = '';
+      if (focused) return;
+    }
     const mode = getMode();
     if (mode === 'month') {
       if (reportedMonthKey === monthKey(nextDate)) {

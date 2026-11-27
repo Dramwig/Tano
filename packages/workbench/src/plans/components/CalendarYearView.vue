@@ -2,6 +2,7 @@
 import { t, uiLocale } from '../../i18n/i18n';
 import type { ObjectRecord } from '../../objects/workspace-objects';
 import { calendarDayEntries, localDayKey, monthDays } from '../calendar';
+import { calendarMonthKey } from '../calendar-zoom-motion';
 
 const props = defineProps<{
   scrollingYears: readonly number[];
@@ -31,7 +32,12 @@ const dayPopoverEntries = (day: Date) => calendarDayEntries(props.planned, day);
     <section v-for="year in scrollingYears" :key="year" class="calendar-year-section" :data-year="year">
       <h2 class="calendar-year-heading">{{ new Date(year, 0, 1).toLocaleDateString(uiLocale, { year: 'numeric' }) }}</h2>
       <div class="calendar-year-grid">
-        <section v-for="month in monthsForYear(year)" :key="month.date.getMonth()" class="calendar-year-month">
+        <section
+          v-for="month in monthsForYear(year)"
+          :key="month.date.getMonth()"
+          class="calendar-year-month"
+          :data-month="calendarMonthKey(month.date)"
+        >
           <button type="button" class="calendar-year-month-title" @click="emit('select-month', month.date)">
             {{ month.date.toLocaleDateString(uiLocale, { month: 'long' }) }}
           </button>
