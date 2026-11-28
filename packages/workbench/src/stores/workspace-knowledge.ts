@@ -110,36 +110,32 @@ export function createWorkspaceKnowledge(deps: WorkspaceKnowledgeDeps) {
         ]
       : [],
   );
-  const referenceTargets = computed<ReferenceTarget[]>(() =>
-    workspace.value
-      ? [
-          ...fileReferenceTargets.value,
-          ...objects.value
-            .filter(({ object }) => {
-              const definition =
-                objectDefinitions.value.find((entry) => entry.type === object.type) ??
-                objectTypeRegistry.get(object.type);
-              if (definition?.storage !== 'record') return false;
-              try {
-                validateObjectProperties(object.type, object.properties);
-                return true;
-              } catch {
-                return false;
-              }
-            })
-            .map(({ object, path }) => ({
-              workspace: workspace.value!.id,
-              type: object.type,
-              id: object.id,
-              name: object.name,
-              description: object.description,
-              archived: object.archived,
-              path,
-              properties: object.properties,
-            })),
-        ]
-      : [],
-  );
+  const referenceTargets = computed<ReferenceTarget[]>(() => {
+    const current = workspace.value;
+    if (!current) return [];
+    const definitionsByType = new Map(objectDefinitions.value.map((entry) => [entry.type, entry]));
+    const objectTargets: ReferenceTarget[] = [];
+    for (const { object, path } of objects.value) {
+      const definition = definitionsByType.get(object.type) ?? objectTypeRegistry.get(object.type);
+      if (definition?.storage !== 'record') continue;
+      try {
+        validateObjectProperties(object.type, object.properties);
+      } catch {
+        continue;
+      }
+      objectTargets.push({
+        workspace: current.id,
+        type: object.type,
+        id: object.id,
+        name: object.name,
+        description: object.description,
+        archived: object.archived,
+        path,
+        properties: object.properties,
+      });
+    }
+    return [...fileReferenceTargets.value, ...objectTargets];
+  });
 
   // File metadata changes independently of open-document drafts and object loads.
   // Keep its traversal/serialization cached across those more frequent updates.
@@ -190,18 +186,12 @@ export function createWorkspaceKnowledge(deps: WorkspaceKnowledgeDeps) {
     await Promise.all([
       pluginsReady,
       loadWorkspacePart('objects', async () => {
-        // Read ahead, but validate custom object properties only after their
-        // plugin schemas are registered. Other regions do not depend on this.
-        const loaded = await loadObjects(
-          {
-            read: async (path) => {
-              const snapshot = await adapter.read(path);
-              await pluginsReady;
-              return snapshot;
-            },
-          },
-          current,
-        );
+        // Read ahead in batch/parallel, then validate custom object properties
+        // only after plugin schemas are registered. Reuse unchanged records by contentHash.
+        const loaded = await loadObjects(adapter, current, {
+          beforeValidate: () => pluginsReady,
+          previous: objects.value,
+        });
         objects.value = loaded.records;
         objectErrors.value = loaded.errors;
       }),

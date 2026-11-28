@@ -1,4 +1,4 @@
-import { computed, onScopeDispose, ref } from 'vue';
+import { computed, onScopeDispose, ref, shallowRef } from 'vue';
 import { defineStore } from 'pinia';
 import { parseObject, validateObjectProperties } from '@tano/protocol';
 import type { WorkspaceObject } from '@tano/protocol';
@@ -19,7 +19,7 @@ export const usePlanStore = defineStore('plans', () => {
   const view = ref<PlanScope | 'all'>('workspace');
   const personalId = ref('');
   const initializing = ref(true);
-  const personal = ref<ObjectRecord[]>([]);
+  const personal = shallowRef<ObjectRecord[]>([]);
   const errors = ref<string[]>([]);
   const loadError = ref('');
   const requiresDesktopRestart = ref(false);
@@ -31,12 +31,21 @@ export const usePlanStore = defineStore('plans', () => {
   }
   async function load() {
     const space = await adapter.refresh();
-    const loaded = await loadObjects(adapter, space);
+    const sameSpace = personalId.value === space.id;
+    const loaded = await loadObjects(adapter, space, {
+      previous: sameSpace ? personal.value : undefined,
+    });
     personalId.value = space.id;
-    personal.value = loaded.records.map((record) => ({
-      ...record,
-      source: { scope: 'personal', id: space.id, name: '个人' },
-    }));
+    const nextRecords = loaded.records.map((record) =>
+      record.source?.scope === 'personal' && record.source.id === space.id
+        ? record
+        : { ...record, source: { scope: 'personal' as const, id: space.id, name: '个人' } },
+    );
+    const unchanged =
+      sameSpace &&
+      nextRecords.length === personal.value.length &&
+      nextRecords.every((record, index) => record === personal.value[index]);
+    if (!unchanged) personal.value = nextRecords;
     errors.value = loaded.errors;
     loadError.value = '';
     requiresDesktopRestart.value = false;

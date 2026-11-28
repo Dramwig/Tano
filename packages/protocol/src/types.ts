@@ -47,6 +47,10 @@ export interface FileSnapshot {
   modified: number;
 }
 
+export type BatchReadItem =
+  | { ok: true; snapshot: FileSnapshot }
+  | { ok: false; error: string };
+
 export type WriteResult =
   | { status: 'saved'; snapshot: FileSnapshot }
   | { status: 'conflict'; snapshot: FileSnapshot }
@@ -79,6 +83,8 @@ export interface WorkspaceAdapter {
   refresh(): Promise<Workspace>;
   search?(workspaceId: string, query: string, signal?: AbortSignal): Promise<SearchHit[]>;
   read(path: string): Promise<FileSnapshot>;
+  /** Optional batch read for multiple workspace files in a single round-trip. */
+  readBatch?(paths: string[]): Promise<Record<string, BatchReadItem>>;
   /** Optional version-checked, synchronous cache. Never returns speculative content. */
   readCached?(path: string): FileSnapshot | undefined;
   /** Best-effort read ahead; implementations bound speculative network work. */

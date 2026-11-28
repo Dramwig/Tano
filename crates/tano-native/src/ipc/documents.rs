@@ -2,11 +2,33 @@ use crate::{
     assistant_files, cache_path, error::NativeError, identity_manifest, storage, with_session,
     with_workspace_mutating_session, with_workspace_session, AppState,
 };
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 use tauri::{Manager, State};
 
 #[cfg(mobile)]
 use crate::{app_data, mobile_storage};
+
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+pub(crate) enum BatchReadItem {
+    Ok {
+        ok: bool,
+        snapshot: storage::Snapshot,
+    },
+    Err {
+        ok: bool,
+        error: String,
+    },
+}
+
+impl BatchReadItem {
+    pub(crate) fn from_result(result: Result<storage::Snapshot, String>) -> Self {
+        match result {
+            Ok(snapshot) => Self::Ok { ok: true, snapshot },
+            Err(error) => Self::Err { ok: false, error },
+        }
+    }
+}
 
 #[tauri::command]
 pub(crate) async fn read_document<R: tauri::Runtime>(
@@ -37,6 +59,59 @@ pub(crate) async fn read_document<R: tauri::Runtime>(
     })
     .await
     .map_err(|e| format!("读取文档任务失败：{e}"))?
+}
+
+#[tauri::command]
+pub(crate) async fn read_documents_batch(
+    paths: Vec<String>,
+    app: tauri::AppHandle,
+) -> Result<HashMap<String, BatchReadItem>, String> {
+    if paths.is_empty() {
+        return Ok(HashMap::new());
+    }
+    #[cfg(desktop)]
+    if let Some(remote) = crate::remote_session(&app.state::<AppState>()) {
+        let mut result = HashMap::with_capacity(paths.len());
+        for path in paths {
+            let item = crate::ssh::storage::remote_read_document(
+                remote.transport.as_ref(),
+                &remote.remote_root,
+                &remote.id,
+                &path,
+            )
+            .await;
+            result.insert(path, BatchReadItem::from_result(item));
+        }
+        return Ok(result);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let (root, workspace_id) = with_session(app.state::<AppState>(), |s| {
+            Ok((s.root.clone(), s.id.clone()))
+        })?;
+        let cache = cache_path(&app)?;
+        let results = storage::object_cache::read_batch_cached(
+            &root,
+            &workspace_id,
+            &cache,
+            &paths,
+            &|path| {
+                let target = storage::resolve_storage(&root, path, true)?;
+                if !storage::is_workspace_data_path(path)
+                    && storage::is_editable_code_path(Path::new(path))
+                {
+                    storage::read_code(&target)
+                } else {
+                    storage::read(&target)
+                }
+            },
+        )?;
+        Ok(results
+            .into_iter()
+            .map(|(path, item)| (path, BatchReadItem::from_result(item)))
+            .collect())
+    })
+    .await
+    .map_err(|e| format!("批量读取文档任务失败：{e}"))?
 }
 
 #[tauri::command]

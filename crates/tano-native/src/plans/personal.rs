@@ -1,6 +1,7 @@
 //! An independent, file-backed personal space. Never changes the active workspace session.
-use crate::{identity_manifest, storage, workspace_lock};
+use crate::{identity_manifest, ipc::documents::BatchReadItem, storage, workspace_lock};
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
@@ -77,6 +78,27 @@ fn read(data: &Path, path: &str) -> Result<storage::Snapshot, String> {
         storage::read(&storage::resolve_storage(&space.root, path, true)?)
     })
 }
+fn read_batch(data: &Path, paths: &[String]) -> Result<HashMap<String, BatchReadItem>, String> {
+    if paths.is_empty() {
+        return Ok(HashMap::new());
+    }
+    with_space(data, |space| {
+        let results = storage::object_cache::read_batch_cached(
+            &space.root,
+            &space.id,
+            &space.cache,
+            paths,
+            &|path| {
+                check_path(path)?;
+                storage::read(&storage::resolve_storage(&space.root, path, true)?)
+            },
+        )?;
+        Ok(results
+            .into_iter()
+            .map(|(path, item)| (path, BatchReadItem::from_result(item)))
+            .collect())
+    })
+}
 fn reserve(data: &Path, occupied: &[String]) -> Result<String, String> {
     with_space(data, |space| {
         identity_manifest::reserve(&space.root, &space.id, &space.cache, occupied)
@@ -124,6 +146,16 @@ pub fn personal_plans_read(
     path: String,
 ) -> Result<storage::Snapshot, String> {
     read(&crate::app_data(&app)?, &path)
+}
+#[tauri::command]
+pub(crate) async fn personal_plans_read_batch(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+) -> Result<HashMap<String, BatchReadItem>, String> {
+    let data = crate::app_data(&app)?;
+    tauri::async_runtime::spawn_blocking(move || read_batch(&data, &paths))
+        .await
+        .map_err(|e| format!("批量读取个人计划任务失败：{e}"))?
 }
 #[tauri::command]
 pub fn personal_plans_reserve(

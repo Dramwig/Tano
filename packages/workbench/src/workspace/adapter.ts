@@ -5,6 +5,7 @@ import {
   nativeOpenDialog as chooseDirectory,
 } from '../platform/native-bridge';
 import type {
+  BatchReadItem,
   FileEntry,
   FileChangeRequest,
   FileSnapshot,
@@ -45,15 +46,24 @@ export interface DemoOptions {
   workspacePath?: string;
 }
 
+const SHA256_CACHE_LIMIT = 8192;
+const sha256Cache = new Map<string, string>();
+
 export async function sha256(content: string) {
+  const cached = sha256Cache.get(content);
+  if (cached !== undefined) return cached;
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
-  return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const digest = [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  if (sha256Cache.size >= SHA256_CACHE_LIMIT) sha256Cache.clear();
+  sha256Cache.set(content, digest);
+  return digest;
 }
 
 export class DemoAdapter implements WorkspaceAdapter {
   readonly mode = 'demo' as const;
   private files: DemoFiles;
   private folders: string[] = ['项目', '研究'];
+  private lastStoredRaw: string | null = null;
   private readonly storageKey: string;
   private readonly workspaceName: string;
   private readonly workspaceId: string;
@@ -105,11 +115,12 @@ export class DemoAdapter implements WorkspaceAdapter {
   }
   private syncFiles() {
     const stored = localStorage.getItem(this.storageKey);
-    if (!stored) return;
+    if (!stored || stored === this.lastStoredRaw) return;
     const data = JSON.parse(stored) as { files: DemoFiles; folders: string[] };
     if (!data.files || !Array.isArray(data.folders)) throw new Error('浏览器工作区数据损坏，原内容已保留');
     this.files = data.files;
     this.folders = data.folders;
+    this.lastStoredRaw = stored;
   }
   private persist(tablePath?: string) {
     const stored = localStorage.getItem(this.storageKey);
@@ -119,7 +130,9 @@ export class DemoAdapter implements WorkspaceAdapter {
       if (tablePath) {
         // A table transaction patches just its own file, retaining concurrent document edits.
         data.files[tablePath] = this.files[tablePath];
-        localStorage.setItem(this.storageKey, JSON.stringify(data));
+        const raw = JSON.stringify(data);
+        localStorage.setItem(this.storageKey, raw);
+        this.lastStoredRaw = raw;
         this.files = data.files; this.folders = data.folders;
         return;
       }
@@ -127,7 +140,9 @@ export class DemoAdapter implements WorkspaceAdapter {
       for (const path of Object.keys(this.files)) if (this.isTableStorage(path)) delete this.files[path];
       for (const [path, file] of Object.entries(data.files)) if (this.isTableStorage(path)) this.files[path] = file;
     }
-    localStorage.setItem(this.storageKey, JSON.stringify({ files: this.files, folders: this.folders }));
+    const raw = JSON.stringify({ files: this.files, folders: this.folders });
+    localStorage.setItem(this.storageKey, raw);
+    this.lastStoredRaw = raw;
   }
   private async rememberIds(occupied: string[] = [], allocate = false) {
     const reserve = () => {
@@ -220,6 +235,33 @@ export class DemoAdapter implements WorkspaceAdapter {
     const file = this.files[path];
     if (!file) throw new Error('文件已不存在');
     return { content: file.content, hash: await sha256(file.content), modified: file.modified };
+  }
+  async readBatch(paths: string[]): Promise<Record<string, BatchReadItem>> {
+    if (!paths.length) return {};
+    this.syncFiles();
+    const entries = await Promise.all(
+      paths.map(async (path): Promise<[string, BatchReadItem]> => {
+        try {
+          this.check(path);
+          const file = this.files[path];
+          if (!file) return [path, { ok: false, error: '文件已不存在' }];
+          return [
+            path,
+            {
+              ok: true,
+              snapshot: {
+                content: file.content,
+                hash: await sha256(file.content),
+                modified: file.modified,
+              },
+            },
+          ];
+        } catch (error) {
+          return [path, { ok: false, error: error instanceof Error ? error.message : String(error) }];
+        }
+      }),
+    );
+    return Object.fromEntries(entries);
   }
   async search(_workspaceId: string, query: string): Promise<SearchHit[]> {
     const needle = query.trim().toLocaleLowerCase();
@@ -324,7 +366,9 @@ export class DemoAdapter implements WorkspaceAdapter {
       const beforeFiles = { ...this.files }, beforeFolders = [...this.folders];
       try {
         await change();
-        localStorage.setItem(this.storageKey, JSON.stringify({ files: this.files, folders: this.folders }));
+        const raw = JSON.stringify({ files: this.files, folders: this.folders });
+        localStorage.setItem(this.storageKey, raw);
+        this.lastStoredRaw = raw;
       } catch (error) {
         this.files = beforeFiles; this.folders = beforeFolders;
         throw error;
@@ -398,6 +442,7 @@ export class DemoAdapter implements WorkspaceAdapter {
         const data = JSON.parse(event.newValue);
         this.files = data.files;
         this.folders = data.folders;
+        this.lastStoredRaw = event.newValue;
         callback();
       } catch {
         /* Ignore invalid storage events. */
@@ -440,6 +485,7 @@ export class NativeAdapter implements WorkspaceAdapter {
   search = (workspaceId: string, query: string) =>
     invoke<SearchHit[]>('search_documents', { workspaceId, query });
   read = (path: string) => invoke<FileSnapshot>('read_document', { path });
+  readBatch = (paths: string[]) => invoke<Record<string, BatchReadItem>>('read_documents_batch', { paths });
   write = (path: string, content: string, expectedHash: string) =>
     invoke<WriteResult>('write_document', { path, content, expectedHash });
   create = (path: string, content: string) => invoke<void>('create_document', { path, content });

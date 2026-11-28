@@ -5,7 +5,7 @@ import {
   objectTypeRegistry,
   validateObjectProperties,
 } from '@tano/protocol';
-import type { FileSnapshot, Workspace, WorkspaceAdapter, WorkspaceObject } from '@tano/protocol';
+import type { BatchReadItem, FileSnapshot, Workspace, WorkspaceAdapter, WorkspaceObject } from '@tano/protocol';
 import { mergeObject } from '@tano/editor/workspace-objects';
 
 export interface ObjectRecord {
@@ -15,16 +15,99 @@ export interface ObjectRecord {
   /** View metadata only; never serialized into a workspace object. */
   source?: { scope: 'personal' | 'workspace'; id: string; name: string };
 }
-export type ObjectStorage = Pick<WorkspaceAdapter, 'read' | 'write' | 'create' | 'refresh' | 'reserveObjectId'>;
-export async function loadObjects(adapter: Pick<ObjectStorage, 'read'>, workspace: Workspace) {
-  const records: ObjectRecord[] = [],
-    errors: string[] = [];
-  for (const file of workspace.files.filter(
+export type ObjectStorage = Pick<
+  WorkspaceAdapter,
+  'read' | 'readBatch' | 'write' | 'create' | 'refresh' | 'reserveObjectId'
+>;
+
+export interface LoadObjectsOptions {
+  /** Awaited after file reads complete and before schema validation runs. */
+  beforeValidate?: () => Promise<void>;
+  /** Previously loaded records; reused without disk/IPC reads when contentHash matches. */
+  previous?: readonly ObjectRecord[];
+  /** Concurrency limit when falling back to single-file adapter.read(). */
+  concurrency?: number;
+}
+
+async function readSnapshots(
+  adapter: Pick<ObjectStorage, 'read' | 'readBatch'>,
+  paths: string[],
+  concurrency: number,
+): Promise<Map<string, BatchReadItem>> {
+  const results = new Map<string, BatchReadItem>();
+  if (!paths.length) return results;
+  if (adapter.readBatch) {
+    const batch = await adapter.readBatch(paths);
+    for (const path of paths) {
+      const item = batch[path];
+      results.set(path, item ?? { ok: false, error: '文件读取结果缺失' });
+    }
+    return results;
+  }
+  const limit = Math.max(1, Math.min(concurrency, paths.length));
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < paths.length) {
+      const path = paths[cursor++]!;
+      try {
+        results.set(path, { ok: true, snapshot: await adapter.read(path) });
+      } catch (error) {
+        results.set(path, { ok: false, error: String(error) });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: limit }, worker));
+  return results;
+}
+
+export async function loadObjects(
+  adapter: Pick<ObjectStorage, 'read' | 'readBatch'>,
+  workspace: Workspace,
+  options: LoadObjectsOptions = {},
+) {
+  const objectFiles = workspace.files.filter(
     (file) => file.kind === 'file' && file.path.startsWith(`${objectDirectory}/`) && isObjectPath(file.path),
-  )) {
+  );
+  const prevByPath = new Map<string, ObjectRecord>();
+  if (options.previous?.length) {
+    for (const record of options.previous) prevByPath.set(record.path, record);
+  }
+  const reused = new Map<string, ObjectRecord>();
+  const toRead: string[] = [];
+  for (const file of objectFiles) {
+    const prev = prevByPath.get(file.path);
+    if (prev && file.contentHash && prev.snapshot.hash === file.contentHash) {
+      reused.set(file.path, prev);
+    } else {
+      toRead.push(file.path);
+    }
+  }
+  const fetched = await readSnapshots(adapter, toRead, options.concurrency ?? 16);
+  if (options.beforeValidate) await options.beforeValidate();
+
+  const records: ObjectRecord[] = [];
+  const errors: string[] = [];
+  for (const file of objectFiles) {
+    const existing = reused.get(file.path);
+    if (existing) {
+      const definition = objectTypeRegistry.get(existing.object.type);
+      if (definition) {
+        try {
+          validateObjectProperties(existing.object.type, existing.object.properties);
+        } catch (error) {
+          errors.push(`${file.path}：${String(error)}`);
+        }
+      }
+      records.push(existing);
+      continue;
+    }
+    const item = fetched.get(file.path);
+    if (!item || !item.ok) {
+      errors.push(`${file.path}：${item ? item.error : '文件读取失败'}`);
+      continue;
+    }
     try {
-      const snapshot = await adapter.read(file.path);
-      const object = parseObject(snapshot.content);
+      const object = parseObject(item.snapshot.content);
       const definition = objectTypeRegistry.get(object.type);
       if (definition) {
         try {
@@ -33,7 +116,7 @@ export async function loadObjects(adapter: Pick<ObjectStorage, 'read'>, workspac
           errors.push(`${file.path}：${String(error)}`);
         }
       }
-      records.push({ object, path: file.path, snapshot });
+      records.push({ object, path: file.path, snapshot: item.snapshot });
     } catch (error) {
       errors.push(`${file.path}：${String(error)}`);
     }

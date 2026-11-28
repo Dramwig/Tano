@@ -140,3 +140,51 @@ it('merges a completion with external event edits and refuses an incompatible ex
   await expect(saveObject(adapter, reopened, { ...reopened.object, properties: { checkable: true, completed: true } })).rejects.toThrow('需要完成');
   expect(await adapter.read(eventPath)).toEqual(external.snapshot);
 });
+it('uses readBatch, reuses unchanged records by contentHash, and runs beforeValidate after reads', async () => {
+  const { adapter } = await setup();
+  const second = { ...object, id: 'b00003', name: '第二个任务' };
+  const secondPath = '.tano/objects/b00003.tano.json';
+  await adapter.create(secondPath, JSON.stringify(second));
+  const space = await adapter.refresh();
+  const events: string[] = [];
+  let batchCalls = 0;
+  let singleCalls = 0;
+  const instrumented = {
+    read: async (target: string) => {
+      singleCalls++;
+      return adapter.read(target);
+    },
+    readBatch: async (paths: string[]) => {
+      batchCalls++;
+      events.push(`batch:${paths.length}`);
+      return adapter.readBatch(paths);
+    },
+  };
+  const first = await loadObjects(instrumented, space, {
+    beforeValidate: async () => {
+      events.push('beforeValidate');
+    },
+  });
+  expect(first.records).toHaveLength(2);
+  expect(batchCalls).toBe(1);
+  expect(singleCalls).toBe(0);
+  expect(events).toEqual(['batch:2', 'beforeValidate']);
+
+  // Second load with unchanged workspace reuses all records without any readBatch call.
+  const secondLoad = await loadObjects(instrumented, space, { previous: first.records });
+  expect(batchCalls).toBe(1);
+  expect(secondLoad.records[0]).toBe(first.records[0]);
+  expect(secondLoad.records[1]).toBe(first.records[1]);
+
+  // Modify one object: only the changed file is read on incremental reload.
+  const record2 = first.records.find((r) => r.object.id === 'b00003')!;
+  await saveObject(adapter, record2, { ...second, name: '已修改任务' });
+  const updatedSpace = await adapter.refresh();
+  const thirdLoad = await loadObjects(instrumented, updatedSpace, { previous: first.records });
+  expect(batchCalls).toBe(2);
+  expect(events).toEqual(['batch:2', 'beforeValidate', 'batch:1']);
+  expect(thirdLoad.records.find((r) => r.object.id === 'a00001')).toBe(
+    first.records.find((r) => r.object.id === 'a00001'),
+  );
+  expect(thirdLoad.records.find((r) => r.object.id === 'b00003')?.object.name).toBe('已修改任务');
+});

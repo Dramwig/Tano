@@ -6,6 +6,7 @@ pub(crate) const MAX_WORKSPACE_ENTRIES: usize = 20_000;
 
 pub(crate) mod assets;
 pub(crate) mod mobile;
+pub(crate) mod object_cache;
 pub(crate) mod scan_cache;
 pub(crate) mod search;
 pub(crate) mod session;
@@ -97,7 +98,6 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    #[cfg(desktop)]
     pub(crate) fn new(content: String, hash: String, modified: u64) -> Self {
         Self {
             content,

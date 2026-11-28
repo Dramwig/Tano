@@ -389,6 +389,7 @@ fn scan_inner(root: &Path, id: &str, cache: &Path, reuse: bool) -> Result<Worksp
             [id],
         )
         .map_err(|e| e.to_string())?;
+    super::object_cache::prune(&transaction, id)?;
     crate::search::prune(&transaction, id)?;
     crate::identity_manifest::publish(&transaction, root, id)?;
     transaction.commit().map_err(|e| e.to_string())?;

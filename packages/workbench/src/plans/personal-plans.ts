@@ -1,6 +1,6 @@
 import { nativeInvoke as invoke } from '../platform/native-bridge';
 import { newShortId, parseObject, validateObjectProperties } from '@tano/protocol';
-import type { FileSnapshot, Workspace, WriteResult } from '@tano/protocol';
+import type { BatchReadItem, FileSnapshot, Workspace, WriteResult } from '@tano/protocol';
 import { sha256 } from '../workspace/adapter';
 import type { ObjectRecord, ObjectStorage } from '../objects/workspace-objects';
 import { t } from '../i18n/i18n';
@@ -73,18 +73,22 @@ export class BrowserPersonalPlans implements ObjectStorage {
   }
   async refresh(): Promise<Workspace> {
     const data = this.load();
+    const files = await Promise.all(
+      Object.entries(data.files).map(async ([path, file]) => ({
+        id: path.split('/').at(-1)!.slice(0, 6),
+        path,
+        name: path.split('/').at(-1)!,
+        kind: 'file' as const,
+        modified: file.modified,
+        size: new TextEncoder().encode(file.content).length,
+        contentHash: await sha256(file.content),
+      })),
+    );
     return {
       id: data.id,
       name: '个人',
       path: '当前浏览器的个人计划',
-      files: Object.entries(data.files).map(([path, file]) => ({
-        id: path.split('/').at(-1)!.slice(0, 6),
-        path,
-        name: path.split('/').at(-1)!,
-        kind: 'file',
-        modified: file.modified,
-        size: new TextEncoder().encode(file.content).length,
-      })),
+      files,
     };
   }
   async read(path: string): Promise<FileSnapshot> {
@@ -92,6 +96,23 @@ export class BrowserPersonalPlans implements ObjectStorage {
     const file = this.load().files[path];
     if (!file) throw new Error('个人事项已不存在');
     return { ...file, hash: await sha256(file.content) };
+  }
+  async readBatch(paths: string[]): Promise<Record<string, BatchReadItem>> {
+    if (!paths.length) return {};
+    const data = this.load();
+    const entries = await Promise.all(
+      paths.map(async (path): Promise<[string, BatchReadItem]> => {
+        try {
+          checkPath(path);
+          const file = data.files[path];
+          if (!file) return [path, { ok: false, error: '个人事项已不存在' }];
+          return [path, { ok: true, snapshot: { ...file, hash: await sha256(file.content) } }];
+        } catch (error) {
+          return [path, { ok: false, error: error instanceof Error ? error.message : String(error) }];
+        }
+      }),
+    );
+    return Object.fromEntries(entries);
   }
   async reserveObjectId(occupied: string[] = []) {
     return this.mutate(() => {
@@ -138,6 +159,8 @@ export class NativePersonalPlans implements ObjectStorage {
   refresh = () => invoke<Workspace>('personal_plans_list');
   reserveObjectId = (occupied: string[]) => invoke<string>('personal_plans_reserve', { occupied });
   read = (path: string) => invoke<FileSnapshot>('personal_plans_read', { path });
+  readBatch = (paths: string[]) =>
+    invoke<Record<string, BatchReadItem>>('personal_plans_read_batch', { paths });
   create = (path: string, content: string) =>
     invoke<void>('personal_plans_create', { path, content });
   write = (path: string, content: string, expectedHash: string) =>
