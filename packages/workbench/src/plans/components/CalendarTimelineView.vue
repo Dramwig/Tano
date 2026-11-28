@@ -2,9 +2,7 @@
 import { computed } from 'vue';
 import { Circle, CircleCheck, Flag } from 'lucide-vue-next';
 import { t, uiLocale } from '../../i18n/i18n';
-import type { ObjectRecord } from '../../objects/workspace-objects';
 import {
-  calendarDayEntries,
   isCheckableEvent,
   isEventCompleted,
   localDayKey,
@@ -12,18 +10,21 @@ import {
   type CalendarViewMode,
 } from '../calendar';
 import { formatMinutesLabel } from '../calendar-interaction';
-import { layoutDayTimedEvents } from '../timeline-layout';
+import { EMPTY_ENTRIES, EMPTY_RECORDS, getCachedDayTimedLayout, type PlanDayIndex } from '../plan-index';
+import type { TimedEventBlock } from '../timeline-layout';
 import { planKey, sourcePlanKey } from '../personal-plans';
 import type { CalendarInteractions } from '../composables/use-calendar-interactions';
-import { CALENDAR_HOUR_HEIGHT } from '../composables/use-calendar-scroll';
+import { CALENDAR_AXIS_WIDTH, CALENDAR_HOUR_HEIGHT } from '../composables/use-calendar-scroll';
+import type { IndexRange } from '../composables/use-calendar-viewport';
 
 const props = defineProps<{
   date: Date;
   mode: CalendarViewMode;
   timelineDays: readonly Date[];
   timelineDayWidth: number;
-  planned: readonly ObjectRecord[];
-  events: readonly ObjectRecord[];
+  dayIndex: PlanDayIndex;
+  renderRange: IndexRange;
+  hourRange: IndexRange;
   today: string;
   nowMinutes: number;
   weekdays: readonly string[];
@@ -38,16 +39,29 @@ const emit = defineEmits<{
 const hours = Array.from({ length: 24 }, (_, hour) => hour);
 const hourHeight = CALENDAR_HOUR_HEIGHT;
 const nowLineTop = computed(() => `${(props.nowMinutes / 60) * hourHeight}px`);
+const VERTICAL_WINDOW_THRESHOLD = 24;
 
-const bannerEntries = (day: Date) =>
-  calendarDayEntries(props.planned, day).filter((entry) => entry.kind !== 'timed');
+interface FormattedTimedEvent extends TimedEventBlock {
+  time: string;
+  compact: boolean;
+}
+
+const formattedCache = new WeakMap<readonly TimedEventBlock[], FormattedTimedEvent[]>();
+
+function isColumnRendered(index: number) {
+  return index >= props.renderRange.start && index <= props.renderRange.end;
+}
+
+function bannerEntries(dayKey: string) {
+  return props.dayIndex.bannerByDay.get(dayKey) ?? EMPTY_ENTRIES;
+}
 const hasVisibleBanner = computed(() =>
-  visibleCalendarDays(props.date, props.mode).some((day) => bannerEntries(day).length > 0),
+  visibleCalendarDays(props.date, props.mode).some((day) => bannerEntries(localDayKey(day)).length > 0),
 );
 const BANNER_ITEM_HEIGHT = 22;
 const BANNER_GAP = 3;
 const bannerRowHeight = computed(() => {
-  const most = Math.max(0, ...visibleCalendarDays(props.date, props.mode).map((day) => bannerEntries(day).length));
+  const most = Math.max(0, ...visibleCalendarDays(props.date, props.mode).map((day) => bannerEntries(localDayKey(day)).length));
   const rows = Math.min(3.5, Math.max(1, most));
   return Math.round(12 + rows * BANNER_ITEM_HEIGHT + Math.max(0, Math.ceil(rows) - 1) * BANNER_GAP);
 });
@@ -56,18 +70,35 @@ function weekday(day: Date) {
   return props.weekdays[(day.getDay() + 6) % 7];
 }
 
-function timedEvents(day: Date) {
-  return layoutDayTimedEvents(props.events, day, hourHeight).map((block) => {
-    const { start, end } = block.record.object.properties;
-    const time = props.interactions.entryTime({ record: block.record, kind: 'timed' });
-    return {
-      ...block,
-      time:
-        block.point || !end || Date.parse(String(end)) === Date.parse(String(start))
-          ? time
-          : `${time} – ${props.interactions.clockLabel(end)}`,
-      compact: !block.point && block.height < 44,
-    };
+function timedEvents(day: Date, dayKey: string): readonly FormattedTimedEvent[] {
+  const records = props.dayIndex.timedByDay.get(dayKey) ?? EMPTY_RECORDS;
+  if (!records.length) return [];
+  const blocks = getCachedDayTimedLayout(records, day, hourHeight);
+  let formatted = formattedCache.get(blocks);
+  if (!formatted) {
+    formatted = blocks.map((block) => {
+      const { start, end } = block.record.object.properties;
+      const time = props.interactions.entryTime({ record: block.record, kind: 'timed' });
+      return {
+        ...block,
+        time:
+          block.point || !end || Date.parse(String(end)) === Date.parse(String(start))
+            ? time
+            : `${time} – ${props.interactions.clockLabel(end)}`,
+        compact: !block.point && block.height < 44,
+      };
+    });
+    formattedCache.set(blocks, formatted);
+  }
+  if (formatted.length <= VERTICAL_WINDOW_THRESHOLD) return formatted;
+  const minTop = props.hourRange.start * hourHeight;
+  const maxTop = props.hourRange.end * hourHeight;
+  const resizingKey = props.interactions.resizing.value?.key;
+  const draggingKey = props.interactions.draggingKey.value;
+  return formatted.filter((item) => {
+    if (item.top + item.height >= minTop && item.top <= maxTop) return true;
+    const key = planKey(item.record);
+    return key === resizingKey || key === draggingKey;
   });
 }
 </script>
@@ -76,9 +107,10 @@ function timedEvents(day: Date) {
   <div
     class="calendar-view-inner"
     :style="{
+      '--calendar-axis-width': `${CALENDAR_AXIS_WIDTH}px`,
       '--calendar-day-count': timelineDays.length,
       '--calendar-day-width': `${timelineDayWidth}px`,
-      width: `${64 + timelineDays.length * timelineDayWidth}px`,
+      width: `${CALENDAR_AXIS_WIDTH + timelineDays.length * timelineDayWidth}px`,
     }"
   >
     <div
@@ -99,7 +131,7 @@ function timedEvents(day: Date) {
       <template v-if="hasVisibleBanner || interactions.draggingKey.value">
         <span class="calendar-view-date-label">{{ t('全天') }}</span>
         <div
-          v-for="day in timelineDays"
+          v-for="(day, dayIdx) in timelineDays"
           :key="`date-${localDayKey(day)}`"
           class="calendar-view-date-events"
           :class="{ 'is-drop-target': interactions.dropTarget.value?.zone === 'day' && interactions.dropTarget.value.dayKey === localDayKey(day) }"
@@ -108,8 +140,9 @@ function timedEvents(day: Date) {
           @dragleave="interactions.onDragLeave"
           @drop.prevent="interactions.onDayDrop(day, $event)"
         >
+          <template v-if="isColumnRendered(dayIdx)">
           <div
-            v-for="entry in bannerEntries(day)"
+            v-for="entry in bannerEntries(localDayKey(day))"
             :key="`${planKey(entry.record)}:${entry.kind}`"
             class="calendar-view-date-event"
             :class="interactions.itemClasses(entry.record, entry.kind)"
@@ -136,6 +169,7 @@ function timedEvents(day: Date) {
               @click="emit('select-event', sourcePlanKey(entry.record))"
             >{{ entry.record.object.name }}</button>
           </div>
+          </template>
         </div>
       </template>
     </div>
@@ -144,7 +178,7 @@ function timedEvents(day: Date) {
         <span v-for="hour in hours" :key="hour" :style="{ top: `${hour * hourHeight}px` }">{{ String(hour).padStart(2, '0') }}:00</span>
       </div>
       <div
-        v-for="day in timelineDays"
+        v-for="(day, dayIdx) in timelineDays"
         :key="localDayKey(day)"
         class="calendar-view-day-column"
         :class="{ 'is-creatable': canCreate, 'is-today': localDayKey(day) === today }"
@@ -168,8 +202,9 @@ function timedEvents(day: Date) {
           :style="{ top: `${(interactions.dropTarget.value.minutes / 60) * hourHeight}px` }"
           aria-hidden="true"
         ><span>{{ formatMinutesLabel(interactions.dropTarget.value.minutes) }}</span></div>
+        <template v-if="isColumnRendered(dayIdx)">
         <div
-          v-for="item in timedEvents(day)"
+          v-for="item in timedEvents(day, localDayKey(day))"
           :key="planKey(item.record)"
           class="calendar-view-event"
           data-zoom-scale
@@ -210,6 +245,7 @@ function timedEvents(day: Date) {
             @pointerdown.stop.prevent="interactions.startResize(item, day, $event)"
           />
         </div>
+        </template>
       </div>
     </div>
   </div>
@@ -219,31 +255,33 @@ function timedEvents(day: Date) {
 .calendar-view-days,
 .calendar-view-grid {
   display: grid;
-  grid-template-columns: 64px repeat(var(--calendar-day-count), var(--calendar-day-width));
+  grid-template-columns: var(--calendar-axis-width, 52px) repeat(var(--calendar-day-count), var(--calendar-day-width));
 }
 .calendar-view-days {
   position: sticky;
   top: 0;
   z-index: 4;
-  grid-template-rows: 70px;
-  min-height: 70px;
+  grid-template-rows: 44px;
+  min-height: 44px;
   align-items: center;
   background: var(--paper);
   border-bottom: 1px solid var(--line);
   transition: grid-template-rows var(--motion-spring) var(--ease-spring-smooth);
 }
-.calendar-view-days.has-banner { grid-template-rows: 70px var(--calendar-banner-height, auto); }
+.calendar-view-days.has-banner { grid-template-rows: 44px var(--calendar-banner-height, auto); }
 .calendar-view-zone {
   position: sticky;
   left: 0;
   z-index: 3;
   align-self: stretch;
   display: flex;
-  align-items: flex-end;
-  padding: 0 0 10px 9px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
   background: var(--paper);
   font-size: 10px;
   color: var(--muted);
+  white-space: nowrap;
 }
 .calendar-view-day-heading {
   display: flex;
@@ -271,11 +309,12 @@ function timedEvents(day: Date) {
   left: 0;
   z-index: 3;
   align-self: stretch;
-  padding: 10px 9px;
+  padding: 10px 4px;
   border-top: 1px solid var(--line);
   background: var(--paper);
   color: var(--muted);
   font-size: 10px;
+  text-align: center;
 }
 .calendar-view-date-events {
   display: flex;
@@ -294,9 +333,28 @@ function timedEvents(day: Date) {
 .calendar-view-date-events::-webkit-scrollbar { display: none; }
 .calendar-view-grid { height: 1344px; }
 .calendar-view-hours { position: sticky; left: 0; z-index: 3; background: var(--paper); }
+.calendar-view-zone::after,
+.calendar-view-date-label::after,
+.calendar-view-hours::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: 10px;
+  background: linear-gradient(
+    to right,
+    var(--paper) 0%,
+    color-mix(in srgb, var(--paper) 65%, transparent) 45%,
+    color-mix(in srgb, var(--paper) 0%, transparent) 100%
+  );
+  pointer-events: none;
+}
 .calendar-view-hours span {
   position: absolute;
-  right: 9px;
+  left: 0;
+  right: 0;
+  text-align: center;
   transform: translateY(-7px);
   font-size: 10.5px;
   color: var(--muted);
@@ -307,7 +365,7 @@ function timedEvents(day: Date) {
   position: relative;
   z-index: 0;
   border-left: 1px solid var(--line);
-  background-image: repeating-linear-gradient(to bottom, var(--line) 0, var(--line) 1px, transparent 1px, transparent 56px);
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 55px, var(--line) 55px, var(--line) 56px);
 }
 .calendar-view-day-column.is-today { background-color: var(--cal-today); }
 .calendar-now-line {

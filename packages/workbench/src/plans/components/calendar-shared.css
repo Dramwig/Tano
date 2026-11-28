@@ -33,6 +33,7 @@
 /* ---- Scroll container ---------------------------------------------------- */
 .calendar-stage {
   position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -48,6 +49,12 @@
 .calendar-view-timeline,
 .calendar-view-month,
 .calendar-view-year { overflow-anchor: none; }
+/* Timeline renders an elastic horizontal scrollbar; month/year render an elastic vertical scrollbar. */
+.calendar-view-timeline::-webkit-scrollbar:horizontal { height: 0; }
+.calendar-view-month::-webkit-scrollbar:vertical,
+.calendar-view-year::-webkit-scrollbar:vertical { width: 0; }
+.calendar-view-month,
+.calendar-view-year { padding-right: 14px; }
 /* Switching between views fades the new layout in instead of snapping. */
 .calendar-shell :is(.calendar-view-inner, .calendar-month-view, .calendar-year-view, .calendar-agenda-view) {
   animation: tano-fade-in var(--motion-base) var(--ease-standard);
@@ -103,7 +110,8 @@
 }
 .calendar-shell .is-draggable { cursor: grab; }
 .calendar-shell .is-draggable:active { cursor: grabbing; }
-.calendar-shell .is-dragging { opacity: 0.38; }
+/* Dimmed drag ghost for calendar items only; the elastic scrollbar keeps its own ink while dragging. */
+.calendar-shell .is-dragging:not(.calendar-escroll, .calendar-escroll-thumb) { opacity: 0.38; }
 .calendar-shell .is-completed .calendar-item-trigger,
 .calendar-shell .is-completed .calendar-view-event-body strong,
 .calendar-shell .is-completed .calendar-agenda-item span {

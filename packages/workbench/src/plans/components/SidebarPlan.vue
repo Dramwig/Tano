@@ -21,16 +21,16 @@ import {
   isCheckableEvent,
   isEventCompleted,
   planningEvents,
-  plannedEventsOnDay,
   unscheduledTasks,
   localDayKey,
   weekDays,
 } from '../calendar';
+import { buildCalendarDayIndex, EMPTY_ENTRIES } from '../plan-index';
 import { useWorkspaceStore } from '../../stores/workspace';
 import { usePlanStore } from '../../stores/plans';
 import type { PlanScope } from '../../stores/plans';
 import { planKey, sourcePlanKey } from '../personal-plans';
-import { expandRecurringPlans, isVirtualOccurrence } from '../recurrence';
+import { isVirtualOccurrence } from '../recurrence';
 import { useWorkbenchRuntime } from '../../runtime';
 import PlanEventList from './PlanEventList.vue';
 import { createPlanListMotion } from './plan-list-motion';
@@ -48,8 +48,9 @@ import PlanEventContextMenu from './PlanEventContextMenu.vue';
 const props = withDefaults(defineProps<{ date: Date; active?: boolean; workspaceOnly?: boolean }>(), { active: true });
 const listRoot = ref<HTMLElement>();
 let listMotion: ReturnType<typeof createPlanListMotion> | undefined;
-onBeforeUpdate(() => listMotion?.capture());
-onUpdated(() => listMotion?.update());
+const shouldAnimateList = () => props.active && agenda.value.length <= 40;
+onBeforeUpdate(() => { if (shouldAnimateList()) listMotion?.capture(); });
+onUpdated(() => { if (shouldAnimateList()) listMotion?.update(); });
 const emit = defineEmits<{ 'select-date': [date: Date]; 'select-event': [id: string] }>();
 const store = useWorkspaceStore();
 const plans = usePlanStore();
@@ -125,25 +126,30 @@ let suppressCalendarClick = false;
 let savedScrollTop = BUFFER_WEEKS * WEEK_HEIGHT;
 let repositioning = false;
 let resizeObserver: ResizeObserver | undefined;
-const events = computed(() =>
-  planningEvents(
-    expandRecurringPlans(
-      plans.recordsFor(effectiveView.value),
-      start.value,
-      offsetDays(start.value, TOTAL_WEEKS * 7 - 1),
-    ),
+const sourceRecords = computed(() => plans.recordsFor(effectiveView.value));
+const allPlanned = computed(() => planningEvents(sourceRecords.value));
+const sidebarDayIndex = computed(() =>
+  buildCalendarDayIndex(
+    sourceRecords.value,
+    start.value,
+    offsetDays(start.value, TOTAL_WEEKS * 7 - 1),
   ),
 );
+const events = computed(() => sidebarDayIndex.value.inWindowRecords);
 const canEditItem = (record: ObjectRecord) => !isVirtualOccurrence(record) && plans.canEdit(record);
 const selectEventKey = (key: string) => emit('select-event', key.replace(/@\d{4}-\d{2}-\d{2}$/, ''));
-const unfinished = computed(() => events.value.filter(record => !isEventCompleted(record)));
-const completed = computed(() => events.value.filter(isEventCompleted));
+const unfinished = computed(() => allPlanned.value.filter(record => !isEventCompleted(record)));
+const completed = computed(() => allPlanned.value.filter(isEventCompleted));
 const completedExpanded = ref(false);
 const completedListId = useId();
 const contextMenuId = `plan-event-menu-${useId()}`;
 const context = ref<{ key: string; x: number; y: number }>();
 let contextTrigger: HTMLElement | null = null;
-const contextRecord = computed(() => events.value.find(record => planKey(record) === context.value?.key));
+const contextRecord = computed(
+  () =>
+    events.value.find((record) => planKey(record) === context.value?.key) ??
+    allPlanned.value.find((record) => planKey(record) === context.value?.key),
+);
 function restoreContextFocus(trigger = contextTrigger) {
   void nextTick(() => {
     const target = trigger?.isConnected && !trigger.closest('[inert]') ? trigger
@@ -182,17 +188,36 @@ async function contextAction(action: 'details' | 'complete' | 'archive') {
 }
 watch(() => [props.active, plans.view, selected.value, store.workspace?.id, completedExpanded.value], () => closeContextMenu());
 watch(contextRecord, record => { if (!record) closeContextMenu(); });
-const days = computed(() =>
-  Array.from({ length: TOTAL_WEEKS * 7 }, (_, index) => offsetDays(start.value, index)).map(
-    (date) => ({
-      date,
-      key: localDayKey(date),
-      count: plannedEventsOnDay(events.value, date).length,
-    }),
-  ),
-);
+const days = computed(() => {
+  const entriesByDay = sidebarDayIndex.value.entriesByDay;
+  return Array.from({ length: TOTAL_WEEKS * 7 }, (_, index) => {
+    const date = offsetDays(start.value, index);
+    const key = localDayKey(date);
+    const entries = entriesByDay.get(key);
+    let count = 0;
+    if (entries) {
+      for (let i = 0; i < entries.length; i++) {
+        if (entries[i]!.kind !== 'due') count++;
+      }
+    }
+    return { date, key, count };
+  });
+});
 const selectedDate = computed(() => new Date(`${selected.value}T00:00:00`));
-const agenda = computed(() => plannedEventsOnDay(events.value, selectedDate.value));
+const agenda = computed(() => {
+  const key = selected.value;
+  const idx = sidebarDayIndex.value;
+  const entries =
+    key >= idx.windowStartKey && key <= idx.windowEndKey
+      ? (idx.entriesByDay.get(key) ?? EMPTY_ENTRIES)
+      : (buildCalendarDayIndex(sourceRecords.value, selectedDate.value, selectedDate.value).entriesByDay.get(key) ?? EMPTY_ENTRIES);
+  const result: ObjectRecord[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    if (entry.kind !== 'due') result.push(entry.record);
+  }
+  return result;
+});
 const unscheduled = computed(() => unscheduledTasks(unfinished.value));
 const monthTitle = computed(
   () => t('{0} 年 {1} 月', [month.value.getFullYear(), month.value.getMonth() + 1]),

@@ -1,21 +1,23 @@
 <script setup lang="ts">
 import { Circle, CircleCheck, Flag, Plus } from 'lucide-vue-next';
 import { t, uiLocale } from '../../i18n/i18n';
-import type { ObjectRecord } from '../../objects/workspace-objects';
 import {
-  calendarDayEntries,
   isCheckableEvent,
   isEventCompleted,
   localDayKey,
   weekDays,
+  type CalendarDayEntry,
 } from '../calendar';
+import { EMPTY_ENTRIES, type PlanDayIndex } from '../plan-index';
 import { planKey, sourcePlanKey } from '../personal-plans';
 import type { PlanDateValue } from '../plan-date';
 import type { CalendarInteractions } from '../composables/use-calendar-interactions';
+import type { IndexRange } from '../composables/use-calendar-viewport';
 
 const props = defineProps<{
   scrollingWeeks: readonly Date[];
-  planned: readonly ObjectRecord[];
+  dayIndex: PlanDayIndex;
+  renderRange: IndexRange;
   today: string;
   weekdays: readonly string[];
   canCreate: boolean;
@@ -37,8 +39,33 @@ function monthShade(day: Date) {
   return (day.getFullYear() * 12 + day.getMonth()) % 2 === 1;
 }
 
-function dayEntries(day: Date) {
-  return calendarDayEntries(props.planned, day);
+function isWeekRendered(weekIndex: number) {
+  return weekIndex >= props.renderRange.start && weekIndex <= props.renderRange.end;
+}
+
+interface CellDayView {
+  day: Date;
+  key: string;
+  shaded: boolean;
+  preview: readonly CalendarDayEntry[];
+  extraCount: number;
+}
+
+function weekCells(week: Date, rendered: boolean): CellDayView[] {
+  return weekDays(week).map((day) => {
+    const key = localDayKey(day);
+    if (!rendered) {
+      return { day, key, shaded: monthShade(day), preview: EMPTY_ENTRIES, extraCount: 0 };
+    }
+    const entries = props.dayIndex.entriesByDay.get(key) ?? EMPTY_ENTRIES;
+    return {
+      day,
+      key,
+      shaded: monthShade(day),
+      preview: entries.length > 3 ? entries.slice(0, 3) : entries,
+      extraCount: entries.length > 3 ? entries.length - 3 : 0,
+    };
+  });
 }
 </script>
 
@@ -48,81 +75,84 @@ function dayEntries(day: Date) {
       <span v-for="name in weekdays" :key="name">{{ uiLocale === 'zh-CN' ? t('周') : '' }}{{ name }}</span>
     </div>
     <div
-      v-for="week in scrollingWeeks"
+      v-for="(week, weekIdx) in scrollingWeeks"
       :key="weekKey(week)"
       class="calendar-month-week"
+      :class="{ 'is-offscreen': !isWeekRendered(weekIdx) }"
       :data-week="weekKey(week)"
     >
       <div
-        v-for="day in weekDays(week)"
-        :key="localDayKey(day)"
+        v-for="cell in weekCells(week, isWeekRendered(weekIdx))"
+        :key="cell.key"
         class="calendar-month-cell"
         :class="{
-          shaded: monthShade(day),
-          'is-drop-target': interactions.dropTarget.value?.zone === 'day' && interactions.dropTarget.value.dayKey === localDayKey(day),
+          shaded: cell.shaded,
+          'is-drop-target': interactions.dropTarget.value?.zone === 'day' && interactions.dropTarget.value.dayKey === cell.key,
         }"
-        :data-day="localDayKey(day)"
-        :data-zoom-day="localDayKey(day)"
-        @dblclick.self="emit('open-quick-create', { date: localDayKey(day), time: '', end: '' }, false)"
-        @dragover="interactions.onDayDragOver(day, $event)"
+        :data-day="cell.key"
+        :data-zoom-day="cell.key"
+        @dblclick.self="emit('open-quick-create', { date: cell.key, time: '', end: '' }, false)"
+        @dragover="interactions.onDayDragOver(cell.day, $event)"
         @dragleave="interactions.onDragLeave"
-        @drop.prevent="interactions.onDayDrop(day, $event)"
+        @drop.prevent="interactions.onDayDrop(cell.day, $event)"
       >
-        <div class="calendar-month-cell-header">
-          <button
-            v-if="canCreate"
-            type="button"
-            class="calendar-month-add"
-            :aria-label="t('为 {0} 添加事件', [localDayKey(day)])"
-            @click.stop="emit('open-quick-create', { date: localDayKey(day), time: '', end: '' }, false)"
-          ><Plus :size="12" aria-hidden="true" /></button>
-          <button
-            type="button"
-            class="calendar-month-date"
-            :data-zoom-num="localDayKey(day)"
-            :class="{ today: localDayKey(day) === today, 'month-start': day.getDate() === 1 }"
-            :aria-label="t('{0}，查看日视图', [localDayKey(day)])"
-            @click="emit('select-date', day)"
-          >{{ day.getDate() === 1 ? t('{0} 月 1 日', [day.getMonth() + 1]) : day.getDate() }}</button>
-        </div>
-        <div
-          v-for="entry in dayEntries(day).slice(0, 3)"
-          :key="`${planKey(entry.record)}:${entry.kind}`"
-          class="calendar-month-event"
-          data-zoom-scale
-          :class="interactions.itemClasses(entry.record, entry.kind)"
-          :draggable="entry.kind !== 'due' && interactions.canDragRecord(entry.record)"
-          :data-tooltip="interactions.entryTooltip(entry)"
-          @dragstart="interactions.onEventDragStart(entry.record, $event)"
-          @dragend="interactions.onEventDragEnd"
-        >
-          <button
-            v-if="isCheckableEvent(entry.record)"
-            type="button"
-            class="calendar-inline-check"
-            :aria-label="`${isEventCompleted(entry.record) ? t('标记未完成') : t('完成')}：${entry.record.object.name}`"
-            :disabled="!interactions.canToggleComplete(entry.record)"
-            @click.stop="interactions.toggleComplete(entry.record)"
+        <template v-if="isWeekRendered(weekIdx)">
+          <div class="calendar-month-cell-header">
+            <button
+              v-if="canCreate"
+              type="button"
+              class="calendar-month-add"
+              :aria-label="t('为 {0} 添加事件', [cell.key])"
+              @click.stop="emit('open-quick-create', { date: cell.key, time: '', end: '' }, false)"
+            ><Plus :size="12" aria-hidden="true" /></button>
+            <button
+              type="button"
+              class="calendar-month-date"
+              :data-zoom-num="cell.key"
+              :class="{ today: cell.key === today, 'month-start': cell.day.getDate() === 1 }"
+              :aria-label="t('{0}，查看日视图', [cell.key])"
+              @click="emit('select-date', cell.day)"
+            >{{ cell.day.getDate() === 1 ? t('{0} 月 1 日', [cell.day.getMonth() + 1]) : cell.day.getDate() }}</button>
+          </div>
+          <div
+            v-for="entry in cell.preview"
+            :key="`${planKey(entry.record)}:${entry.kind}`"
+            class="calendar-month-event"
+            data-zoom-scale
+            :class="interactions.itemClasses(entry.record, entry.kind)"
+            :draggable="entry.kind !== 'due' && interactions.canDragRecord(entry.record)"
+            :data-tooltip="interactions.entryTooltip(entry)"
+            @dragstart="interactions.onEventDragStart(entry.record, $event)"
+            @dragend="interactions.onEventDragEnd"
           >
-            <CircleCheck v-if="isEventCompleted(entry.record)" :size="11" aria-hidden="true" />
-            <Circle v-else :size="11" aria-hidden="true" />
-          </button>
-          <Flag v-if="entry.kind === 'due'" :size="10" class="calendar-due-flag" aria-hidden="true" />
+            <button
+              v-if="isCheckableEvent(entry.record)"
+              type="button"
+              class="calendar-inline-check"
+              :aria-label="`${isEventCompleted(entry.record) ? t('标记未完成') : t('完成')}：${entry.record.object.name}`"
+              :disabled="!interactions.canToggleComplete(entry.record)"
+              @click.stop="interactions.toggleComplete(entry.record)"
+            >
+              <CircleCheck v-if="isEventCompleted(entry.record)" :size="11" aria-hidden="true" />
+              <Circle v-else :size="11" aria-hidden="true" />
+            </button>
+            <Flag v-if="entry.kind === 'due'" :size="10" class="calendar-due-flag" aria-hidden="true" />
+            <button
+              type="button"
+              class="calendar-item-trigger"
+              @click="emit('select-event', sourcePlanKey(entry.record))"
+            ><time v-if="entry.kind === 'timed'" class="calendar-item-time">{{ interactions.entryTime(entry) }}</time>{{ entry.record.object.name }}</button>
+          </div>
           <button
+            v-if="cell.extraCount > 0"
             type="button"
-            class="calendar-item-trigger"
-            @click="emit('select-event', sourcePlanKey(entry.record))"
-          ><time v-if="entry.kind === 'timed'" class="calendar-item-time">{{ interactions.entryTime(entry) }}</time>{{ entry.record.object.name }}</button>
-        </div>
-        <button
-          v-if="dayEntries(day).length > 3"
-          type="button"
-          class="calendar-month-more"
-          aria-haspopup="dialog"
-          :aria-expanded="localDayKey(day) === dayPopoverKey"
-          :aria-controls="localDayKey(day) === dayPopoverKey ? dayPopoverId : undefined"
-          @click="emit('open-day-popover', day, $event)"
-        >{{ t('另有 {0} 项', [dayEntries(day).length - 3]) }}</button>
+            class="calendar-month-more"
+            aria-haspopup="dialog"
+            :aria-expanded="cell.key === dayPopoverKey"
+            :aria-controls="cell.key === dayPopoverKey ? dayPopoverId : undefined"
+            @click="emit('open-day-popover', cell.day, $event)"
+          >{{ t('另有 {0} 项', [cell.extraCount]) }}</button>
+        </template>
       </div>
     </div>
   </div>
@@ -132,6 +162,7 @@ function dayEntries(day: Date) {
 .calendar-month-view { min-width: 630px; }
 .calendar-month-weekdays,
 .calendar-month-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.calendar-month-week.is-offscreen { content-visibility: auto; contain-intrinsic-size: auto 108px; }
 .calendar-month-weekdays {
   position: sticky;
   top: 0;

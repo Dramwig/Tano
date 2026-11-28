@@ -19,30 +19,22 @@ export function isVirtualOccurrence(record: ObjectRecord): boolean {
 }
 
 /**
- * Expands `repeat.mode === 'schedule'` series within `[windowStart, windowEnd]`
- * into lightweight virtual occurrence records without duplicating files on disk.
+ * Expands only the provided recurring source records within `[windowStart, windowEnd]`,
+ * returning ONLY the generated virtual occurrence records.
  */
-export function expandRecurringPlans(
-  records: readonly ObjectRecord[],
+export function expandRecurringSeriesInWindow(
+  recurringRecords: readonly ObjectRecord[],
+  materializedOverrides: ReadonlySet<string>,
   windowStart: Date,
   windowEnd: Date,
 ): ObjectRecord[] {
   const startKey = localDayKey(windowStart);
   const endKey = localDayKey(windowEnd);
-  if (endKey < startKey) return [...records];
+  if (endKey < startKey || !recurringRecords.length) return [];
 
-  const materializedOverrides = new Set<string>();
-  for (const record of records) {
-    const src = record.object.properties.repeatSourceId;
-    const occ = record.object.properties.repeatOccurrence;
-    if (typeof src === 'string' && validEventDate(occ)) {
-      materializedOverrides.add(`${record.source?.scope ?? 'workspace'}:${record.source?.id ?? ''}:${src}:${occ}`);
-    }
-  }
+  const virtuals: ObjectRecord[] = [];
 
-  const expanded: ObjectRecord[] = [...records];
-
-  for (const record of records) {
+  for (const record of recurringRecords) {
     if (record.object.archived) continue;
     if (record.object.properties.repeat === undefined) continue;
     if (record.object.properties.repeatSourceId !== undefined) continue;
@@ -75,7 +67,7 @@ export function expandRecurringPlans(
 
       const targetDate = new Date(`${dateKey}T00:00:00`);
       const moved = moveRecordToDay(record.object, targetDate);
-      expanded.push({
+      virtuals.push({
         ...record,
         object: {
           ...moved,
@@ -91,5 +83,36 @@ export function expandRecurringPlans(
     }
   }
 
-  return expanded;
+  return virtuals;
+}
+
+/**
+ * Expands `repeat.mode === 'schedule'` series within `[windowStart, windowEnd]`
+ * into lightweight virtual occurrence records without duplicating files on disk.
+ */
+export function expandRecurringPlans(
+  records: readonly ObjectRecord[],
+  windowStart: Date,
+  windowEnd: Date,
+): ObjectRecord[] {
+  const startKey = localDayKey(windowStart);
+  const endKey = localDayKey(windowEnd);
+  if (endKey < startKey) return [...records];
+
+  const materializedOverrides = new Set<string>();
+  const recurringRecords: ObjectRecord[] = [];
+  for (const record of records) {
+    const src = record.object.properties.repeatSourceId;
+    const occ = record.object.properties.repeatOccurrence;
+    if (typeof src === 'string' && validEventDate(occ)) {
+      materializedOverrides.add(`${record.source?.scope ?? 'workspace'}:${record.source?.id ?? ''}:${src}:${occ}`);
+    }
+    if (!record.object.archived && record.object.properties.repeat !== undefined && src === undefined) {
+      recurringRecords.push(record);
+    }
+  }
+
+  if (!recurringRecords.length) return [...records];
+  const virtuals = expandRecurringSeriesInWindow(recurringRecords, materializedOverrides, windowStart, windowEnd);
+  return virtuals.length ? [...records, ...virtuals] : [...records];
 }

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { t, uiLocale } from '../../i18n/i18n';
-import type { ObjectRecord } from '../../objects/workspace-objects';
-import { calendarDayEntries, localDayKey, monthDays } from '../calendar';
+import { localDayKey, monthDays } from '../calendar';
 import { calendarMonthKey } from '../calendar-zoom-motion';
+import type { PlanDayIndex } from '../plan-index';
+import type { IndexRange } from '../composables/use-calendar-viewport';
 
 const props = defineProps<{
   scrollingYears: readonly number[];
-  planned: readonly ObjectRecord[];
+  dayIndex: PlanDayIndex;
+  renderRange: IndexRange;
   today: string;
   weekdays: readonly string[];
   dayPopoverKey?: string;
@@ -18,25 +20,59 @@ const emit = defineEmits<{
   'open-day-popover': [day: Date, event: MouseEvent];
 }>();
 
-const monthsForYear = (year: number) =>
-  Array.from({ length: 12 }, (_, month) => {
-    const date = new Date(year, month, 1);
-    return { date, days: monthDays(date) };
-  });
+interface YearMonthGrid {
+  date: Date;
+  monthKey: string;
+  days: { day: Date; key: string; inMonth: boolean }[];
+}
 
-const dayPopoverEntries = (day: Date) => calendarDayEntries(props.planned, day);
+const yearMonthsCache = new Map<number, YearMonthGrid[]>();
+
+function monthsForYear(year: number): YearMonthGrid[] {
+  let cached = yearMonthsCache.get(year);
+  if (!cached) {
+    cached = Array.from({ length: 12 }, (_, month) => {
+      const date = new Date(year, month, 1);
+      return {
+        date,
+        monthKey: calendarMonthKey(date),
+        days: monthDays(date).map((day) => ({
+          day,
+          key: localDayKey(day),
+          inMonth: day.getMonth() === month,
+        })),
+      };
+    });
+    yearMonthsCache.set(year, cached);
+  }
+  return cached;
+}
+
+function isYearRendered(index: number) {
+  return index >= props.renderRange.start && index <= props.renderRange.end;
+}
+
+function dayCount(dayKey: string) {
+  return props.dayIndex.countByDay.get(dayKey) ?? 0;
+}
 </script>
 
 <template>
   <div class="calendar-year-view">
-    <section v-for="year in scrollingYears" :key="year" class="calendar-year-section" :data-year="year">
+    <section
+      v-for="(year, yearIdx) in scrollingYears"
+      :key="year"
+      class="calendar-year-section"
+      :class="{ 'is-offscreen': !isYearRendered(yearIdx) }"
+      :data-year="year"
+    >
       <h2 class="calendar-year-heading">{{ new Date(year, 0, 1).toLocaleDateString(uiLocale, { year: 'numeric' }) }}</h2>
-      <div class="calendar-year-grid">
+      <div v-if="isYearRendered(yearIdx)" class="calendar-year-grid">
         <section
           v-for="month in monthsForYear(year)"
           :key="month.date.getMonth()"
           class="calendar-year-month"
-          :data-month="calendarMonthKey(month.date)"
+          :data-month="month.monthKey"
         >
           <button type="button" class="calendar-year-month-title" @click="emit('select-month', month.date)">
             {{ month.date.toLocaleDateString(uiLocale, { month: 'long' }) }}
@@ -45,31 +81,34 @@ const dayPopoverEntries = (day: Date) => calendarDayEntries(props.planned, day);
             <span v-for="name in weekdays" :key="name">{{ name }}</span>
           </div>
           <div class="calendar-year-days">
-            <template v-for="day in month.days" :key="localDayKey(day)">
-              <span v-if="day.getMonth() !== month.date.getMonth()" aria-hidden="true" />
+            <template v-for="cell in month.days" :key="cell.key">
+              <span v-if="!cell.inMonth" aria-hidden="true" />
               <button
                 v-else
                 type="button"
-                :data-zoom-day="localDayKey(day)"
-                :class="{ today: localDayKey(day) === today, selected: localDayKey(day) === dayPopoverKey }"
-                :aria-label="t('{0}，{1} 个事件', [localDayKey(day), dayPopoverEntries(day).length])"
+                :data-zoom-day="cell.key"
+                :class="{ today: cell.key === today, selected: cell.key === dayPopoverKey }"
+                :aria-label="t('{0}，{1} 个事件', [cell.key, dayCount(cell.key)])"
                 aria-haspopup="dialog"
-                :aria-expanded="localDayKey(day) === dayPopoverKey"
-                :aria-controls="localDayKey(day) === dayPopoverKey ? dayPopoverId : undefined"
-                @click="emit('open-day-popover', day, $event)"
+                :aria-expanded="cell.key === dayPopoverKey"
+                :aria-controls="cell.key === dayPopoverKey ? dayPopoverId : undefined"
+                @click="emit('open-day-popover', cell.day, $event)"
               >
-                <span class="calendar-year-date" :data-zoom-num="localDayKey(day)">{{ day.getDate() }}</span>
-                <i v-if="dayPopoverEntries(day).length" class="calendar-year-event-dot" aria-hidden="true" />
+                <span class="calendar-year-date" :data-zoom-num="cell.key">{{ cell.day.getDate() }}</span>
+                <i v-if="dayCount(cell.key) > 0" class="calendar-year-event-dot" aria-hidden="true" />
               </button>
             </template>
           </div>
         </section>
       </div>
+      <div v-else class="calendar-year-placeholder" aria-hidden="true" />
     </section>
   </div>
 </template>
 
 <style scoped>
+.calendar-year-section.is-offscreen { content-visibility: auto; contain-intrinsic-size: auto 760px; }
+.calendar-year-placeholder { height: 700px; }
 .calendar-year-heading {
   max-width: 1200px;
   margin: 0 auto;

@@ -8,12 +8,14 @@ import {
 } from '../calendar';
 
 export const CALENDAR_HOUR_HEIGHT = 56;
+export const CALENDAR_AXIS_WIDTH = 52;
 
 const ZOOM_MODES: CalendarViewMode[] = ['day', 'four-days', 'week', 'month', 'year'];
 
 export interface CalendarScrollOptions {
   date: () => Date;
   mode: () => CalendarViewMode;
+  loading?: () => boolean;
   scroll: Ref<HTMLElement | undefined>;
   window: Window;
   onVisibleMonth: (date: Date) => void;
@@ -40,6 +42,11 @@ export interface CalendarScrollState {
   visibleWindow: ComputedRef<[Date, Date]>;
   onCalendarScroll: () => void;
   onCalendarWheel: (event: WheelEvent) => void;
+  extendTimelineDays: (direction: -1 | 1) => Promise<void>;
+  slideTimelineWindow: (direction: -1 | 1, stepPx: number) => Promise<void>;
+  slideMonthWindow: (direction: -1 | 1, stepPx: number) => Promise<void>;
+  slideYearWindow: (direction: -1 | 1, stepPx: number) => Promise<void>;
+  setCustomScrollbarDragging: (dragging: boolean) => void;
 }
 
 export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrollState {
@@ -94,10 +101,137 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
   let positioningTimeline = false;
   let timelineResizeObserver: ResizeObserver | undefined;
 
+  const supportsScrollEnd = 'onscrollend' in window;
+  let lastHorizontalWheelAt = -Infinity;
+  let lastVerticalWheelAt = -Infinity;
+  let scrollbarDragging = false;
+  let customScrollbarDragging = false;
+  let lastCustomScrollbarEndAt = -Infinity;
+  let pendingEdgeCheck = false;
+  let scrollSettleTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function setCustomScrollbarDragging(dragging: boolean) {
+    customScrollbarDragging = dragging;
+    if (!dragging) lastCustomScrollbarEndAt = performance.now();
+    clearPendingEdgeExtend();
+  }
+
+  function isCustomScrollbarActiveOrSettling(): boolean {
+    return customScrollbarDragging || performance.now() - lastCustomScrollbarEndAt < 400;
+  }
+
   let focusedZoomKey = '';
   let zoomDelta = 0;
   let lastZoomWheel = -Infinity;
   let lastZoomChange = -Infinity;
+
+  function clearPendingEdgeExtend() {
+    pendingEdgeCheck = false;
+    if (scrollSettleTimer !== undefined) {
+      clearTimeout(scrollSettleTimer);
+      scrollSettleTimer = undefined;
+    }
+  }
+
+  function timelineEdgeDirection(container: HTMLElement): -1 | 1 | 0 {
+    const width = timelineDayWidth.value;
+    const edgeDistance = Math.min(width * 1.5, Math.max(48, container.clientWidth * 0.2));
+    if (container.scrollLeft < edgeDistance) return -1;
+    if (container.scrollWidth - container.scrollLeft - container.clientWidth < edgeDistance) return 1;
+    return 0;
+  }
+
+  function monthEdgeDirection(container: HTMLElement): -1 | 1 | 0 {
+    const edgeDistance = Math.min(240, Math.max(48, container.clientHeight * 0.35));
+    if (container.scrollTop < edgeDistance) return -1;
+    if (container.scrollHeight - container.scrollTop - container.clientHeight < edgeDistance) return 1;
+    return 0;
+  }
+
+  function yearEdgeDirection(container: HTMLElement): -1 | 1 | 0 {
+    const edgeDistance = Math.min(240, Math.max(48, container.clientHeight * 0.35));
+    if (container.scrollTop < edgeDistance) return -1;
+    if (container.scrollHeight - container.scrollTop - container.clientHeight < edgeDistance) return 1;
+    return 0;
+  }
+
+  function isScrollbarPointerEvent(container: HTMLElement, event: MouseEvent): boolean {
+    if (event.target !== container) return false;
+    const rect = container.getBoundingClientRect();
+    const contentBottom = rect.top + container.clientTop + container.clientHeight;
+    const contentRight = rect.left + container.clientLeft + container.clientWidth;
+    const hasHorizontalBar = rect.bottom - contentBottom > 1;
+    const hasVerticalBar = rect.right - contentRight > 1;
+    return (hasHorizontalBar && event.clientY >= contentBottom)
+      || (hasVerticalBar && event.clientX >= contentRight);
+  }
+
+  function flushPendingEdgeExtend() {
+    if (!pendingEdgeCheck || scrollbarDragging || isCustomScrollbarActiveOrSettling()) {
+      clearPendingEdgeExtend();
+      return;
+    }
+    clearPendingEdgeExtend();
+    const container = scroll.value;
+    if (!container) return;
+    if (timeline.value) {
+      if (positioningTimeline || extendingTimeline || !timelineDays.value.length) return;
+      const direction = timelineEdgeDirection(container);
+      if (direction !== 0) void extendTimelineDays(direction);
+    } else if (getMode() === 'month') {
+      if (extendingWeeks || !scrollingWeeks.value.length) return;
+      const direction = monthEdgeDirection(container);
+      if (direction !== 0) void extendWeeks(direction);
+    } else if (getMode() === 'year') {
+      if (extendingYears || positioningYear || !scrollingYears.value.length) return;
+      const direction = yearEdgeDirection(container);
+      if (direction !== 0) void extendYears(direction);
+    }
+  }
+
+  function scheduleEdgeExtend(axis: 'horizontal' | 'vertical', direction: -1 | 1) {
+    if (isCustomScrollbarActiveOrSettling()) {
+      clearPendingEdgeExtend();
+      return;
+    }
+    const lastWheelAt = axis === 'horizontal' ? lastHorizontalWheelAt : lastVerticalWheelAt;
+    const isWheelScroll = !scrollbarDragging && performance.now() - lastWheelAt <= 150;
+    if (isWheelScroll) {
+      clearPendingEdgeExtend();
+      if (timeline.value) void extendTimelineDays(direction);
+      else if (getMode() === 'month') void extendWeeks(direction);
+      else if (getMode() === 'year') void extendYears(direction);
+      return;
+    }
+    // Defer edge extension during native scrollbar thumb drags until scrollend / release:
+    // mutating scrollLeft mid-drag fights the browser's thumb position and causes runaway loops.
+    pendingEdgeCheck = true;
+    if (!supportsScrollEnd) {
+      if (scrollSettleTimer !== undefined) clearTimeout(scrollSettleTimer);
+      scrollSettleTimer = setTimeout(() => {
+        scrollSettleTimer = undefined;
+        flushPendingEdgeExtend();
+      }, 150);
+    }
+  }
+
+  function onContainerMouseDown(event: MouseEvent) {
+    const container = scroll.value;
+    if (container && isScrollbarPointerEvent(container, event)) {
+      scrollbarDragging = true;
+    }
+  }
+
+  function onContainerScrollEnd() {
+    scrollbarDragging = false;
+    flushPendingEdgeExtend();
+  }
+
+  function onScrollbarRelease() {
+    if (!scrollbarDragging) return;
+    scrollbarDragging = false;
+    flushPendingEdgeExtend();
+  }
 
   function fillTimelineDays(d: Date) {
     const first = visibleCalendarDays(d, getMode())[0]!;
@@ -105,6 +239,7 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
   }
 
   async function scrollToTimelineDate(d: Date) {
+    clearPendingEdgeExtend();
     positioningTimeline = true;
     const first = visibleCalendarDays(d, getMode())[0]!;
     let index = timelineDays.value.findIndex((day) => localDayKey(day) === localDayKey(first));
@@ -137,6 +272,46 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
     extendingTimeline = false;
   }
 
+  /** Slides the fixed-width timeline window by `stepPx` without changing its total span. */
+  async function slideTimelineWindow(direction: -1 | 1, stepPx: number) {
+    const container = scroll.value;
+    if (extendingTimeline || !container || !timelineDays.value.length || stepPx <= 0) return;
+    const width = timelineDayWidth.value;
+    const maxScroll = Math.max(0, container.scrollWidth - container.clientWidth);
+    if (direction < 0) {
+      if (container.scrollLeft >= stepPx) {
+        container.scrollLeft -= stepPx;
+        return;
+      }
+      const deficit = stepPx - container.scrollLeft;
+      const days = Math.max(1, Math.ceil(deficit / width));
+      extendingTimeline = true;
+      const count = timelineDays.value.length;
+      const edge = timelineDays.value[0]!;
+      const additions = Array.from({ length: days }, (_, index) => dayOffset(edge, -(index + 1)));
+      timelineDays.value = [...additions.reverse(), ...timelineDays.value].slice(0, count);
+      await nextTick();
+      container.scrollLeft = Math.min(maxScroll, Math.max(0, days * width - deficit));
+      extendingTimeline = false;
+      return;
+    }
+    const remaining = maxScroll - container.scrollLeft;
+    if (remaining >= stepPx) {
+      container.scrollLeft += stepPx;
+      return;
+    }
+    const deficit = stepPx - remaining;
+    const days = Math.max(1, Math.ceil(deficit / width));
+    extendingTimeline = true;
+    const count = timelineDays.value.length;
+    const edge = timelineDays.value.at(-1)!;
+    const additions = Array.from({ length: days }, (_, index) => dayOffset(edge, index + 1));
+    timelineDays.value = [...timelineDays.value, ...additions].slice(-count);
+    await nextTick();
+    container.scrollLeft = Math.min(maxScroll, Math.max(0, maxScroll - (days * width - deficit)));
+    extendingTimeline = false;
+  }
+
   function onTimelineScroll() {
     const container = scroll.value;
     if (!timeline.value || !container || !timelineDays.value.length || positioningTimeline || extendingTimeline) return;
@@ -150,11 +325,10 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
       reportedTimelineKey = key;
       options.onVisibleTimeline(d);
     }
-    const edgeDistance = Math.max(container.clientWidth, width * 2);
-    if (container.scrollLeft < edgeDistance)
-      void extendTimelineDays(-1);
-    else if (container.scrollWidth - container.scrollLeft - container.clientWidth < edgeDistance)
-      void extendTimelineDays(1);
+    if (customScrollbarDragging) return;
+    const direction = timelineEdgeDirection(container);
+    if (direction !== 0) scheduleEdgeExtend('horizontal', direction);
+    else clearPendingEdgeExtend();
   }
 
   function onCalendarWheel(event: WheelEvent) {
@@ -188,7 +362,10 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
       return;
     }
     zoomDelta = 0;
+    if (Math.abs(event.deltaX) > 0) lastHorizontalWheelAt = performance.now();
+    if (!event.shiftKey && Math.abs(event.deltaY) > 0) lastVerticalWheelAt = performance.now();
     if (!timeline.value || !event.shiftKey || !scroll.value) return;
+    lastHorizontalWheelAt = performance.now();
     event.preventDefault();
     const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
     scroll.value.scrollLeft += delta * Math.max(1, timelineDayWidth.value / 360);
@@ -230,7 +407,7 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
   async function resizeTimeline() {
     const container = scroll.value;
     if (!timeline.value || !container) return;
-    const width = Math.max(90, (container.clientWidth - 64) / timelineVisibleCount.value);
+    const width = Math.max(90, (container.clientWidth - CALENDAR_AXIS_WIDTH) / timelineVisibleCount.value);
     if (Math.abs(width - timelineDayWidth.value) < 0.5) return;
     const dayPosition = container.scrollLeft / timelineDayWidth.value;
     positioningTimeline = true;
@@ -286,18 +463,67 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
     extendingWeeks = false;
   }
 
+  /** Slides the fixed-height month week window by `stepPx` without changing its total span. */
+  async function slideMonthWindow(direction: -1 | 1, stepPx: number) {
+    const container = scroll.value;
+    if (extendingWeeks || !container || !scrollingWeeks.value.length || stepPx <= 0) return;
+    const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    if (direction < 0 && container.scrollTop >= stepPx) {
+      container.scrollTop -= stepPx;
+      return;
+    }
+    if (direction > 0 && maxScroll - container.scrollTop >= stepPx) {
+      container.scrollTop += stepPx;
+      return;
+    }
+    extendingWeeks = true;
+    const rows = [...container.querySelectorAll<HTMLElement>('.calendar-month-week')];
+    const anchor = direction < 0 ? rows[0] : rows.at(-1);
+    const anchorKey = anchor?.dataset.week;
+    const anchorTop = anchor?.getBoundingClientRect().top;
+    const rowHeight = Math.max(60, anchor?.offsetHeight || 120);
+    const deficit = direction < 0 ? stepPx - container.scrollTop : stepPx - (maxScroll - container.scrollTop);
+    const shiftWeeks = Math.max(1, Math.ceil(deficit / rowHeight));
+    const count = scrollingWeeks.value.length;
+    const edge = direction < 0 ? scrollingWeeks.value[0]! : scrollingWeeks.value.at(-1)!;
+    const additions = Array.from({ length: shiftWeeks }, (_, index) => weekOffset(edge, direction * (index + 1)));
+    const expanded = direction < 0
+      ? [...additions.reverse(), ...scrollingWeeks.value]
+      : [...scrollingWeeks.value, ...additions];
+    scrollingWeeks.value = direction < 0 ? expanded.slice(0, count) : expanded.slice(-count);
+    await nextTick();
+    const retained = [...container.querySelectorAll<HTMLElement>('.calendar-month-week')]
+      .find((row) => row.dataset.week === anchorKey);
+    const nextMaxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    if (retained && anchorTop !== undefined) {
+      const nextTop = container.scrollTop + (retained.getBoundingClientRect().top - anchorTop) + direction * stepPx;
+      container.scrollTop = Math.min(nextMaxScroll, Math.max(0, nextTop));
+    } else {
+      container.scrollTop = direction < 0 ? Math.max(0, shiftWeeks * rowHeight - deficit) : Math.max(0, nextMaxScroll - (shiftWeeks * rowHeight - deficit));
+    }
+    extendingWeeks = false;
+  }
+
   function onMonthScroll() {
     const container = scroll.value;
     if (getMode() !== 'month' || !container || !scrollingWeeks.value.length || extendingWeeks) return;
-    const bounds = container.getBoundingClientRect();
-    const viewTop = bounds.top + (container.querySelector<HTMLElement>('.calendar-month-weekdays')?.offsetHeight ?? 0);
+    const weeks = scrollingWeeks.value;
+    const total = weeks.length;
+    const headerHeight = 40;
+    const scrollHeight = Math.max(total * 108, container.scrollHeight - headerHeight);
+    const rowHeight = scrollHeight / total;
+    const viewTop = Math.max(0, container.scrollTop);
+    const viewBottom = viewTop + Math.max(rowHeight, container.clientHeight - headerHeight);
+    const firstIdx = Math.max(0, Math.floor(viewTop / rowHeight));
+    const lastIdx = Math.min(total - 1, Math.ceil(viewBottom / rowHeight));
+
     const area = new Map<string, { month: Date; size: number }>();
-    for (const row of container.querySelectorAll<HTMLElement>('.calendar-month-week')) {
-      const rect = row.getBoundingClientRect();
-      const size = Math.min(rect.bottom, bounds.bottom) - Math.max(rect.top, viewTop);
+    for (let i = firstIdx; i <= lastIdx; i++) {
+      const week = weeks[i]!;
+      const rowTop = i * rowHeight;
+      const rowBottom = rowTop + rowHeight;
+      const size = Math.min(rowBottom, viewBottom) - Math.max(rowTop, viewTop);
       if (size <= 0) continue;
-      const week = scrollingWeeks.value.find((item) => weekKey(item) === row.dataset.week);
-      if (!week) continue;
       for (const day of weekDays(week)) {
         const key = monthKey(day);
         const entry = area.get(key) ?? { month: day, size: 0 };
@@ -314,10 +540,10 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
       reportedMonthKey = monthKey(visibleMonth);
       options.onVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1));
     }
-    if (container.scrollTop < container.clientHeight)
-      void extendWeeks(-1);
-    else if (container.scrollHeight - container.scrollTop - container.clientHeight < container.clientHeight)
-      void extendWeeks(1);
+    if (customScrollbarDragging) return;
+    const direction = monthEdgeDirection(container);
+    if (direction !== 0) scheduleEdgeExtend('vertical', direction);
+    else clearPendingEdgeExtend();
   }
 
   function fillYears(d: Date) {
@@ -362,6 +588,43 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
     extendingYears = false;
   }
 
+  /** Slides the fixed-height year window by `stepPx` without changing its total span. */
+  async function slideYearWindow(direction: -1 | 1, stepPx: number) {
+    const container = scroll.value;
+    if (extendingYears || !container || !scrollingYears.value.length || stepPx <= 0) return;
+    const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    if (direction < 0 && container.scrollTop >= stepPx) {
+      container.scrollTop -= stepPx;
+      return;
+    }
+    if (direction > 0 && maxScroll - container.scrollTop >= stepPx) {
+      container.scrollTop += stepPx;
+      return;
+    }
+    extendingYears = true;
+    const sections = [...container.querySelectorAll<HTMLElement>('.calendar-year-section')];
+    const anchor = direction < 0 ? sections[0] : sections.at(-1);
+    const anchorYear = Number(anchor?.dataset.year);
+    const anchorTop = anchor?.getBoundingClientRect().top;
+    const count = scrollingYears.value.length;
+    const nextYear = direction < 0 ? scrollingYears.value[0]! - 1 : scrollingYears.value.at(-1)! + 1;
+    scrollingYears.value = direction < 0
+      ? [nextYear, ...scrollingYears.value].slice(0, count)
+      : [...scrollingYears.value, nextYear].slice(-count);
+    await nextTick();
+    const retained = yearSection(anchorYear);
+    const nextMaxScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    if (retained && anchorTop !== undefined) {
+      const nextTop = container.scrollTop + (retained.getBoundingClientRect().top - anchorTop) + direction * stepPx;
+      container.scrollTop = Math.min(nextMaxScroll, Math.max(0, nextTop));
+    } else {
+      const sectionHeight = Math.max(400, anchor?.offsetHeight || 720);
+      const deficit = direction < 0 ? stepPx - container.scrollTop : stepPx - (maxScroll - container.scrollTop);
+      container.scrollTop = direction < 0 ? Math.max(0, sectionHeight - deficit) : Math.max(0, nextMaxScroll - (sectionHeight - deficit));
+    }
+    extendingYears = false;
+  }
+
   function onYearScroll() {
     const container = scroll.value;
     if (getMode() !== 'year' || !container || !scrollingYears.value.length || extendingYears || positioningYear) return;
@@ -374,11 +637,10 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
       reportedYear = year;
       options.onVisibleYear(shiftCalendarDate(current, 'year', year - current.getFullYear()));
     }
-    const edgeDistance = Math.min(400, container.clientHeight / 2);
-    if (container.scrollTop < edgeDistance)
-      void extendYears(-1);
-    else if (container.scrollHeight - container.scrollTop - container.clientHeight < edgeDistance)
-      void extendYears(1);
+    if (customScrollbarDragging) return;
+    const direction = yearEdgeDirection(container);
+    if (direction !== 0) scheduleEdgeExtend('vertical', direction);
+    else clearPendingEdgeExtend();
   }
 
   function onCalendarScroll() {
@@ -396,13 +658,26 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
 
   onMounted(() => {
     void positionTimeline();
-    if (scroll.value && typeof ResizeObserverCtor !== 'undefined') {
-      timelineResizeObserver = new ResizeObserverCtor(() => { void resizeTimeline(); });
-      timelineResizeObserver.observe(scroll.value);
+    if (scroll.value) {
+      scroll.value.addEventListener('mousedown', onContainerMouseDown);
+      if (supportsScrollEnd) scroll.value.addEventListener('scrollend', onContainerScrollEnd);
+      if (typeof ResizeObserverCtor !== 'undefined') {
+        timelineResizeObserver = new ResizeObserverCtor(() => { void resizeTimeline(); });
+        timelineResizeObserver.observe(scroll.value);
+      }
     }
+    window.addEventListener('mouseup', onScrollbarRelease);
+    window.addEventListener('pointerup', onScrollbarRelease);
+    window.addEventListener('blur', onScrollbarRelease);
   });
 
   onUnmounted(() => {
+    clearPendingEdgeExtend();
+    scroll.value?.removeEventListener('mousedown', onContainerMouseDown);
+    if (supportsScrollEnd) scroll.value?.removeEventListener('scrollend', onContainerScrollEnd);
+    window.removeEventListener('mouseup', onScrollbarRelease);
+    window.removeEventListener('pointerup', onScrollbarRelease);
+    window.removeEventListener('blur', onScrollbarRelease);
     timelineResizeObserver?.disconnect();
   });
 
@@ -415,7 +690,7 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
     const current = getDate();
     if (timeline.value) {
       const container = scroll.value;
-      if (container) timelineDayWidth.value = Math.max(90, (container.clientWidth - 64) / timelineVisibleCount.value);
+      if (container) timelineDayWidth.value = Math.max(90, (container.clientWidth - CALENDAR_AXIS_WIDTH) / timelineVisibleCount.value);
       // Keep the rendered days when they already cover the new range: columns then stay in
       // place (and morph) instead of all shifting under a new list.
       const first = localDayKey(visibleCalendarDays(current, getMode())[0]!);
@@ -430,7 +705,7 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
 
   function placeScale() {
     const container = scroll.value;
-    if (!container) return;
+    if (!container || options.loading?.()) return;
     const current = getDate();
     if (!timeline.value) container.scrollLeft = 0;
     if (timeline.value) {
@@ -454,6 +729,7 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
   }
 
   watch(getMode, (to, from) => {
+    clearPendingEdgeExtend();
     options.onBeforeViewChange();
     options.onBeforeModeChange?.(from, to);
     prepareScale();
@@ -464,8 +740,19 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
     if (getMode() === to) options.onModePositioned?.(from, to);
   }, { flush: 'post' });
 
+  // When CalendarView mounts while loading, v-show hides the calendar body so initial
+  // scroll positioning is skipped/clamped; reposition once content becomes visible.
+  watch(
+    () => Boolean(options.loading?.()),
+    (loading, wasLoading) => {
+      if (wasLoading && !loading) void positionTimeline();
+    },
+    { flush: 'post' },
+  );
+
   watch(getDate, (nextDate) => {
     options.onBeforeViewChange();
+    if (customScrollbarDragging || performance.now() - lastCustomScrollbarEndAt < 100) return;
     if (focusedZoomKey) {
       const focused = focusedZoomKey === localDayKey(nextDate);
       focusedZoomKey = '';
@@ -504,5 +791,10 @@ export function useCalendarScroll(options: CalendarScrollOptions): CalendarScrol
     visibleWindow,
     onCalendarScroll,
     onCalendarWheel,
+    extendTimelineDays,
+    slideTimelineWindow,
+    slideMonthWindow,
+    slideYearWindow,
+    setCustomScrollbarDragging,
   };
 }

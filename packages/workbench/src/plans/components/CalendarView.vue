@@ -9,16 +9,14 @@ import type { ObjectRecord } from '../../objects/workspace-objects';
 import { usePlanStore, type PlanScope } from '../../stores/plans';
 import {
   calendarDayEntries,
-  calendarEvents,
-  filterCalendarRecords,
   localDayKey,
-  planningEvents,
   type CalendarFilter,
   type CalendarViewMode,
 } from '../calendar';
-import { expandRecurringPlans } from '../recurrence';
+import { buildCalendarDayIndex, EMPTY_ENTRIES } from '../plan-index';
 import { writePlanDate, type PlanDateValue } from '../plan-date';
 import { useCalendarScroll } from '../composables/use-calendar-scroll';
+import { useCalendarViewport } from '../composables/use-calendar-viewport';
 import { useCalendarInteractions } from '../composables/use-calendar-interactions';
 import {
   captureCalendarZoom,
@@ -29,6 +27,7 @@ import {
 import CalendarDayPopover from './CalendarDayPopover.vue';
 import CalendarFilterBar from './CalendarFilterBar.vue';
 import CalendarQuickCreateDialog, { type QuickCreateDraft } from './CalendarQuickCreateDialog.vue';
+import CalendarElasticScrollbar from './CalendarElasticScrollbar.vue';
 import CalendarTimelineView from './CalendarTimelineView.vue';
 import CalendarMonthView from './CalendarMonthView.vue';
 import CalendarYearView from './CalendarYearView.vue';
@@ -86,12 +85,16 @@ const {
   timelineDayWidth,
   scrollingWeeks,
   scrollingYears,
-  visibleWindow,
   onCalendarScroll,
   onCalendarWheel,
+  slideTimelineWindow,
+  slideMonthWindow,
+  slideYearWindow,
+  setCustomScrollbarDragging,
 } = useCalendarScroll({
   date: () => props.date,
   mode: () => props.mode,
+  loading: () => Boolean(props.loading),
   scroll,
   window,
   onVisibleMonth: (value) => emit('visible-month', value),
@@ -108,12 +111,14 @@ const {
     if (zoomSnapshot) zooming.value = true;
   },
   onModePositioned: () => {
+    viewport.syncNow();
     const snapshot = zoomSnapshot;
     if (!snapshot) return;
     zoomSnapshot = undefined;
     void playCalendarZoom(snapshot, scroll.value);
   },
   onScrolled: () => {
+    viewport.scheduleSync();
     if (
       dayPopover.value &&
       scroll.value &&
@@ -125,12 +130,7 @@ const {
   },
 });
 
-const rawPlanned = computed(() => planningEvents(props.records ?? plans.records));
-const expandedPlanned = computed(() =>
-  expandRecurringPlans(rawPlanned.value, visibleWindow.value[0], visibleWindow.value[1]),
-);
-const planned = computed(() => filterCalendarRecords(expandedPlanned.value, filter.value));
-const events = computed(() => calendarEvents(planned.value));
+const sourceRecords = computed(() => props.records ?? plans.records);
 
 const canCreateWorkspace = computed(() => Boolean(plans.workspaceWritable));
 const canCreatePersonal = computed(() => Boolean(plans.personalWritable));
@@ -215,7 +215,39 @@ const interactions = useCalendarInteractions({
   openQuickCreate,
 });
 
-const dayPopoverEntries = (day: Date) => calendarDayEntries(planned.value, day);
+const viewport = useCalendarViewport({
+  date: () => props.date,
+  mode: () => props.mode,
+  timeline,
+  timelineDays,
+  timelineDayWidth,
+  scrollingWeeks,
+  scrollingYears,
+  scroll,
+  window,
+  isInteracting: () => Boolean(interactions.draggingKey.value || interactions.resizing.value),
+});
+
+const dayIndex = computed(() =>
+  buildCalendarDayIndex(
+    sourceRecords.value,
+    viewport.dataWindow.value[0],
+    viewport.dataWindow.value[1],
+    filter.value,
+  ),
+);
+
+const dayPopoverEntries = (day: Date) => {
+  const key = localDayKey(day);
+  const idx = dayIndex.value;
+  if (key >= idx.windowStartKey && key <= idx.windowEndKey) {
+    return [...(idx.entriesByDay.get(key) ?? EMPTY_ENTRIES)];
+  }
+  return calendarDayEntries(
+    buildCalendarDayIndex(sourceRecords.value, day, day, filter.value).inWindowRecords,
+    day,
+  );
+};
 function openDayPopover(day: Date, event: MouseEvent) {
   dayPopover.value =
     dayPopoverKey.value === localDayKey(day)
@@ -268,8 +300,9 @@ onUnmounted(() => {
           :mode="mode"
           :timeline-days="timelineDays"
           :timeline-day-width="timelineDayWidth"
-          :planned="planned"
-          :events="events"
+          :day-index="dayIndex"
+          :render-range="viewport.timelineRenderRange.value"
+          :hour-range="viewport.timelineHourRange.value"
           :today="today"
           :now-minutes="nowMinutes"
           :weekdays="weekdays"
@@ -280,7 +313,8 @@ onUnmounted(() => {
         <CalendarMonthView
           v-else-if="mode === 'month'"
           :scrolling-weeks="scrollingWeeks"
-          :planned="planned"
+          :day-index="dayIndex"
+          :render-range="viewport.monthRenderRange.value"
           :today="today"
           :weekdays="weekdays"
           :can-create="canCreate"
@@ -295,7 +329,8 @@ onUnmounted(() => {
         <CalendarYearView
           v-else-if="mode === 'year'"
           :scrolling-years="scrollingYears"
-          :planned="planned"
+          :day-index="dayIndex"
+          :render-range="viewport.yearRenderRange.value"
           :today="today"
           :weekdays="weekdays"
           :day-popover-key="dayPopoverKey"
@@ -306,7 +341,9 @@ onUnmounted(() => {
         <CalendarAgendaView
           v-else
           :date="date"
-          :planned="planned"
+          :day-index="dayIndex"
+          :scroll-top="viewport.agendaScrollTop.value"
+          :viewport-height="viewport.agendaViewportHeight.value"
           :today="today"
           :weekdays="weekdays"
           :interactions="interactions"
@@ -314,6 +351,26 @@ onUnmounted(() => {
         />
       </div>
     </main>
+    <CalendarElasticScrollbar
+      v-if="timeline && !loading"
+      :container="scroll"
+      orientation="horizontal"
+      :sync-key="`${timelineDays.length}:${timelineDayWidth}`"
+      :min-px-per-sec="timelineDayWidth * 1.5"
+      :max-px-per-sec="timelineDayWidth * 28"
+      :slide-window="slideTimelineWindow"
+      :set-dragging="setCustomScrollbarDragging"
+    />
+    <CalendarElasticScrollbar
+      v-else-if="(mode === 'month' || mode === 'year') && !loading"
+      :container="scroll"
+      orientation="vertical"
+      :sync-key="mode === 'month' ? scrollingWeeks.length : scrollingYears.length"
+      :min-px-per-sec="mode === 'month' ? 150 : 220"
+      :max-px-per-sec="mode === 'month' ? 2600 : 2800"
+      :slide-window="mode === 'month' ? slideMonthWindow : slideYearWindow"
+      :set-dragging="setCustomScrollbarDragging"
+    />
     </div>
   </div>
   <CalendarQuickCreateDialog

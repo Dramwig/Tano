@@ -397,3 +397,206 @@ it('supports timeline slot quick-create, bottom-edge resize, and drag-and-drop t
     date: '2026-10-02',
   });
 });
+
+it('repositions the timeline scroll once initial loading finishes', async () => {
+  app.unmount();
+  const loading = ref(true);
+  app = createApp(() => h(CalendarView, {
+    date,
+    mode: 'week',
+    loading: loading.value,
+    'onSelect-mode': selectMode,
+    'onSelect-date': selectDate,
+    'onVisible-month': selectDate,
+    'onVisible-year': selectDate,
+    'onVisible-timeline': selectDate,
+  }));
+  app.mount(root);
+  await render();
+  viewport = root.querySelector('.calendar-view')!;
+  expect(viewport.scrollLeft).toBe(0);
+  expect(viewport.scrollTop).toBe(0);
+
+  loading.value = false;
+  await render();
+  expect(viewport.scrollLeft).toBeGreaterThan(0);
+  expect(viewport.scrollTop).toBe(56 * 7);
+});
+
+it('defers timeline edge extension during horizontal scrollbar drags and avoids runaway loops', async () => {
+  vi.useFakeTimers();
+  try {
+    // Week view with 42 initial days (dayWidth = 90px in jsdom, clientWidth = 682 -> ~7 days visible).
+    const dayWidth = 90;
+    const clientWidth = 682;
+    let currentScrollWidth = 52 + 42 * dayWidth;
+    Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: clientWidth });
+    Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 500 });
+    Object.defineProperty(viewport, 'scrollWidth', { configurable: true, get: () => currentScrollWidth });
+    vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({
+      top: 0, bottom: 514, left: 0, right: 696, width: 696, height: 514, x: 0, y: 0, toJSON: () => ({}),
+    });
+
+    const dayCount = () => viewport.querySelectorAll('.calendar-view-day-column').length;
+    expect(dayCount()).toBe(42);
+
+    // 1. Scrolling partway (e.g. 4 days from left edge = 360px, previously < clientWidth) must not extend.
+    viewport.scrollLeft = 4 * dayWidth;
+    viewport.dispatchEvent(new Event('scroll'));
+    vi.advanceTimersByTime(300);
+    await render();
+    expect(dayCount()).toBe(42);
+
+    // 2. Dragging the horizontal scrollbar thumb all the way to the left edge must NOT extend mid-drag.
+    viewport.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 100, clientY: 508 }));
+    for (let i = 0; i < 5; i++) {
+      viewport.scrollLeft = 20;
+      viewport.dispatchEvent(new Event('scroll'));
+      vi.advanceTimersByTime(100);
+      await render();
+    }
+    expect(dayCount()).toBe(42);
+    expect(viewport.scrollLeft).toBe(20);
+
+    // 3. Releasing the scrollbar extends once by 14 days and shifts scrollLeft inward.
+    currentScrollWidth = 52 + 56 * dayWidth;
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    viewport.dispatchEvent(new Event('scrollend'));
+    await render();
+    expect(dayCount()).toBe(56);
+    expect(viewport.scrollLeft).toBe(14 * dayWidth + 20);
+
+    // 4. Shift+wheel scrolling near the right edge still extends immediately.
+    now += 500;
+    viewport.scrollLeft = currentScrollWidth - clientWidth - 30;
+    wheel({ ctrlKey: false, shiftKey: true, deltaY: 20 });
+    viewport.dispatchEvent(new Event('scroll'));
+    await render();
+    expect(dayCount()).toBe(70);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('slides the fixed-width timeline window on overscroll without teleporting and renders minimalist acceleration particles', async () => {
+  vi.useFakeTimers();
+  try {
+    const dayWidth = 90;
+    const clientWidth = 682;
+    Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: clientWidth });
+    Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 500 });
+    Object.defineProperty(viewport, 'scrollWidth', {
+      configurable: true,
+      get: () => 52 + viewport.querySelectorAll('.calendar-view-day-column').length * dayWidth,
+    });
+
+    const track = root.querySelector<HTMLElement>('.calendar-escroll-track')!;
+    const thumb = root.querySelector<HTMLElement>('.calendar-escroll-thumb')!;
+    Object.defineProperty(track, 'clientWidth', { configurable: true, value: 660 });
+    vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({
+      top: 500, bottom: 514, left: 0, right: 660, width: 660, height: 14, x: 0, y: 500, toJSON: () => ({}),
+    });
+
+    const firstDayKey = () => viewport.querySelector<HTMLElement>('.calendar-view-day-column')?.dataset.day;
+    viewport.dispatchEvent(new Event('scroll'));
+    await render();
+    const initialThumbLeft = parseFloat(thumb.style.left);
+    const initialFirstDay = firstDayKey();
+    expect(initialThumbLeft).toBeGreaterThan(0);
+
+    // Grab the thumb and drag to the far-left edge (0px): stops cleanly without sliding the window.
+    const startX = 200;
+    thumb.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: startX }));
+    window.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: startX - initialThumbLeft }));
+    await render();
+    expect(viewport.scrollLeft).toBe(0);
+    expect(thumb.classList.contains('is-overscrolling')).toBe(false);
+    expect(root.querySelectorAll('.calendar-escroll-particle')).toHaveLength(0);
+    expect(firstDayKey()).toBe(initialFirstDay);
+
+    // Pull 40px past the left edge -> left directional gradient + elastic squash + minimalist particles.
+    window.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: startX - initialThumbLeft - 40 }));
+    await render();
+    expect(thumb.classList.contains('is-overscroll-start')).toBe(true);
+    expect(thumb.style.transformOrigin).toBe('left center');
+    const gentleHeadMix = parseFloat(thumb.style.getPropertyValue('--elastic-head-mix'));
+    const gentleParticleCount = root.querySelectorAll('.calendar-escroll-particle').length;
+    expect(gentleParticleCount).toBeGreaterThanOrEqual(3);
+
+    // First RAF slides the fixed 42-day window leftward (total day count stays 42, first day moves earlier).
+    vi.advanceTimersByTime(20);
+    await render();
+    expect(viewport.querySelectorAll('.calendar-view-day-column')).toHaveLength(42);
+    expect(firstDayKey()! < initialFirstDay!).toBe(true);
+    expect(viewport.scrollLeft).toBeLessThan(dayWidth);
+
+    // Pull 160px past the left edge -> deeper directional gradient and more particles.
+    window.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: startX - initialThumbLeft - 160 }));
+    await render();
+    const fastHeadMix = parseFloat(thumb.style.getPropertyValue('--elastic-head-mix'));
+    const fastParticleCount = root.querySelectorAll('.calendar-escroll-particle').length;
+    expect(fastHeadMix).toBeGreaterThan(gentleHeadMix);
+    expect(fastParticleCount).toBeGreaterThan(gentleParticleCount);
+
+    // Releasing right after left overscroll keeps the thumb at the left edge even after
+    // trailing scroll/scrollend events arrive (must not trigger 14-day extension or jump).
+    window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+    viewport.dispatchEvent(new Event('scroll'));
+    viewport.dispatchEvent(new Event('scrollend'));
+    vi.advanceTimersByTime(200);
+    await render();
+    expect(thumb.classList.contains('is-overscrolling')).toBe(false);
+    expect(thumb.classList.contains('is-rebounding')).toBe(true);
+    expect(root.querySelectorAll('.calendar-escroll-particle')).toHaveLength(0);
+    expect(viewport.querySelectorAll('.calendar-view-day-column')).toHaveLength(42);
+    expect(parseFloat(thumb.style.left)).toBeLessThan(20);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('renders vertical elastic overscroll scrollbar for month and year views', async () => {
+  vi.useFakeTimers();
+  try {
+    mode.value = 'year';
+    await render();
+
+    Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 500 });
+    Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 2400 });
+
+    const track = root.querySelector<HTMLElement>('.calendar-escroll.is-vertical .calendar-escroll-track')!;
+    const thumb = root.querySelector<HTMLElement>('.calendar-escroll.is-vertical .calendar-escroll-thumb')!;
+    expect(track).not.toBeNull();
+    expect(thumb).not.toBeNull();
+    Object.defineProperty(track, 'clientHeight', { configurable: true, value: 492 });
+
+    const firstYear = () => Number(viewport.querySelector<HTMLElement>('.calendar-year-section')?.dataset.year);
+    const initialYear = firstYear();
+    viewport.scrollTop = 700;
+    viewport.dispatchEvent(new Event('scroll'));
+    await render();
+    const initialThumbTop = parseFloat(thumb.style.top);
+    expect(initialThumbTop).toBeGreaterThan(0);
+
+    // Drag up past the top edge -> vertical elastic squash + upward particles + fixed 3-year window slides earlier.
+    const startY = 200;
+    thumb.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientY: startY }));
+    window.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientY: startY - initialThumbTop - 80 }));
+    await render();
+    expect(thumb.classList.contains('is-overscroll-start')).toBe(true);
+    expect(thumb.style.transformOrigin).toBe('center top');
+    expect(root.querySelectorAll('.calendar-escroll-particle').length).toBeGreaterThan(0);
+
+    viewport.scrollTop = 0;
+    vi.advanceTimersByTime(34);
+    await render();
+    expect(viewport.querySelectorAll('.calendar-year-section')).toHaveLength(3);
+    expect(firstYear()).toBeLessThan(initialYear);
+
+    window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+    await render();
+    expect(thumb.classList.contains('is-overscrolling')).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
