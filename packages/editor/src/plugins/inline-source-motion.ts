@@ -4,7 +4,7 @@ import { isElement, isHTMLElement } from '../primitives/dom-realm';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/kit/prose/view';
 import type { Node } from '@milkdown/kit/prose/model';
-import { canAnimate, spring, springEasing } from '../primitives/motion';
+import { canAnimateEditor, spring, springEasing } from '../primitives/motion';
 
 /* Live Markdown fields (links, inline code, emphasis, …) open and close with
  * motion instead of jumping.
@@ -523,7 +523,7 @@ export function inlineSourceMotion(options: InlineSourceMotionOptions = {}) {
         if (!tr.docChanged) return decorations === value.decorations ? value : { decorations };
         const previous = decorations;
         decorations = decorations.map(tr.mapping, tr.doc);
-        const change = view && enabled() && canAnimate(view.dom) && !view.composing ? describe(tr, previous, performance.now()) : null;
+        const change = view && enabled() && canAnimateEditor(view.dom) && !view.composing ? describe(tr, previous, performance.now()) : null;
         if (change) {
           if (change.drop.length) {
             const drop = new Set(change.drop);

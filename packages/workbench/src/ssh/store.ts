@@ -15,14 +15,39 @@ import type {
   SshSettings,
 } from './types';
 
+/** App-local list of ~/.ssh/config aliases the user explicitly added to Tano. */
+const IMPORTED_CONFIG_KEY = 'tano.preference.sshImportedConfigHosts';
+
+function readImportedConfigIds(): string[] | null {
+  try {
+    const raw = window.localStorage.getItem(IMPORTED_CONFIG_KEY);
+    if (raw === null) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeImportedConfigIds(ids: string[]) {
+  try {
+    window.localStorage.setItem(IMPORTED_CONFIG_KEY, JSON.stringify(ids));
+  } catch {
+    // Storage may be unavailable (private mode); the list then lasts for this session only.
+  }
+}
+
 export const useSshStore = defineStore('ssh', () => {
   const available = computed(
     () => isFeatureEnabled('sshRemoteWorkspace') && sshClient.available() && !mobile,
   );
   const connectModalOpen = ref(false);
   const preselectedHostId = ref<string | null>(null);
+  const startWithNewHost = ref(false);
   const savedHosts = ref<SshHostProfile[]>([]);
+  /** Every host parsed from ~/.ssh/config; only `importedConfigIds` are shown as servers. */
   const configHosts = ref<SshHostProfile[]>([]);
+  const importedConfigIds = ref<string[]>(readImportedConfigIds() ?? []);
   const configPath = ref<string | null>(null);
   const configParseError = ref<string | null>(null);
   const hostsLoading = ref(false);
@@ -40,7 +65,28 @@ export const useSshStore = defineStore('ssh', () => {
     connectTimeoutSecs: 15,
   });
 
-  const allHosts = computed(() => [...savedHosts.value, ...configHosts.value]);
+  const importedConfigHosts = computed(() => {
+    const imported = new Set(importedConfigIds.value);
+    return configHosts.value.filter((host) => imported.has(host.id));
+  });
+  const importableConfigHosts = computed(() => {
+    const imported = new Set(importedConfigIds.value);
+    return configHosts.value.filter((host) => !imported.has(host.id));
+  });
+  const allHosts = computed(() => [...savedHosts.value, ...importedConfigHosts.value]);
+
+  function setImportedConfigIds(ids: string[]) {
+    importedConfigIds.value = [...new Set(ids)];
+    writeImportedConfigIds(importedConfigIds.value);
+  }
+
+  function importConfigHosts(ids: string[]) {
+    setImportedConfigIds([...importedConfigIds.value, ...ids]);
+  }
+
+  function removeConfigHost(hostId: string) {
+    setImportedConfigIds(importedConfigIds.value.filter((id) => id !== hostId));
+  }
 
   let unlisteners: SshUnlisten[] = [];
   let listenersStarted = false;
@@ -80,6 +126,17 @@ export const useSshStore = defineStore('ssh', () => {
       const result = await sshClient.listHosts();
       savedHosts.value = result.savedHosts;
       configHosts.value = result.configHosts;
+      const stored = readImportedConfigIds();
+      if (stored === null) {
+        // First run after manual import was introduced: keep hosts the user already connected to.
+        setImportedConfigIds(
+          result.configHosts
+            .filter((host) => host.lastConnectedAt || host.recentPaths?.length)
+            .map((host) => host.id),
+        );
+      } else {
+        importedConfigIds.value = stored;
+      }
       configPath.value = result.configPath ?? null;
       configParseError.value = result.configError ?? null;
     } catch (error) {
@@ -111,6 +168,7 @@ export const useSshStore = defineStore('ssh', () => {
 
   async function connect(hostId: string): Promise<SshConnectResult> {
     await initListeners();
+    if (configHosts.value.some((host) => host.id === hostId)) importConfigHosts([hostId]);
     const res = await sshClient.connect(hostId);
     statuses.value = {
       ...statuses.value,
@@ -186,9 +244,10 @@ export const useSshStore = defineStore('ssh', () => {
     return settings.value;
   }
 
-  function openConnectModal(hostId?: string | null) {
+  function openConnectModal(hostId?: string | null, options: { newHost?: boolean } = {}) {
     if (!available.value) return;
     preselectedHostId.value = hostId ?? null;
+    startWithNewHost.value = !hostId && !!options.newHost;
     connectModalOpen.value = true;
     void initListeners();
     void loadHosts();
@@ -197,15 +256,22 @@ export const useSshStore = defineStore('ssh', () => {
   function closeConnectModal() {
     connectModalOpen.value = false;
     preselectedHostId.value = null;
+    startWithNewHost.value = false;
   }
 
   return {
     available,
     connectModalOpen,
     preselectedHostId,
+    startWithNewHost,
     savedHosts,
     configHosts,
+    importedConfigIds,
+    importedConfigHosts,
+    importableConfigHosts,
     allHosts,
+    importConfigHosts,
+    removeConfigHost,
     configPath,
     configParseError,
     hostsLoading,

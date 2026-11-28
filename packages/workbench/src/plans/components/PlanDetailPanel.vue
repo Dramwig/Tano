@@ -18,6 +18,7 @@ import { openExternalUrl } from '../../files/attachments';
 import { resolveWikiLink } from '../../objects/wiki-links';
 import DescriptionEditor from '../../documents/components/DescriptionEditor.vue';
 import PlanDateField from './PlanDateField.vue';
+import ModalBackdrop from '../../shell/components/ModalBackdrop.vue';
 import ReferenceConnections from '../../objects/components/ReferenceConnections.vue';
 import TaskRepeatControls from './TaskRepeatControls.vue';
 import { useWorkbenchRuntime } from '../../runtime';
@@ -288,7 +289,7 @@ onBeforeUnmount(() => { nameResize?.disconnect(); if (previousFocus?.isConnected
 </script>
 
 <template>
-  <div v-surface-motion="'PlanDetailPanel:0'" class="plan-detail-backdrop" data-surface-role="backdrop" @mousedown.self="requestNavigation({ kind: 'close' })">
+  <ModalBackdrop v-surface-motion="'PlanDetailPanel:0'" class="plan-detail-backdrop" @close="requestNavigation({ kind: 'close' })">
     <form ref="panel" class="plan-detail-panel" data-surface-role="dialog" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1" @submit.prevent="save()" @keydown="keyboard">
       <header>
         <div class="plan-detail-heading"><component :is="checkable ? ListTodo : CalendarDays" :size="18" /><h2>{{ title }}</h2><span>{{ personal ? t('个人') : base.source?.name ?? store.workspace?.name }}</span></div>
@@ -377,12 +378,12 @@ onBeforeUnmount(() => { nameResize?.disconnect(); if (previousFocus?.isConnected
         <button type="submit" class="detail-save" :disabled="disabled || !dirty || !draft.name.trim()"><LoaderCircle v-if="busy" :size="16" class="detail-spinner" /><Save v-else :size="16" />{{ t('保存') }}</button>
       </footer>
     </form>
-  </div>
+  </ModalBackdrop>
 </template>
 
 <style scoped>
 @layer components {
-.plan-detail-backdrop { position: fixed; inset: 0; z-index: 85; display: flex; align-items: center; justify-content: center; padding: 28px; box-sizing: border-box; background: #161a2238; backdrop-filter: blur(3px); }
+.plan-detail-backdrop { z-index: 85; }
 .plan-detail-panel { display: flex; flex-direction: column; width: min(720px, 100%); height: min(740px, calc(100dvh - 56px)); min-height: 0; margin: 0; overflow: hidden; background: var(--paper); color: var(--text); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--dialog-shadow, 0 20px 80px #12182026, 0 2px 8px #12182012); outline: none; }
 header, footer { display: flex; align-items: center; gap: 10px; padding: 12px 24px; flex-shrink: 0; }
 header { justify-content: space-between; border-bottom: 1px solid var(--line); }

@@ -139,13 +139,38 @@ describe('SshConnectModal', () => {
   });
 
   afterEach(() => {
+    window.localStorage.removeItem('tano.preference.sshImportedConfigHosts');
     app?.unmount();
     app = null;
     root?.remove();
     root = null;
   });
 
-  it('lists saved and ~/.ssh/config hosts and tests a host via the inline test button', async () => {
+  it('does not list ~/.ssh/config hosts until the user imports them', async () => {
+    window.localStorage.setItem('tano.preference.sshImportedConfigHosts', '[]');
+    mountModal();
+    await flushAsync();
+
+    expect(root!.textContent).toContain('GPU Dev');
+    expect(root!.querySelectorAll('button[aria-label="测试连接"]')).toHaveLength(1);
+
+    root!.querySelector<HTMLButtonElement>('.ssh-import-link')!.click();
+    await flushAsync();
+    const option = [...document.querySelectorAll<HTMLButtonElement>('.ssh-import-row')]
+      .find((row) => row.textContent?.includes('prod'))!;
+    option.click();
+    await nextTick();
+    document.querySelector<HTMLButtonElement>('.ssh-import-footer .primary-button')!.click();
+    await flushAsync();
+
+    expect(root!.querySelectorAll('button[aria-label="测试连接"]')).toHaveLength(2);
+    expect(window.localStorage.getItem('tano.preference.sshImportedConfigHosts')).toBe(
+      JSON.stringify(['ssh-config:prod']),
+    );
+  });
+
+  it('lists saved and imported ~/.ssh/config hosts and tests a host via the inline test button', async () => {
+    window.localStorage.setItem('tano.preference.sshImportedConfigHosts', JSON.stringify(['ssh-config:prod']));
     mountModal();
     await flushAsync();
 

@@ -2,7 +2,7 @@ import { ownerWindow } from '../primitives/dom-realm';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/kit/prose/view';
 import type { Node } from '@milkdown/kit/prose/model';
-import { canAnimate } from '../primitives/motion';
+import { canAnimateEditor } from '../primitives/motion';
 import { FrameLoop } from '../typing/spring';
 import { SmoothCaret } from '../typing/caret';
 import { TypedReveal } from '../typing/typed-reveal';
@@ -164,7 +164,7 @@ export function typingMotion(options: TypingMotionOptions | (() => boolean) = {}
   const ghosts = new EraseGhosts();
   let caret: SmoothCaret | undefined;
 
-  const active = () => !!view && enabled() && canAnimate(view.dom);
+  const active = () => !!view && enabled() && canAnimateEditor(view.dom);
   const getLayer = () => (view ? (layer = overlay(view, layer)) : undefined);
   const erase = (ghost: GhostCapture) => {
     const host = getLayer();

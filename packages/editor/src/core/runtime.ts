@@ -79,6 +79,8 @@ export interface EditorPreferences {
   entranceMotion?: boolean;
   /** Turns interface motion (press, panels, popovers) down like the OS setting. */
   reduceInterfaceMotion?: boolean;
+  /** Turns editor motion (caret, typing, block, inline source reveal) down independently of interface motion. */
+  reduceEditorMotion?: boolean;
 }
 export const defaultCapabilities: WorkspaceCapabilities = {
   version: 1,
@@ -106,6 +108,7 @@ export const defaultEditorPreferences: EditorPreferences = {
   sourceRevealMotion: true,
   entranceMotion: true,
   reduceInterfaceMotion: false,
+  reduceEditorMotion: false,
 };
 
 /** Validate portable policy without discarding unknown fields from newer clients. */

@@ -1,6 +1,6 @@
 import { ownerWindow } from '../primitives/dom-realm';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import { reducedMotion, spring } from '../primitives/motion';
+import { reducedEditorMotion, spring } from '../primitives/motion';
 import { CARET_FOLLOW_SPRING, CARET_SPRING, Spring, type SpringConfig } from './spring';
 
 /* The drawn caret. Its position is three springs (x, y, height) stepped by
@@ -94,7 +94,7 @@ export class SmoothCaret {
 
   private read(): Target | undefined {
     const view = this.view;
-    if (!this.enabled() || !view.editable || reducedMotion() || !view.dom.isConnected) return undefined;
+    if (!this.enabled() || !view.editable || reducedEditorMotion() || !view.dom.isConnected) return undefined;
     const root = view.root as Document | ShadowRoot;
     if (root.activeElement !== view.dom) return undefined;
     const selection = view.state.selection;

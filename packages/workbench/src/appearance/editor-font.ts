@@ -12,7 +12,7 @@ export interface SplitFontSettings {
 const cjkSans =
   "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', 'Source Han Sans SC'";
 const systemFontFamily =
-  `-apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', ${cjkSans}, sans-serif`;
+  `-apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', ${cjkSans}, 'Segoe UI Symbol', sans-serif`;
 const serifFontFamily =
   // Preserve the original platform serif fallback for CJK. Explicit STSong
   // takes over on Windows with Office fonts and changes the established face.
@@ -20,7 +20,7 @@ const serifFontFamily =
 const handwrittenFontFamily =
   "'KaiTi', 'STKaiti', 'Kaiti SC', 'Noto Serif CJK SC', Georgia, serif";
 const monoFontFamily =
-  `'Maple Mono NF', 'Maple Mono NF CN', 'Cascadia Code', 'Sarasa Mono SC', 'Noto Sans Mono CJK SC', ${cjkSans}, ui-monospace, monospace`;
+  `'Maple Mono NF', 'Maple Mono NF CN', 'Cascadia Code', 'Sarasa Mono SC', 'Noto Sans Mono CJK SC', ${cjkSans}, 'Segoe UI Symbol', ui-monospace, monospace`;
 
 export function parseVisualFontChoice(value: string | null): VisualFontChoice {
   return value === 'serif' || value === 'handwritten' || value === 'mono' || value === 'custom' ? value : 'system';

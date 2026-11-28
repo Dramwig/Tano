@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import { defaultSplitFontSettings, parseSplitFontSettings, parseVisualFontChoice, resolveEditorFont, sanitizeCustomFontName, visualFontFamily } from './editor-font';
 
@@ -12,10 +14,14 @@ it('keeps system, serif, handwritten, and mono as supported presets', () => {
   expect(visualFontFamily('handwritten', '')).toContain("'KaiTi'");
 });
 
-it('names explicit CJK fallbacks in system and mono presets', () => {
+it('names explicit CJK and Windows symbol fallbacks in system and mono presets', () => {
   expect(visualFontFamily('system', '')).toContain("'Microsoft YaHei UI'");
+  expect(visualFontFamily('system', '')).toMatch(/'Segoe UI Symbol'.*sans-serif/);
   expect(visualFontFamily('system', '')).not.toContain('var(');
-  expect(visualFontFamily('mono', '')).toMatch(/'Sarasa Mono SC'.*'Microsoft YaHei UI'/);
+  expect(visualFontFamily('mono', '')).toMatch(/'Sarasa Mono SC'.*'Microsoft YaHei UI'.*'Segoe UI Symbol'.*monospace/);
+  const shellCss = readFileSync(resolve(import.meta.dirname, '../styles/workbench-shell.css'), 'utf8');
+  expect(shellCss).toMatch(/--font-ui-system:[^;]*'Segoe UI Symbol'[^;]*ui-sans-serif/);
+  expect(shellCss).toMatch(/--font-mono:[^;]*'Segoe UI Symbol'[^;]*ui-monospace/);
 });
 
 it('quotes a custom font and retains a system fallback', () => {

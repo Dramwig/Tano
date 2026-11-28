@@ -5,6 +5,7 @@ import type { DataField, DataTable } from '@tano/protocol';
 import { localizedDataFieldTypes as dataFieldTypes } from '../../i18n/ui-labels';
 import { t } from '../../i18n/i18n';
 import type { DataTableConfirmAction } from '../../composables/use-data-table-page';
+import ModalBackdrop from '../../shell/components/ModalBackdrop.vue';
 
 defineProps<{
   table?: DataTable;
@@ -30,7 +31,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div
+  <ModalBackdrop
     v-if="fieldDraft"
     v-surface-motion="'DataTablePage:0'"
     class="data-modal-backdrop"
@@ -38,6 +39,7 @@ const emit = defineEmits<{
   >
     <section
       class="data-modal panel-scrollbar"
+      data-surface-role="dialog"
       role="dialog"
       aria-modal="true"
       :aria-label="t('字段设置')"
@@ -105,14 +107,15 @@ const emit = defineEmits<{
         </button>
       </footer>
     </section>
-  </div>
-  <div
+  </ModalBackdrop>
+  <ModalBackdrop
     v-if="importText !== undefined"
     v-surface-motion="'DataTablePage:1'"
     class="data-modal-backdrop"
   >
     <section
       class="data-modal panel-scrollbar"
+      data-surface-role="dialog"
       role="dialog"
       aria-modal="true"
       :aria-label="t('导入 CSV')"
@@ -139,14 +142,15 @@ const emit = defineEmits<{
         </button>
       </footer>
     </section>
-  </div>
-  <div
+  </ModalBackdrop>
+  <ModalBackdrop
     v-if="confirmAction"
     v-surface-motion="'DataTablePage:2'"
     class="data-modal-backdrop"
   >
     <section
       class="data-modal panel-scrollbar"
+      data-surface-role="dialog"
       role="alertdialog"
       aria-modal="true"
       :aria-label="confirmAction.title"
@@ -166,18 +170,12 @@ const emit = defineEmits<{
         </button>
       </footer>
     </section>
-  </div>
+  </ModalBackdrop>
 </template>
 
 <style scoped>
 .data-modal-backdrop {
-  position: fixed;
-  inset: 0;
   z-index: 110;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #0004;
   padding: 24px;
 }
 .data-modal {

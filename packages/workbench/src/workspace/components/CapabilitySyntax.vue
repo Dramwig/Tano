@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { CornerDownLeft } from 'lucide-vue-next';
 import { t } from '../../i18n/i18n';
 import type { DocumentFeature } from '@tano/editor/runtime';
 
@@ -21,9 +22,14 @@ const source = computed(() => {
   };
   return examples[props.feature];
 });
+const lines = computed(() => source.value.split(/\n+/));
 </script>
 <template>
-  <code class="capability-syntax" :aria-label="t('语法示例')">{{ source.replace(/\n+/g, ' ↵ ') }}</code>
+  <code class="capability-syntax" :aria-label="t('语法示例')">
+    <template v-for="(line, index) in lines" :key="index">
+      <CornerDownLeft v-if="index > 0" class="capability-syntax-break" :size="11" :stroke-width="1.75" aria-hidden="true" />{{ line }}
+    </template>
+  </code>
 </template>
 
 <style scoped>
@@ -42,5 +48,11 @@ const source = computed(() => {
   line-height: 1.6;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+.capability-syntax-break {
+  display: inline-block;
+  margin: 0 3px;
+  vertical-align: -1.5px;
+  opacity: 0.65;
 }
 </style>

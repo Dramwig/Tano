@@ -3,6 +3,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import {
   CheckCircle2,
+  FileCode2,
   LoaderCircle,
   Pencil,
   PlugZap,
@@ -19,6 +20,7 @@ import { useWorkspaceStore } from '../../stores/workspace';
 import { useSshStore } from '../store';
 import type { SshAuthMethod, SshConnectResult, SshHostInput, SshHostProfile } from '../types';
 import RemoteFolderBrowser from './RemoteFolderBrowser.vue';
+import SshConfigImportModal from './SshConfigImportModal.vue';
 
 const ssh = useSshStore();
 const store = useWorkspaceStore();
@@ -33,6 +35,20 @@ const testingHostId = ref<string | null>(null);
 const openingWorkspace = ref(false);
 const error = ref('');
 const notice = ref('');
+const importOpen = ref(false);
+
+function openManualFromImport() {
+  importOpen.value = false;
+  startAddHost();
+}
+
+function removeConfigHost(profile: SshHostProfile) {
+  ssh.removeConfigHost(profile.id);
+  if (selectedHostId.value === profile.id) {
+    selectedHostId.value = null;
+    connectedInfo.value = null;
+  }
+}
 
 // Host editor drawer state
 const editingHost = ref(false);
@@ -259,12 +275,20 @@ async function openRemoteFolder(remotePath: string) {
 }
 
 onMounted(() => {
+  if (ssh.startWithNewHost) startAddHost();
   void ssh.loadHosts().then(() => {
     if (ssh.preselectedHostId) {
       void selectAndConnect(ssh.preselectedHostId);
     }
   });
 });
+
+watch(
+  () => ssh.startWithNewHost,
+  (value) => {
+    if (value && ssh.connectModalOpen) startAddHost();
+  },
+);
 
 watch(
   () => ssh.preselectedHostId,
@@ -380,12 +404,12 @@ watch(
             </div>
           </div>
 
-          <div v-if="ssh.configHosts.length" class="ssh-host-group">
+          <div v-if="ssh.importedConfigHosts.length" class="ssh-host-group">
             <div class="ssh-group-label" :title="ssh.configPath ?? undefined">
               ~/.ssh/config
             </div>
             <div
-              v-for="item in ssh.configHosts"
+              v-for="item in ssh.importedConfigHosts"
               :key="item.id"
               class="ssh-host-row"
               :class="{ active: selectedHostId === item.id && !editingHost }"
@@ -405,8 +429,27 @@ watch(
                 <LoaderCircle v-if="testingHostId === item.id" :size="13" class="spinning" />
                 <Wifi v-else :size="13" />
               </button>
+              <button
+                type="button"
+                class="icon-button ssh-row-act"
+                :title="t('从列表移除')"
+                @click.stop="removeConfigHost(item)"
+              >
+                <Trash2 :size="13" />
+              </button>
             </div>
           </div>
+
+          <button
+            v-if="ssh.importableConfigHosts.length"
+            type="button"
+            class="ssh-import-link"
+            @click="importOpen = true"
+          >
+            <FileCode2 :size="13" />
+            <span>{{ t('从 ~/.ssh/config 添加…') }}</span>
+            <small>{{ ssh.importableConfigHosts.length }}</small>
+          </button>
 
           <p v-if="!ssh.hostsLoading && !ssh.allHosts.length" class="ssh-empty-hint">
             {{ t('尚未配置 SSH 服务器。上方输入快速连接地址或点击「添加服务器」。') }}
@@ -524,6 +567,7 @@ watch(
         </main>
       </div>
     </section>
+    <SshConfigImportModal :open="importOpen" @close="importOpen = false" @manual="openManualFromImport" />
   </div>
 </template>
 
@@ -652,6 +696,33 @@ watch(
 }
 .ssh-row-act:hover {
   opacity: 1;
+}
+.ssh-import-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px dashed var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.ssh-import-link:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.ssh-import-link span {
+  flex: 1;
+  text-align: left;
+}
+.ssh-import-link small {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
 }
 .ssh-empty-hint {
   font-size: 12px;

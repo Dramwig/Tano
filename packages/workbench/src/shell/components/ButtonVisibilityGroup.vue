@@ -159,34 +159,34 @@ onBeforeUnmount(() => {
     @keydown="navigationKeydown"
   >
     <slot :is-visible="isVisible" />
+    <Teleport :to="document.body">
+      <div v-surface-motion="'ButtonVisibilityGroup:0'"
+        v-if="menu"
+        ref="menuElement"
+        class="dropdown compact-action-menu button-visibility-menu" data-surface-role="popover"
+        role="menu"
+        :aria-label="menuLabel"
+        :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
+        @contextmenu.stop.prevent
+        @keydown.stop="menuKeydown"
+      >
+        <template v-for="(item, index) in items" :key="item.id">
+          <div v-if="item.separatorBefore && index > 0" class="menu-divider" role="separator" />
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            :aria-checked="isVisible(item.id)"
+            @click="toggleVisibility(item.id)"
+          >
+            <span class="button-visibility-menu-check" aria-hidden="true">
+              <Check v-if="isVisible(item.id)" :size="14" />
+            </span>
+            <span>{{ item.label }}</span>
+          </button>
+        </template>
+      </div>
+    </Teleport>
   </component>
-  <Teleport :to="document.body">
-    <div v-surface-motion="'ButtonVisibilityGroup:0'"
-      v-if="menu"
-      ref="menuElement"
-      class="dropdown compact-action-menu button-visibility-menu" data-surface-role="popover"
-      role="menu"
-      :aria-label="menuLabel"
-      :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
-      @contextmenu.stop.prevent
-      @keydown.stop="menuKeydown"
-    >
-      <template v-for="(item, index) in items" :key="item.id">
-        <div v-if="item.separatorBefore && index > 0" class="menu-divider" role="separator" />
-        <button
-          type="button"
-          role="menuitemcheckbox"
-          :aria-checked="isVisible(item.id)"
-          @click="toggleVisibility(item.id)"
-        >
-          <span class="button-visibility-menu-check" aria-hidden="true">
-            <Check v-if="isVisible(item.id)" :size="14" />
-          </span>
-          <span>{{ item.label }}</span>
-        </button>
-      </template>
-    </div>
-  </Teleport>
 </template>
 
 <style scoped>

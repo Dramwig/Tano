@@ -6,6 +6,7 @@ import {
   CircleHelp,
   ExternalLink,
   FileText,
+  FileType,
   House,
   Keyboard,
   Palette,
@@ -40,6 +41,7 @@ import ShortcutSettings from './ShortcutSettings.vue';
 import WorkspaceIcon from '../../workspace/components/WorkspaceIcon.vue';
 import SettingsAboutPage from './SettingsAboutPage.vue';
 import SettingsAppearancePage from './SettingsAppearancePage.vue';
+import SettingsDocumentAppearancePage from './SettingsDocumentAppearancePage.vue';
 import SettingsDocumentsPage from './SettingsDocumentsPage.vue';
 import SettingsEditingPage from './SettingsEditingPage.vue';
 import SettingsWorkspacePage from './SettingsWorkspacePage.vue';
@@ -141,17 +143,24 @@ const originalFocus = document.activeElement as HTMLElement | null;
 const pages = [
   {
     id: 'appearance',
-    get label() { return t('外观'); },
+    get label() { return t('界面外观'); },
     get group() { return t('个人偏好'); },
     icon: Palette,
-    get terms() { return uiSearchText('外观设置') + ' ' + uiSearchText('外观 主题 白天 黑夜 深色 浅色 跟随系统 字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 字号 字体大小 页面内标题 属性 文档属性 文档讨论 评论 显示目录 文档大纲 目录位置 左侧 右侧 帮助 上手 引导 气泡 偶尔显示使用提示'); },
+    get terms() { return uiSearchText('界面外观') + ' ' + uiSearchText('外观设置') + ' ' + uiSearchText('外观 主题 白天 黑夜 深色 浅色 跟随系统 界面字体 语言 材质 布局 图标 形态 密度 界面动效 减少界面动态效果 减少动态效果 页面入场动画 帮助 上手 引导 气泡 偶尔显示使用提示'); },
+  },
+  {
+    id: 'document-appearance',
+    get label() { return t('文档外观'); },
+    get group() { return t('个人偏好'); },
+    icon: FileType,
+    get terms() { return uiSearchText('文档外观') + ' ' + uiSearchText('字体 系统字体 衬线字体 等宽字体 Mono Maple 自定义字体 中文字体 英文字体 字号 字体大小 正文自动间距 页面内标题 属性 文档属性 文档讨论 评论 显示目录 文档大纲 目录位置 左侧 右侧 编辑工具栏 选区 顶部 固定 编辑动效 减少编辑动态效果 光标平滑移动 打字 段落 动效'); },
   },
   {
     id: 'editing',
     get label() { return t('编辑器'); },
     get group() { return t('个人偏好'); },
     icon: PencilLine,
-    get terms() { return uiSearchText('编辑设置') + ' ' + uiSearchText('编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX 标题 列表 折叠 工具栏 选区 顶部 固定 胶囊 符号 包裹 自动配对 斜体 粗体 删除线 高亮 代码 上标 下标 下划线 注释'); },
+    get terms() { return uiSearchText('编辑设置') + ' ' + uiSearchText('编辑器 Markdown 源码 默认编辑模式 光标 语法 展开 编辑 Reveal 数学 公式 KaTeX Mermaid 标题 列表 折叠 复制 剪贴板 AI 符号 包裹 自动配对 斜体 粗体 删除线 高亮 代码 上标 下标 下划线 注释 自动补全 中文输入优化'); },
   },
   {
     id: 'shortcuts',
@@ -562,6 +571,7 @@ function keydown(event: KeyboardEvent) {
           <p class="settings-lead">{{ t('没有找到相关设置，请尝试其他关键词。') }}</p>
         </div>
         <SettingsAppearancePage v-else-if="page === 'appearance'" />
+        <SettingsDocumentAppearancePage v-else-if="page === 'document-appearance'" />
         <SettingsEditingPage v-else-if="page === 'editing'" />
         <AssistantSettings v-else-if="page === 'assistant'" @changed="emit('assistant-changed')" />
         <div v-else-if="page === 'ssh'" class="settings-content">

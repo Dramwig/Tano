@@ -23,6 +23,7 @@ import { isAgentPerson, referenceUrl } from '@tano/protocol';
 import type { ObjectField, ReferenceIdentity, WorkspaceObject } from '@tano/protocol';
 import type { ObjectRecord } from '../workspace-objects';
 import { objectTypeLabel as referenceTypeLabel } from '../../i18n/ui-labels';
+import ModalBackdrop from '../../shell/components/ModalBackdrop.vue';
 import { useWorkspaceStore } from '../../stores/workspace';
 import { useWorkbenchRuntime } from '../../runtime';
 import DescriptionEditor from '../../documents/components/DescriptionEditor.vue';
@@ -333,10 +334,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
+  <ModalBackdrop
     v-surface-motion="'ObjectDetailModal:0'"
-    class="object-detail-backdrop" data-surface-role="backdrop"
-    @mousedown.self="emit('close')"
+    class="object-detail-backdrop"
+    @close="emit('close')"
   >
     <section
       ref="panel"
@@ -613,7 +614,7 @@ onBeforeUnmount(() => {
         </div>
       </footer>
     </section>
-  </div>
+  </ModalBackdrop>
 </template>
 
 <style scoped>
@@ -630,14 +631,7 @@ onBeforeUnmount(() => {
   border: 0;
 }
 .object-detail-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: grid;
-  place-items: center;
   padding: 20px;
-  background: rgb(15 23 20 / 32%);
-  backdrop-filter: blur(2px);
 }
 .object-detail-panel {
   display: flex;

@@ -18,7 +18,7 @@ type Surface = {
 const surfaces = new WeakMap<HTMLElement, Surface>();
 const owners = new WeakMap<object, WeakMap<Node, Map<string, Surface>>>();
 const active = new Set<Surface>();
-const backdropSelector = '.modal-backdrop, .data-modal-backdrop, .object-detail-backdrop, .file-metadata-backdrop, .plan-connections-backdrop, .plan-detail-backdrop, .selection-todo-backdrop, .new-tab-backdrop';
+const backdropSelector = '[data-surface-role="backdrop"], .modal-backdrop, .data-modal-backdrop, .object-detail-backdrop, .file-metadata-backdrop, .plan-connections-backdrop, .plan-detail-backdrop, .selection-todo-backdrop, .new-tab-backdrop';
 let reduced: MediaQueryList | undefined;
 
 function enabled(root: HTMLElement) {
@@ -49,7 +49,7 @@ function configure(surface: Surface) {
   const { root } = surface;
   surface.group = root.matches(backdropSelector + ', .field-menu-layer');
   surface.target = surface.group
-    ? root.querySelector<HTMLElement>('[role="dialog"], .modal, .settings-dialog') ?? root : root;
+    ? root.querySelector<HTMLElement>('[role="dialog"], [role="alertdialog"], .modal, .settings-dialog') ?? root : root;
   surface.modal = root.tagName === 'DIALOG' || root.matches(backdropSelector) ||
     (root.getAttribute('aria-modal') === 'true' && !root.classList.contains('sidebar'));
 }

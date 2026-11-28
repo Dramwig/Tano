@@ -5,7 +5,7 @@ import { Plugin, PluginKey, type Transaction } from '@milkdown/kit/prose/state';
 import { Mapping, ReplaceAroundStep, ReplaceStep } from '@milkdown/kit/prose/transform';
 import type { Node } from '@milkdown/kit/prose/model';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import { canAnimate, flipFrom, foldClip, ghostExit, riseIn, spring, FOLD_EXIT_DELAY, MOTION_DURATION, type Edge } from '../primitives/motion';
+import { canAnimateEditor, flipFrom, foldClip, ghostExit, riseIn, spring, FOLD_EXIT_DELAY, MOTION_DURATION, type Edge } from '../primitives/motion';
 
 /* Paragraph-level motion for the editor.
  *
@@ -352,7 +352,7 @@ class GrowthWatcher {
       this.heights.set(element, height);
       if (previous === undefined || !armed || !element.isConnected) continue;
       const delta = height - previous;
-      if (Math.abs(delta) < 1 || Math.abs(delta) > 600 || !canAnimate(element)) continue;
+      if (Math.abs(delta) < 1 || Math.abs(delta) > 600 || !canAnimateEditor(element)) continue;
       glideFollowers(element, delta);
     }
   }
@@ -385,7 +385,7 @@ export function blockMotion(options: BlockMotionOptions | (() => boolean) = {}) 
     filterTransaction(tr, state) {
       if (!tr.docChanged) {
         if (tr.getMeta(blockMotionKey) === FOLD_MOTION && view && state.doc === view.state.doc && enabled() &&
-          view.dom.isConnected && canAnimate(view.dom)) folding = captureFold(view);
+          view.dom.isConnected && canAnimateEditor(view.dom)) folding = captureFold(view);
         return true;
       }
       if (!reshaped && structural(tr)) reshaped = true;
@@ -397,7 +397,7 @@ export function blockMotion(options: BlockMotionOptions | (() => boolean) = {}) 
       // A transaction that was filtered but never drawn leaves a stale chain.
       pending = undefined;
       if (!view || state.doc !== view.state.doc || view.composing || tr.getMeta(blockMotionKey) === false || !enabled()) return true;
-      if (!view.dom.isConnected || !canAnimate(view.dom) || !structural(tr)) return true;
+      if (!view.dom.isConnected || !canAnimateEditor(view.dom) || !structural(tr)) return true;
       const before = collect(state.doc);
       const after = collect(tr.doc);
       if (Math.abs(after.length - before.length) > MAX_CHANGED_BLOCKS) return true;

@@ -15,12 +15,13 @@
   overflow: hidden;
 }
 .settings-nav {
+  --settings-nav-pad-x: 16px;
   flex: 0 0 224px;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  padding: 30px 16px 0;
+  padding: 30px var(--settings-nav-pad-x) 0;
   border-right: 1px solid var(--line);
   background: var(--paper);
 }
@@ -67,8 +68,11 @@
 .settings-nav-scroll {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
-  padding: 24px 0 24px;
+  scrollbar-gutter: stable;
+  margin-right: calc(var(--settings-nav-pad-x) * -1);
+  padding: 24px max(0px, calc(var(--settings-nav-pad-x) - var(--scrollbar-size, 12px))) 24px 0;
 }
 .settings-nav-group {
   display: block;
@@ -196,6 +200,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  contain: layout style;
 }
 .settings-close {
   position: absolute;
@@ -910,9 +915,8 @@
 }
 @media (max-width: 900px) {
   .settings-nav {
+    --settings-nav-pad-x: 12px;
     flex-basis: 200px;
-    padding-right: 12px;
-    padding-left: 12px;
   }
   .settings-content {
     padding-right: 28px;
@@ -959,7 +963,9 @@
     flex: 0 0 auto;
     gap: 12px;
     overflow-x: auto;
+    margin-right: 0;
     padding: 10px 0 0;
+    scrollbar-gutter: auto;
     scrollbar-width: none;
   }
   .settings-nav-scroll::-webkit-scrollbar {

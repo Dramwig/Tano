@@ -10,7 +10,7 @@ import type { ShortcutBindings } from '../shell/shortcuts';
 import type { UpdateCandidate, UpdatePhase, UpdateProgress, UpdateStatus } from '../updates/controller';
 
 /** Built-in pages and IDs registered by a product's settings extension. */
-export type SettingsPageId = 'preferences' | 'appearance' | 'editing' | 'shortcuts' | 'assistant' | 'ssh' | 'workspace' | 'about' | (string & {});
+export type SettingsPageId = 'preferences' | 'appearance' | 'document-appearance' | 'editing' | 'shortcuts' | 'assistant' | 'ssh' | 'workspace' | 'about' | (string & {});
 export type SettingsAction =
   'open-folder' | 'switch-mode' | 'reveal' | 'agent' | 'history' | 'recycle' |
   'sign-out';

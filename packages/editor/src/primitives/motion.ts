@@ -69,6 +69,14 @@ export function reducedMotion(): boolean {
 export function canAnimate(element: Element | null | undefined): element is HTMLElement {
   return !!element && typeof (element as HTMLElement).animate === 'function' && !reducedMotion();
 }
+export function reducedEditorMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+  reducedQuery ??= window.matchMedia('(prefers-reduced-motion: reduce)');
+  return reducedQuery.matches || document.documentElement.dataset.editorMotion === 'reduced';
+}
+export function canAnimateEditor(element: Element | null | undefined): element is HTMLElement {
+  return !!element && typeof (element as HTMLElement).animate === 'function' && !reducedEditorMotion();
+}
 
 /* ------------------------------------------------------------------------ */
 /* Press feedback                                                            */

@@ -10,6 +10,23 @@ const challenge = computed(() => ssh.activeChallenge);
 const answers = ref<string[]>([]);
 const saveSecret = ref(false);
 const submitting = ref(false);
+const forgetError = ref('');
+const knownHostsReady = ref(false);
+
+/** The Tano-recorded key that conflicts with the server; OpenSSH's own file is left to the user. */
+const staleTanoRecord = computed(() => {
+  const current = challenge.value;
+  if (current?.type !== 'host-key' || !current.event.mismatch) return null;
+  const { hostname, previousFingerprint } = current.event;
+  return (
+    ssh.knownHosts.find(
+      (record) =>
+        record.source === 'tano' &&
+        record.fingerprint === previousFingerprint &&
+        record.hostPattern.includes(hostname),
+    ) ?? null
+  );
+});
 
 const authTitle = computed(() => {
   if (challenge.value?.type !== 'auth') return '';
@@ -22,6 +39,13 @@ watch(
   challenge,
   (next) => {
     submitting.value = false;
+    forgetError.value = '';
+    knownHostsReady.value = false;
+    if (next?.type === 'host-key' && next.event.mismatch) {
+      void ssh.loadKnownHosts().catch(() => undefined).finally(() => {
+        knownHostsReady.value = true;
+      });
+    }
     if (next?.type === 'auth') {
       answers.value = next.event.prompts.map(() => '');
       saveSecret.value = false;
@@ -65,6 +89,20 @@ async function acceptHostKey() {
   } finally {
     submitting.value = false;
   }
+}
+
+async function forgetStaleKey() {
+  const record = staleTanoRecord.value;
+  if (!record || submitting.value) return;
+  forgetError.value = '';
+  try {
+    await ssh.removeKnownHost(record.id);
+  } catch (reason) {
+    forgetError.value = reason instanceof Error ? reason.message : String(reason);
+    return;
+  }
+  // Ends this (rejected) attempt; the next connection asks to confirm the new key.
+  await cancel();
 }
 
 async function submitAuth() {
@@ -126,7 +164,11 @@ async function submitAuth() {
           <div>
             <strong>{{ t('已自动阻止连接以防止中间人攻击（MITM）') }}</strong>
             <p>
-              {{ t('服务器 {0}:{1} 返回的主机密钥与已保存的指纹不一致。如果服务器确实重装或更换了密钥，请先在「设置 → SSH 远程」中移除旧指纹后再重新连接。', [challenge.event.hostname, String(challenge.event.port)]) }}
+              {{ t('服务器 {0}:{1} 返回的主机密钥与已保存的指纹不一致。如果你确认服务器重装或更换了密钥，可移除旧指纹，重新连接时再核对新指纹。', [challenge.event.hostname, String(challenge.event.port)]) }}
+            </p>
+            <p v-if="knownHostsReady && !staleTanoRecord">
+              {{ t('旧指纹记录在 ~/.ssh/known_hosts 中，可在终端运行以下命令移除：') }}
+              <code class="ssh-keygen-hint">ssh-keygen -R {{ challenge.event.port === 22 ? challenge.event.hostname : `[${challenge.event.hostname}]:${challenge.event.port}` }}</code>
             </p>
           </div>
         </div>
@@ -153,7 +195,17 @@ async function submitAuth() {
           </div>
         </dl>
 
+        <p v-if="forgetError" class="form-error" role="alert">{{ forgetError }}</p>
         <footer class="ssh-auth-actions">
+          <button
+            v-if="staleTanoRecord"
+            type="button"
+            class="secondary-button ssh-forget-btn"
+            :disabled="submitting"
+            @click="forgetStaleKey"
+          >
+            {{ t('移除旧指纹') }}
+          </button>
           <button type="button" class="secondary-button" :disabled="submitting" @click="cancel">
             {{ challenge.event.mismatch ? t('知道了（断开连接）') : t('取消连接') }}
           </button>
@@ -244,6 +296,21 @@ async function submitAuth() {
 .ssh-mitm-warning p {
   margin: 4px 0 0;
   color: var(--muted);
+}
+.ssh-keygen-hint {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  user-select: all;
+  word-break: break-all;
+}
+.ssh-forget-btn {
+  margin-right: auto;
+  color: var(--danger, #d93025);
 }
 .ssh-auth-desc,
 .ssh-auth-instructions {

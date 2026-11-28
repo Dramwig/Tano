@@ -9,6 +9,7 @@ import { useWorkspaceStore } from '../../stores/workspace';
 import type { FileMetadataState } from '../file-metadata';
 import { t } from '../../i18n/i18n';
 import DocumentScrollbar from '../../documents/components/DocumentScrollbar.vue';
+import ModalBackdrop from '../../shell/components/ModalBackdrop.vue';
 import { isMarkdown, referenceKey } from '@tano/protocol';
 const props = defineProps<{ fileId: string; workspaceId: string }>();
 const emit = defineEmits<{ close: [] }>();
@@ -84,7 +85,7 @@ async function save() {
 
 </script>
 <template>
-  <div v-surface-motion="'FileMetadataPanel:0'" class="file-metadata-backdrop" data-surface-role="backdrop" @click.self="!busy && emit('close')" @keydown.esc.stop="!busy && emit('close')">
+  <ModalBackdrop v-surface-motion="'FileMetadataPanel:0'" class="file-metadata-backdrop" @close="!busy && emit('close')" @keydown.esc.stop="!busy && emit('close')">
     <section ref="panel" role="dialog" aria-modal="true" :aria-label="t('文件属性')" class="file-metadata-panel" data-surface-role="dialog" @keydown="trapFocus">
       <div ref="scrollElement" class="file-metadata-scroll"><div>
       <div class="heading"><h2>{{ t('文件属性') }}</h2><button type="button" class="icon-button" :aria-label="t('关闭')" :disabled="busy" @click="emit('close')"><X :size="18" /></button></div>
@@ -124,11 +125,11 @@ async function save() {
       </div></div>
       <DocumentScrollbar :scroll-element="scrollElement" />
     </section>
-  </div>
+  </ModalBackdrop>
 </template>
 <style scoped>
 @layer components {
-.file-metadata-backdrop { position: fixed; inset: 0; z-index: 1200; background: #0006; display: grid; place-items: center; padding: 16px; }
+.file-metadata-backdrop { z-index: 1200; padding: 16px; }
 .file-metadata-panel { background: var(--surface, var(--paper)); color: var(--text); width: min(520px, 100%); max-height: 90dvh; overflow: hidden; display: flex; padding: 0; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 40px #0003; }
 .file-metadata-scroll { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 22px 24px; }
 .heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }

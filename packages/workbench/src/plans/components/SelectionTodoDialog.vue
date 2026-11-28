@@ -7,6 +7,7 @@ import { t } from '../../i18n/i18n';
 import { nextTick, onMounted, onBeforeUnmount, ref } from 'vue';
 import { X } from 'lucide-vue-next';
 import PlanDateField from './PlanDateField.vue';
+import ModalBackdrop from '../../shell/components/ModalBackdrop.vue';
 import type { PlanDateValue } from '../plan-date';
 import type { SelectionTodoSession } from '../selection-todo';
 const props = defineProps<{ session: SelectionTodoSession }>();
@@ -40,7 +41,7 @@ async function save(append = false) {
 </script>
 
 <template>
-  <div v-surface-motion="'SelectionTodoDialog:0'" class="selection-todo-backdrop" data-surface-role="backdrop" @click.self="close">
+  <ModalBackdrop v-surface-motion="'SelectionTodoDialog:0'" class="selection-todo-backdrop" @close="close">
     <form ref="panel" class="selection-todo-dialog" data-surface-role="dialog" role="dialog" aria-modal="true" :aria-label="t('从选区创建任务或事件')" @submit.prevent="save()" @keydown.esc.stop.prevent="close" @keydown="trapFocus">
       <header><h2>{{ t('创建任务或事件') }}</h2><button type="button" class="icon-button" :aria-label="t('关闭创建事项')" :data-tooltip="t('关闭')" :disabled="busy" @click="close"><X :size="18" /></button></header>
       <p>{{ t('归属工作区：{0}', [session.workspaceName]) }}</p>
@@ -52,12 +53,12 @@ async function save(append = false) {
       <p v-if="error" role="alert">{{ error }}</p>
       <footer><button type="submit" class="primary-button" :disabled="busy || !name.trim()">{{ busy ? t('保存中') : createdId ? t('重试插入引用') : t('创建') }}</button><button v-if="createdId" type="button" :disabled="busy" @click="save(true)">{{ t('在原文末尾插入引用') }}</button><button v-if="createdId" type="button" :disabled="busy" @click="emit('openTask', createdId)">{{ t('打开事项') }}</button></footer>
     </form>
-  </div>
+  </ModalBackdrop>
 </template>
 
 <style scoped>
 @layer components {
-.selection-todo-backdrop { position: fixed; inset: 0; z-index: 90; background: #0005; display: grid; place-items: center; padding: 16px; }
+.selection-todo-backdrop { z-index: 90; padding: 16px; }
 .selection-todo-dialog { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 8px; width: min(460px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px; }
 header { display: flex; align-items: center; justify-content: space-between; }
 h2 { font-size: 18px; margin: 0; }

@@ -5,6 +5,7 @@ import { vSurfaceMotion } from '@tano/editor/surface-motion';
 import { resizeHeight, settleHeight } from '@tano/editor/motion';
 import { t } from '../../i18n/i18n';
 import { useWindowContext } from '../../windows/context';
+import ModalBackdrop from '../../shell/components/ModalBackdrop.vue';
 import type { PlanScope } from '../../stores/plans';
 import type { PlanDateValue } from '../plan-date';
 import PlanDateField from './PlanDateField.vue';
@@ -116,15 +117,16 @@ watch(
 
 <template>
   <Teleport :to="document.body">
-    <div
+    <ModalBackdrop
       v-if="draft"
       v-surface-motion="'CalendarView:create'"
       class="calendar-create-backdrop"
-      @mousedown.self="emit('close')"
+      @close="emit('close')"
     >
       <section
         ref="dialog"
         class="calendar-create-dialog"
+        data-surface-role="dialog"
         role="dialog"
         aria-modal="true"
         :aria-label="t('新建事件')"
@@ -189,21 +191,14 @@ watch(
         </form>
         </div>
       </section>
-    </div>
+    </ModalBackdrop>
   </Teleport>
 </template>
 
 <style scoped>
 /* ---- Quick create dialog (teleported: keep its own tokens) ------------------ */
 .calendar-create-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: grid;
-  place-items: center;
   padding: 16px;
-  background: #161a2233;
-  backdrop-filter: blur(3px);
 }
 .calendar-create-dialog {
   --create-label: 92px;

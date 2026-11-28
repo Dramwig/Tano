@@ -983,23 +983,23 @@ onMounted(async () => {
       .use(
         $prose(() =>
           blockMotion({
-            structure: () => preferences().blockMotion !== false,
-            resize: () => preferences().blockResizeMotion !== false,
+            structure: () => preferences().reduceEditorMotion !== true && preferences().blockMotion !== false,
+            resize: () => preferences().reduceEditorMotion !== true && preferences().blockResizeMotion !== false,
           }),
         ),
       )
       .use(
         $prose(() =>
           typingMotion({
-            text: () => !props.readonly && preferences().typingMotion !== false,
-            caret: () => !props.readonly && preferences().smoothCaret !== false,
+            text: () => !props.readonly && preferences().reduceEditorMotion !== true && preferences().typingMotion !== false,
+            caret: () => !props.readonly && preferences().reduceEditorMotion !== true && preferences().smoothCaret !== false,
           }),
         ),
       )
       .use(
         $prose(() =>
           inlineSourceMotion({
-            enabled: () => !props.readonly && preferences().sourceRevealMotion !== false,
+            enabled: () => !props.readonly && preferences().reduceEditorMotion !== true && preferences().sourceRevealMotion !== false,
           }),
         ),
       )

@@ -2,7 +2,10 @@ import { expect, test } from '@playwright/test';
 import { capabilityTargets, settingTargets } from '../../scripts/build/preview-renderer-targets.mjs';
 
 const pages = {
-  editing: ['编辑器', 'Editor'], appearance: ['外观', 'Appearance'], documents: ['Markdown 与格式', 'Markdown & formatting'],
+  editing: ['编辑器', 'Editor'],
+  appearance: ['界面外观', 'Interface'],
+  documentAppearance: ['文档外观', 'Document appearance'],
+  documents: ['Markdown 与格式', 'Markdown & formatting'],
 };
 async function openSettings(page, locale = 'zh-CN') {
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -33,7 +36,7 @@ test('theme presets only bounce when the user switches presets', async ({ page }
       .filter(scales => scales.some(scale => scale !== undefined));
   });
 
-  await nav.getByRole('button', { name: '外观', exact: true }).click();
+  await nav.getByRole('button', { name: '界面外观', exact: true }).click();
   await expect(current).toHaveAccessibleName('应用预设：同页默认');
   await expect(current).toHaveCSS('animation-name', 'none');
   expect(await selectAndReadAnimations(islands)).toEqual([['0.94', '1']]);
@@ -41,7 +44,7 @@ test('theme presets only bounce when the user switches presets', async ({ page }
 
   await nav.getByRole('button', { name: '编辑器', exact: true }).click();
   await expect(current).toHaveCount(0);
-  await nav.getByRole('button', { name: '外观', exact: true }).click();
+  await nav.getByRole('button', { name: '界面外观', exact: true }).click();
   await expect(current).toHaveAccessibleName('应用预设：卡片岛');
   await expect(current).toHaveCSS('animation-name', 'none');
   expect(await selectAndReadAnimations(islands)).toEqual([]);
@@ -55,7 +58,7 @@ test('theme presets only bounce when the user switches presets', async ({ page }
 
 test('saves, reapplies and deletes a custom theme without changing the active appearance on deletion', async ({ page }) => {
   await openSettings(page);
-  const openAppearance = () => page.locator('.settings-nav').getByRole('button', { name: '外观', exact: true }).click();
+  const openAppearance = () => page.locator('.settings-nav').getByRole('button', { name: '界面外观', exact: true }).click();
   await openAppearance();
   const presets = page.getByRole('region', { name: '主题预设' });
   const save = presets.getByRole('button', { name: '保存当前搭配为自定义主题' });
@@ -204,7 +207,7 @@ test('the page title preview stays close to its row when the settings window get
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await openSettings(page);
   await page.setViewportSize({ width: 1065, height: 700 });
-  await page.locator('.settings-nav').getByRole('button', { name: '外观', exact: true }).click();
+  await page.locator('.settings-nav').getByRole('button', { name: '文档外观', exact: true }).click();
   const row = page.locator('[data-settings-key="appearance-page-title"]');
   const tooltip = page.getByRole('tooltip');
   await hoverRow(page, row);

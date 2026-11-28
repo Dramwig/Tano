@@ -98,6 +98,25 @@ it('keeps imperative hidden state synchronous and reverses before display is res
   expect(last(element).frames[0]!.opacity).toBeCloseTo(0.75);
   complete(last(element)); expect(element.hidden).toBe(false); expect(element.style.display).toBe('');
 });
+it('treats data-surface-role="backdrop" as a modal backdrop without clip-path reveal', async () => {
+  const renderModal = () => withDirectives(
+    h('div', { class: 'custom-backdrop', 'data-surface-role': 'backdrop' }, [
+      h('section', { role: 'dialog', 'aria-modal': 'true' }, 'Dialog'),
+    ]),
+    [[vSurfaceMotion, 'custom-modal']],
+  );
+  app = createApp({ setup: () => renderModal });
+  app.mount(host); await nextTick(); await vi.advanceTimersByTimeAsync(16);
+  const backdrop = host.querySelector<HTMLElement>('.custom-backdrop')!;
+  const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!;
+  const backdropFlight = last(backdrop);
+  const dialogFlight = last(dialog);
+  expect(backdropFlight.frames[0]).not.toHaveProperty('clipPath');
+  expect(backdropFlight.frames[0]!.opacity).toBe(0);
+  expect(backdropFlight.frames[1]!.opacity).toBe(1);
+  expect(dialogFlight.frames[0]).toMatchObject({ translate: '0 14px', scale: '0.955' });
+  expect(dialogFlight.frames[1]).toMatchObject({ translate: '0 0px', scale: '1' });
+});
 it('immediately completes an in-flight exit when reduced motion is enabled', async () => {
   const {open, element} = await mount(); complete(last(element));
   open.value = false; await nextTick(); media.matches = true;

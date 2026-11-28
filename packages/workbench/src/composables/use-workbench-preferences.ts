@@ -516,6 +516,7 @@ export function useWorkbenchPreferences(deps: WorkbenchPreferencesDeps) {
     sourceRevealMotion: readPreference('sourceRevealMotion', true),
     entranceMotion: readPreference('entranceMotion', true),
     reduceInterfaceMotion: readPreference('reduceInterfaceMotion', false),
+    reduceEditorMotion: readPreference('reduceEditorMotion', false),
   });
   watch(
     editorPreferences,
@@ -549,17 +550,27 @@ export function useWorkbenchPreferences(deps: WorkbenchPreferencesDeps) {
       savePreference('sourceRevealMotion', preferences.sourceRevealMotion !== false);
       savePreference('entranceMotion', preferences.entranceMotion !== false);
       savePreference('reduceInterfaceMotion', preferences.reduceInterfaceMotion === true);
+      savePreference('reduceEditorMotion', preferences.reduceEditorMotion === true);
     },
     { deep: true },
   );
-  // `data-motion="reduced"` is honoured by the motion helpers and the CSS tokens,
-  // exactly like the operating-system "reduce motion" setting.
+  // `data-motion="reduced"` is honoured by interface motion helpers and CSS tokens.
   watch(
     () => editorPreferences.value.reduceInterfaceMotion === true,
     (reduced) => {
       if (reduced) document.documentElement.dataset.motion = 'reduced';
       else if (document.documentElement.dataset.motion === 'reduced')
         delete document.documentElement.dataset.motion;
+    },
+    { immediate: true },
+  );
+  // `data-editor-motion="reduced"` is honoured by editor motion plugins independently of interface motion.
+  watch(
+    () => editorPreferences.value.reduceEditorMotion === true,
+    (reduced) => {
+      if (reduced) document.documentElement.dataset.editorMotion = 'reduced';
+      else if (document.documentElement.dataset.editorMotion === 'reduced')
+        delete document.documentElement.dataset.editorMotion;
     },
     { immediate: true },
   );

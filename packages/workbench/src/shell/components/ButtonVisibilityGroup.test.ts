@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { createApp, h, nextTick } from 'vue';
+import { createApp, h, nextTick, ref, vShow, withDirectives } from 'vue';
 import type { App } from 'vue';
 import ButtonVisibilityGroup from './ButtonVisibilityGroup.vue';
 
@@ -132,4 +132,36 @@ it('opens from nested header content and restores controls from an empty header'
   menuButtons[1].click();
   await nextTick();
   expect(header.querySelector('nav')?.textContent).toBe('项目 / 笔记');
+});
+
+it('supports runtime directives like v-show without non-element root warnings', async () => {
+  app.unmount();
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const visible = ref(false);
+  app = createApp({
+    render: () =>
+      withDirectives(
+        h(
+          ButtonVisibilityGroup,
+          {
+            items,
+            label: '工作区按钮',
+            menuLabel: '工作区按钮显示设置',
+            preferenceKey,
+          },
+          {
+            default: () => [h('button', '新建文档')],
+          },
+        ),
+        [[vShow, visible.value]],
+      ),
+  });
+  app.mount(root);
+  await nextTick();
+  const group = root.querySelector<HTMLElement>('[aria-label="工作区按钮"]')!;
+  expect(group.style.display).toBe('none');
+  visible.value = true;
+  await nextTick();
+  expect(group.style.display).toBe('');
+  expect(warn).not.toHaveBeenCalled();
 });

@@ -15,7 +15,6 @@ import {
 import { isFeatureEnabled } from '../../features';
 import { t } from '../../i18n/i18n';
 import { settingHint } from '../setting-examples';
-import type { ToolbarMode } from '../../shell/toolbar-preference';
 import { settingsPanelContextKey } from './settings-context';
 
 const ctx = inject(settingsPanelContextKey);
@@ -74,7 +73,7 @@ function displayOptionActive(key: keyof EditorPreferences) {
   );
 }
 
-const displayOptions = [
+const previewOptions = [
   {
     key: 'previewMathWhileEditing',
     settingsKey: 'preview-math',
@@ -86,12 +85,6 @@ const displayOptions = [
     settingsKey: 'preview-mermaid',
     get label() { return t('编辑时预览 Mermaid'); },
     get description() { return t('展开 Markdown 源码编辑 Mermaid 时同步显示图表。'); },
-  },
-  {
-    key: 'folding',
-    settingsKey: 'folding',
-    get label() { return t('标题与列表折叠'); },
-    get description() { return t('显示折叠按钮，临时收起标题下的内容或列表项。'); },
   },
 ] as const;
 </script>
@@ -107,7 +100,7 @@ const displayOptions = [
     <p class="settings-lead">{{ t('适用于这台设备上的所有工作区，仅影响你的编辑体验。') }}</p>
 
     <section class="settings-section" aria-labelledby="settings-editor">
-      <h3 id="settings-editor">{{ t('编辑器') }}</h3>
+      <h3 id="settings-editor">{{ t('编辑模式与预览') }}</h3>
       <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="editing-default-mode" v-bind="settingHint('editing-default-mode')">
           <div>
@@ -140,11 +133,42 @@ const displayOptions = [
             <span />
           </button>
         </div>
+        <div
+          v-for="option in previewOptions"
+          :key="option.key"
+          class="settings-row"
+          :data-settings-key="`editing-${option.settingsKey}`"
+          v-bind="settingHint(`editing-${option.settingsKey}`)"
+          :class="{ 'is-disabled': !props.revealMarkdown }"
+        >
+          <div>
+            <strong>{{ t(option.label) }}</strong>
+            <p>{{
+              !props.revealMarkdown
+                ? option.key === 'previewMathWhileEditing'
+                  ? t('仅控制 Markdown 源码展开时的预览；公式面板仍会实时渲染。')
+                  : t('仅控制 Markdown 源码展开时的预览；Mermaid 面板仍会实时渲染。')
+                : option.description
+            }}</p>
+          </div>
+          <button
+            type="button"
+            class="settings-switch"
+            :class="{ on: displayOptionActive(option.key) }"
+            role="switch"
+            :aria-checked="displayOptionActive(option.key)"
+            :aria-label="option.label"
+            :disabled="!props.revealMarkdown"
+            @click="ctx.emitUpdateEditorPreferences({ ...display, [option.key]: !displayOptionActive(option.key) })"
+          >
+            <span />
+          </button>
+        </div>
       </div>
     </section>
 
-    <section class="settings-section" :aria-label="t('编辑行为')">
-      <h3>{{ t('编辑行为') }}</h3>
+    <section class="settings-section" :aria-label="t('编辑交互')">
+      <h3>{{ t('编辑交互') }}</h3>
       <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="editing-copy-format" v-bind="settingHint('editing-copy-format')">
           <div>
@@ -167,60 +191,23 @@ const displayOptions = [
             <option value="text">{{ t('纯文本') }}</option>
           </select>
         </div>
-        <div class="settings-row" data-settings-key="editing-toolbar" v-bind="settingHint('editing-toolbar')">
+        <div class="settings-row" data-settings-key="editing-folding" v-bind="settingHint('editing-folding')">
           <div>
-            <strong>{{ t('编辑工具栏') }}</strong>
-            <p>{{ t('随选区显示，或停靠在顶部、底部、左侧、右侧；也可拖动工具栏手柄调整。仅影响当前设备。') }}</p>
-          </div>
-          <select
-            :aria-label="t('编辑工具栏')"
-            :value="props.toolbarMode ?? 'selection'"
-            @change="ctx.emitUpdateToolbarMode(($event.target as HTMLSelectElement).value as ToolbarMode)"
-          >
-            <option value="selection">{{ t('随选区显示（默认）') }}</option>
-            <option value="fixed">{{ t('固定在顶部') }}</option>
-            <option value="bottom">{{ t('吸附在底部') }}</option>
-            <option value="left">{{ t('靠左停靠') }}</option>
-            <option value="right">{{ t('靠右停靠') }}</option>
-          </select>
-        </div>
-        <div
-          v-for="option in displayOptions"
-          :key="option.key"
-          class="settings-row"
-          :data-settings-key="`editing-${option.settingsKey}`"
-          v-bind="settingHint(`editing-${option.settingsKey}`)"
-          :class="{ 'is-disabled': option.key !== 'folding' && !props.revealMarkdown }"
-        >
-          <div>
-            <strong>{{ t(option.label) }}</strong>
-            <p>{{
-              option.key !== 'folding' && !props.revealMarkdown
-                ? option.key === 'previewMathWhileEditing'
-                  ? t('仅控制 Markdown 源码展开时的预览；公式面板仍会实时渲染。')
-                  : t('仅控制 Markdown 源码展开时的预览；Mermaid 面板仍会实时渲染。')
-                : option.description
-            }}</p>
+            <strong>{{ t('标题与列表折叠') }}</strong>
+            <p>{{ t('显示折叠按钮，临时收起标题下的内容或列表项。') }}</p>
           </div>
           <button
             type="button"
             class="settings-switch"
-            :class="{ on: displayOptionActive(option.key) }"
+            :class="{ on: displayOptionActive('folding') }"
             role="switch"
-            :aria-checked="displayOptionActive(option.key)"
-            :aria-label="option.label"
-            :disabled="option.key !== 'folding' && !props.revealMarkdown"
-            @click="ctx.emitUpdateEditorPreferences({ ...display, [option.key]: !displayOptionActive(option.key) })"
+            :aria-checked="displayOptionActive('folding')"
+            :aria-label="t('标题与列表折叠')"
+            @click="ctx.emitUpdateEditorPreferences({ ...display, folding: !displayOptionActive('folding') })"
           >
             <span />
           </button>
         </div>
-      </div>
-    </section>
-
-    <section class="settings-section" :aria-label="t('AI 功能')">
-      <h3>{{ t('AI 功能') }}</h3>
-      <div class="settings-card" data-surface-role="section">
         <div class="settings-row" data-settings-key="editing-ai-shortcut" v-bind="settingHint('editing-ai-shortcut')">
           <div>
             <strong>{{ t('空白块按空格启动 AI') }}</strong>

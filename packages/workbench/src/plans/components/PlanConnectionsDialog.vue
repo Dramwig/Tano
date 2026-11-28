@@ -15,6 +15,7 @@ import type { ImportPreview } from '../../plan-sync/ical';
 import { providers } from '../../plan-sync/types';
 import type { Account, Collection, ProviderId, SyncKind } from '../../plan-sync/types';
 import { remoteAdapter } from '../../plan-sync/providers';
+import ModalBackdrop from '../../shell/components/ModalBackdrop.vue';
 
 const props = defineProps<{ initialKind: SyncKind }>();
 const emit = defineEmits<{ close: [] }>();
@@ -115,7 +116,7 @@ const time = (value?: string) => value ? new Date(value).toLocaleString(uiLocale
 
 <template>
   <Teleport :to="document.body">
-    <div v-surface-motion="'PlanConnectionsDialog:0'" class="plan-connections-backdrop" data-surface-role="backdrop" @mousedown.self="!working && emit('close')">
+    <ModalBackdrop v-surface-motion="'PlanConnectionsDialog:0'" class="plan-connections-backdrop" @close="!working && emit('close')">
       <section ref="panel" class="plan-connections" data-surface-role="dialog" role="dialog" aria-modal="true" :aria-label="t('日历与 Todo 连接')" tabindex="-1" @keydown="keyboard">
         <header><div><h2>{{ t('日历与 Todo') }}</h2><p>{{ t('连接常用服务，或从文件导入事项。') }}</p></div><button class="icon-button" :aria-label="t('关闭同步设置')" :disabled="working" @click="emit('close')"><X :size="18" /></button></header>
         <nav class="connection-tabs" :aria-label="t('同步类别')">
@@ -178,13 +179,13 @@ const time = (value?: string) => value ? new Date(value).toLocaleString(uiLocale
           <input ref="file" type="file" accept=".ics,text/calendar" class="connection-file-input" :aria-label="t('选择 iCalendar 文件')" @change="readFile" />
         </div>
       </section>
-    </div>
+    </ModalBackdrop>
   </Teleport>
 </template>
 
 <style scoped>
 @layer components {
-.plan-connections-backdrop { position: fixed; inset: 0; z-index: 95; display: flex; align-items: center; justify-content: center; padding: 20px; background: #0f0f0f45; }
+.plan-connections-backdrop { z-index: 95; padding: 20px; }
 .plan-connections { width: 680px; max-width: 100%; max-height: min(860px, 90dvh); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); color: var(--text); box-shadow: 0 24px 80px #0002; outline: none; }
 .plan-connections > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 24px 26px 18px; }
 h2 { margin: 0 0 7px; font-size: 19px; font-weight: 600; }
